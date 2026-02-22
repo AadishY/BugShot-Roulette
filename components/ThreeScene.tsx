@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
-import { CameraView, TurnOwner, AimTarget, AnimationState, GameSettings, SceneContext, PlayerState, GameState } from '../types';
+import { CameraView, TurnOwner, AimTarget, AnimationState, GameSettings, SceneContext, PlayerState, GameState, ShellType } from '../types';
 
 import { updateScene } from '../utils/sceneLogic';
 import { initThreeScene, cleanScene } from '../utils/three/sceneSetup';
@@ -15,7 +15,7 @@ interface ThreeSceneProps {
     animState: AnimationState;
     turnOwner: TurnOwner;
     settings: GameSettings;
-    knownShell?: any;
+    knownShell?: ShellType | null;
     isHardMode?: boolean;
     player: PlayerState;
     dealer: PlayerState;
