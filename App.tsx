@@ -21,6 +21,8 @@ import { ShellType, ItemType } from './types';
 
 type AppState = 'MENU' | 'LOADING_SP' | 'LOADING_GAME' | 'GAME';
 
+const NO_OP = () => { };
+
 export default function App() {
   const spGame = useGameLogic();
   const mp = useMultiplayer();
@@ -459,7 +461,7 @@ export default function App() {
         isChokeActive={spGame.player.isChokeActive || spGame.dealer.isChokeActive}
         isPlayerCuffed={spGame.player.isHandcuffed}
         knownShell={spGame.knownShell}
-        onGunClick={() => { }}
+        onGunClick={NO_OP}
         aimTarget={spGame.aimTarget}
         cameraView={spGame.cameraView}
         animState={spGame.animState}

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, memo } from 'react';
 import * as THREE from 'three';
 import { CameraView, TurnOwner, AimTarget, AnimationState, GameSettings, SceneContext, PlayerState, GameState } from '../types';
 
@@ -22,7 +22,7 @@ interface ThreeSceneProps {
     gameState: GameState;
 }
 
-export const ThreeScene: React.FC<ThreeSceneProps> = ({
+const ThreeSceneComponent: React.FC<ThreeSceneProps> = ({
     isSawed,
     isChokeActive,
     isPlayerCuffed,
@@ -538,3 +538,5 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
 
     return <div ref={containerRef} className="absolute inset-0 z-0 bg-neutral-950" />;
 };
+
+export const ThreeScene = memo(ThreeSceneComponent);
