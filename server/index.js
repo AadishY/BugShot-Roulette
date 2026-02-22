@@ -114,10 +114,29 @@ io.on('connection', (socket) => {
 
     socket.on('updateSettings', ({ roomId, settings }) => {
         const room = rooms.get(roomId);
-        if (room && room.hostId === socket.id) {
-            room.settings = { ...room.settings, ...settings };
-            console.log(`[SETTINGS] Room ${roomId} updated:`, room.settings);
-            io.to(roomId).emit('roomUpdated', room);
+        if (room && room.hostId === socket.id && typeof settings === 'object' && settings !== null) {
+            const validSettings = {};
+
+            // Validate rounds (1-10)
+            if (typeof settings.rounds === 'number' && Number.isInteger(settings.rounds) && settings.rounds >= 1 && settings.rounds <= 10) {
+                validSettings.rounds = settings.rounds;
+            }
+
+            // Validate HP (1-10)
+            if (typeof settings.hp === 'number' && Number.isInteger(settings.hp) && settings.hp >= 1 && settings.hp <= 10) {
+                validSettings.hp = settings.hp;
+            }
+
+            // Validate itemsPerShipment (1-8)
+            if (typeof settings.itemsPerShipment === 'number' && Number.isInteger(settings.itemsPerShipment) && settings.itemsPerShipment >= 1 && settings.itemsPerShipment <= 8) {
+                validSettings.itemsPerShipment = settings.itemsPerShipment;
+            }
+
+            if (Object.keys(validSettings).length > 0) {
+                room.settings = { ...room.settings, ...validSettings };
+                console.log(`[SETTINGS] Room ${roomId} updated:`, room.settings);
+                io.to(roomId).emit('roomUpdated', room);
+            }
         }
     });
 
