@@ -29,4 +29,6 @@ export const DEFAULT_SETTINGS: GameSettings = {
   sfxVolume: 1.0
 };
 
+export const MOBILE_BREAKPOINT = 950;
+
 export const GAME_VERSION = '1.0.6';

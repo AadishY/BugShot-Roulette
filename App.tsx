@@ -6,7 +6,7 @@ import { useGameLogic } from './hooks/useGameLogic';
 import { useDealerAI } from './hooks/useDealerAI';
 import { SettingsMenu } from './components/SettingsMenu';
 import { GameSettings } from './types';
-import { DEFAULT_SETTINGS } from './constants';
+import { DEFAULT_SETTINGS, MOBILE_BREAKPOINT } from './constants';
 
 import { LoadingScreen } from './components/LoadingScreen';
 import { TutorialGuide } from './components/TutorialGuide';
@@ -49,7 +49,7 @@ export default function App() {
         } else {
           isPortrait = window.innerHeight > window.innerWidth;
         }
-        const isMobile = window.innerWidth < 950;
+        const isMobile = window.innerWidth < MOBILE_BREAKPOINT;
         setShowRotateWarning(isPortrait && isMobile);
       }, 200);
     };
