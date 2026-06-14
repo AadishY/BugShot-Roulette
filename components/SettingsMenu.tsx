@@ -84,15 +84,20 @@ const CustomSlider: React.FC<{
 
 export const SettingsMenu: React.FC<SettingsMenuProps> = ({ settings, onUpdateSettings, onClose, onResetDefaults, onExitToMenu, showExitToMenu }) => {
     const [scale, setScale] = useState(1);
+    const [isMobile, setIsMobile] = useState(false);
 
     useEffect(() => {
         const handleResize = () => {
+            const width = window.innerWidth;
+            const isMob = width < 768;
+            setIsMobile(isMob);
+
             const targetWidth = 720;
             const targetHeight = 680;
-            const wScale = Math.min(1, (window.innerWidth - 40) / targetWidth);
+            const wScale = Math.min(1, (width - 40) / targetWidth);
             const hScale = Math.min(1, (window.innerHeight - 40) / targetHeight);
             let newScale = Math.min(wScale, hScale);
-            if (newScale < 0.4) newScale = 0.4;
+            if (newScale < 0.6) newScale = 0.6;
             setScale(newScale);
         };
         window.addEventListener('resize', handleResize);
@@ -105,10 +110,10 @@ export const SettingsMenu: React.FC<SettingsMenuProps> = ({ settings, onUpdateSe
     };
 
     return (
-        <div className="fixed inset-0 z-[250] flex items-center justify-center bg-black/60 backdrop-blur-md p-4 animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-[250] flex items-center justify-center bg-black/60 backdrop-blur-md p-0 md:p-4 animate-in fade-in duration-300">
             <div
-                className="w-full max-w-2xl max-h-[90vh] bg-stone-950/40 backdrop-blur-2xl border border-stone-800/50 shadow-[0_40px_100px_rgba(0,0,0,0.8)] relative flex flex-col overflow-hidden rounded-2xl ring-1 ring-white/5"
-                style={{ transform: `scale(${scale})`, transformOrigin: 'center center' }}
+                className={`w-full bg-stone-950/40 backdrop-blur-2xl border-0 md:border border-stone-800/50 shadow-[0_40px_100px_rgba(0,0,0,0.8)] relative flex flex-col overflow-hidden ${isMobile ? 'h-full max-h-full rounded-none' : 'max-w-2xl max-h-[90vh] rounded-2xl ring-1 ring-white/5'}`}
+                style={!isMobile ? { transform: `scale(${scale})`, transformOrigin: 'center center' } : {}}
             >
                 {/* Decorative */}
                 <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-stone-500/20 to-transparent" />

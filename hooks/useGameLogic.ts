@@ -374,7 +374,7 @@ export const useGameLogic = () => {
     setOverlayText(`ROUND ${displayRound}`);
     setOverlayColor(isHM ? 'red' : 'none');
     audioManager.playSound('rack');
-    await wait(2200);
+    await wait(3000);
     setOverlayText(null);
     setOverlayColor('none');
 
@@ -383,7 +383,7 @@ export const useGameLogic = () => {
     addLog(`${lives} LIVE, ${blanks} BLANK`);
     setOverlayText(`${lives} LIVE  |  ${blanks} BLANK`);
     audioManager.playSound('insert');
-    await wait(2200);
+    await wait(3500);
     setOverlayText(null);
 
     // Pass overrides to distributeItems if needed, or rely on setGameState above having propagated?
@@ -406,7 +406,8 @@ export const useGameLogic = () => {
     await distributeItemsAction(
       resetItems, effectiveState, setPlayer, setDealer, setGameState,
       setReceivedItems, setShowLootOverlay, dealerRef.current.hp,
-      pItemsOverride, dItemsOverride
+      pItemsOverride, dItemsOverride,
+      player.items, dealer.items
     );
 
     const nextTurn = turnOwnerOverride || 'PLAYER';
@@ -531,11 +532,12 @@ export const useGameLogic = () => {
     setIsProcessing(false);
   };
 
-
   const distributeItems = async (forceClear: boolean = false) => {
     await distributeItemsAction(
       forceClear, gameStateRef.current, setPlayer, setDealer, setGameState,
-      setReceivedItems, setShowLootOverlay, dealerRef.current.hp
+      setReceivedItems, setShowLootOverlay, dealerRef.current.hp,
+      undefined, undefined,
+      player.items, dealer.items
     );
   };
 

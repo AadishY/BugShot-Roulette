@@ -111,6 +111,13 @@ export const DebugOverlay: React.FC<DebugOverlayProps> = ({
         const setter = target === 'player' ? setPlayer : setDealer;
         setter(prev => {
             const newHp = Math.min(prev.maxHp, Math.max(0, prev.hp + amount));
+            if (newHp === 0) {
+                setGameState(g => ({
+                    ...g,
+                    phase: 'GAME_OVER',
+                    winner: target === 'player' ? 'DEALER' : 'PLAYER'
+                }));
+            }
             return {
                 ...prev,
                 hp: newHp

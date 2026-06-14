@@ -329,8 +329,59 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
                 </div>
             )
         },
+        // Page 5: System Profiles & Probabilities
+        {
+            title: "SYSTEM & PROBABILITIES",
+            icon: <Shield size={20} className="text-amber-500" />,
+            content: (
+                <div className="space-y-4">
+                    <p className="text-stone-400 text-center text-xs md:text-sm mb-4">
+                        📊 Technical configuration specifications and cargo load rates.
+                    </p>
 
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <InfoCard icon={<Crosshair size={16} />} title="AMMUNITION LOGISTICS" color="border-red-600">
+                            • **Magazine capacity**: Randomly loads between 2 and 8 shells per round.<br />
+                            • **Charge ratio**: Randomized distribution of LIVE and BLANK shells (at least 1 of each guaranteed).
+                        </InfoCard>
 
+                        <InfoCard icon={<Scale size={16} />} title="INVENTORY PROTOCOL (DUPES CAP)" color="border-blue-500">
+                            • **Cargo Shipment cap**: Maximum of 1 duplicate item allowed per loot phase.<br />
+                            • **Storage cap**: Maximum of 2 of any single item type total in your inventory. This prevents hoarding and forces tactical adaptivity.
+                        </InfoCard>
+
+                        <InfoCard icon={<Zap size={16} />} title="NORMAL MODE PROBABILITIES" color="border-green-500">
+                            • Cigarette: 13% | Beer: 15% | Cuffs: 10% | Saw: 10%<br />
+                            • Glass: 10% | Phone: 12% | Inverter: 10% | Adrenaline: 8%<br />
+                            • Choke Mod: 6% | Big Inverter: 6% | Contract: 10% *(Player Only)*
+                        </InfoCard>
+
+                        <InfoCard icon={<Shield size={16} />} title="HARD MODE PROBABILITIES" color="border-purple-500">
+                            • Cigarette: 5% | Beer: 18% | Cuffs: 10% | Saw: 10%<br />
+                            • Glass: 10% | Phone: 16% | Inverter: 9% | Adrenaline: 9%<br />
+                            • Choke Mod: 4% | Big Inverter: 4% | Contract: 7% *(Player Only)*<br />
+                            • *Note: Dealer operates cheating and survival item algorithms.*
+                        </InfoCard>
+
+                        <div className="md:col-span-2">
+                            <div className="bg-gradient-to-r from-purple-950/40 to-stone-900/40 border border-purple-900/30 p-3 md:p-4 rounded-sm">
+                                <h4 className="font-black text-purple-400 text-xs md:text-sm uppercase tracking-wider mb-2 flex items-center gap-2">
+                                    🧪 EXPERIMENTAL GEAR (IN PIPELINE)
+                                </h4>
+                                <div className="space-y-2 text-stone-400 text-xs">
+                                    <div>
+                                        <span className="font-bold text-stone-200">🍀 LUCKY CHARM:</span> Improves the probability of receiving highly needed items in the next shipment.
+                                    </div>
+                                    <div>
+                                        <span className="font-bold text-stone-200">🎰 JACKPOT:</span> Grants temporary absolute immunity from the next 3 shell discharges (self-inflicted or enemy fired).
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )
+        },
 
         // Page 6: Developer Info
         {

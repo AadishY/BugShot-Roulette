@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { SceneContext } from '../../types';
+import { getDeviceType } from '../gameUtils';
 import { setupLighting, createTable, createGunModel, createDealerModel, createPlayerAvatar, createProjectiles, createEnvironment, createDust, createBeerCan, createCigarette, createSaw, createHandcuffs, createMagnifyingGlass, createPhone, createInverter, createAdrenaline, createRemote, createBigInverter, createContract } from '../threeHelpers';
-
 
 
 export const cleanScene = (scene: THREE.Scene) => {
@@ -82,13 +82,14 @@ export const initThreeScene = (container: HTMLElement, props: any): SceneContext
     scene.userData._curLookAt = initialLookAt.clone();
 
     // Device Detection & Optimization Profiles
+    const device = getDeviceType();
     const userAgent = navigator.userAgent.toLowerCase();
-    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || width < 900;
+    const isMobile = device === 'mobile';
+    const isTablet = device === 'tablet';
     const isAndroid = userAgent.includes('android');
     const pixelRatio = window.devicePixelRatio || 1;
 
     // Aggressive Low-End Check
-    // If it's Android, or low res, or has less than 4GB RAM (approx check via hardwareConcurrency < 8 usually means older CPU), consider low end
     const isLowEndDevice = isMobile && (isAndroid || width < 600 || pixelRatio < 2 || navigator.hardwareConcurrency < 6);
 
     const renderer = new THREE.WebGLRenderer({
@@ -97,26 +98,30 @@ export const initThreeScene = (container: HTMLElement, props: any): SceneContext
         alpha: false,
         stencil: false,
         depth: true, // Keep depth
-        precision: 'mediump' // Standardize across devices for consistency
+        precision: isMobile ? 'lowp' : 'mediump' // Standardize across devices for consistency
     });
 
     // Mobile Optimization: Aggressive resolution scaling
     let mobilePixelScale = 2; // Default mobile
-    if (isLowEndDevice) mobilePixelScale = 3.5; // Even lower res for low-end (simulates ~270p-360p)
+    if (isMobile) {
+        mobilePixelScale = isLowEndDevice ? 4.5 : 3.5;
+    } else if (isTablet) {
+        mobilePixelScale = 2.2;
+    }
 
     // Desktop: default to 3 or user setting. Mobile: strictly optimized.
-    const pixelScale = isMobile ? mobilePixelScale : (props.settings.pixelScale || 3);
+    const pixelScale = (isMobile || isTablet) ? mobilePixelScale : (props.settings.pixelScale || 3);
 
-    const maxPixelRatio = isMobile ? 1.5 : Math.min(window.devicePixelRatio, 2); // Cap at 2x for desktop
+    const maxPixelRatio = isMobile ? 1.0 : (isTablet ? 1.2 : Math.min(window.devicePixelRatio, 2)); // Cap at 2x for desktop
     renderer.setPixelRatio(maxPixelRatio);
     renderer.setSize(width / pixelScale, height / pixelScale, false);
     renderer.domElement.style.width = '100%';
     renderer.domElement.style.height = '100%';
     renderer.domElement.style.imageRendering = 'pixelated'; // Essential for the look
 
-    // Disable shadows completely on ALL mobile devices for max FPS
-    renderer.shadowMap.enabled = !isMobile;
-    renderer.shadowMap.type = isMobile ? THREE.BasicShadowMap : THREE.PCFSoftShadowMap;
+    // Disable shadows completely on ALL mobile/tablet devices for max FPS
+    renderer.shadowMap.enabled = (device === 'pc');
+    renderer.shadowMap.type = (device === 'pc') ? THREE.PCFSoftShadowMap : THREE.BasicShadowMap;
 
     // Tone mapping
     renderer.toneMapping = THREE.ACESFilmicToneMapping;

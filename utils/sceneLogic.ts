@@ -94,6 +94,11 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
         camera.updateProjectionMatrix();
     }
 
+    // --- VARIANT GUN MODELS (SAWED-OFF / CHOKE) ---
+    const isSawed = animState.isSawing || props.player.isSawedActive || props.dealer.isSawedActive;
+    const isChoke = props.player.isChokeActive || props.dealer.isChokeActive;
+    const flashZ = isSawed ? (isChoke ? 7.8 : 4.0) : (isChoke ? 15.5 : 10.5);
+
     // --- GUN LOGIC ---
     const targets = gunGroup.userData;
     if (!targets.targetPos) {
@@ -110,8 +115,8 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
             targets.targetPos.set(swayX, swayY, 8);
             targets.targetRot.set(swayY * 0.5, Math.PI + swayX * 0.5, 0);
         } else if (aimTarget === 'SELF') {
-            // Visceral face-to-barrel close-up coordinates
-            targets.targetPos.set(0, 1.8, 8.5);
+            // Visceral face-to-barrel close-up coordinates (offset Z dynamically by barrel length to keep tip at Z=8.5)
+            targets.targetPos.set(0, 1.8, 8.5 - flashZ);
             targets.targetRot.set(-0.08, 0, 0);
         } else if (aimTarget === 'CHOOSING') {
             // Holding Gun, waiting for choice
@@ -181,8 +186,6 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
     gunLight.intensity = THREE.MathUtils.lerp(gunLight.intensity, targetGunLightIntensity * brightnessMult, 1 - Math.exp(-3 * dt));
 
     // --- VARIANT GUN MODELS (SAWED-OFF / CHOKE) ---
-    const isSawed = animState.isSawing || props.player.isSawedActive || props.dealer.isSawedActive;
-    const isChoke = props.player.isChokeActive || props.dealer.isChokeActive;
 
     if (context.barrelMesh) context.barrelMesh.visible = !isSawed;
     if (context.sight) context.sight.visible = !isSawed;
@@ -206,7 +209,6 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
         context.muzzleLight.intensity = THREE.MathUtils.lerp(context.muzzleLight.intensity, flashIntensity, 1 - Math.exp(-30.0 * dt));
 
         // Position flash at the end of barrel
-        const flashZ = isSawed ? (isChoke ? 7.8 : 4.0) : (isChoke ? 15.5 : 10.5);
         if (context.muzzleFlash) context.muzzleFlash.position.z = flashZ;
         context.muzzleLight.position.set(0, 0.4, flashZ);
 
@@ -217,7 +219,7 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
     }
 
     // Gun Animation Lerp (Time-based Damping)
-    const gunDampingCurve = isMobile ? 8.0 : 6.0; // Snappier
+    const gunDampingCurve = isMobile ? 5.5 : 4.5; // Slightly lower for smoother glide
     const gunDamping = 1 - Math.exp(-gunDampingCurve * dt);
 
     const targetPos = targets.targetPos.clone();

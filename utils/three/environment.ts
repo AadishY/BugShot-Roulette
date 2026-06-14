@@ -829,6 +829,93 @@ export const createEnvironment = (scene: THREE.Scene, isMobile: boolean = false)
     drum.position.set(2, -6, -22);
     scene.add(drum);
 
+    // === CRT SECURITY TELEVISION (Left Side) ===
+    const leftTvGroup = new THREE.Group();
+    leftTvGroup.position.set(-12, 1.0, -4);
+    leftTvGroup.rotation.y = 0.8;
+    leftTvGroup.scale.set(1.2, 1.2, 1.2);
+
+    const tvCaseMat = new THREE.MeshStandardMaterial({ color: 0x2d302e, metalness: 0.5, roughness: 0.5 });
+    const leftTvCase = new THREE.Mesh(new THREE.BoxGeometry(2.0, 1.8, 1.8), tvCaseMat);
+    leftTvGroup.add(leftTvCase);
+
+    const leftTvBevel = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.6, 0.1), tvCaseMat);
+    leftTvBevel.position.set(0, 0, 0.9);
+    leftTvGroup.add(leftTvBevel);
+
+    const leftTvScreenMat = new THREE.MeshStandardMaterial({
+        color: 0x113322,
+        emissive: 0x00cc55, // Glowing Green Screen
+        emissiveIntensity: 3.0,
+        roughness: 0.1,
+        metalness: 0.9
+    });
+    const leftTvScreen = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.3, 0.05), leftTvScreenMat);
+    leftTvScreen.position.set(-0.1, 0, 0.95);
+    leftTvGroup.add(leftTvScreen);
+
+    // TV Knobs
+    const knobMat = new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.8, roughness: 0.2 });
+    const leftDial1 = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.1, 8), knobMat);
+    leftDial1.rotation.x = Math.PI / 2;
+    leftDial1.position.set(0.7, 0.4, 0.95);
+    leftTvGroup.add(leftDial1);
+
+    const leftDial2 = leftDial1.clone();
+    leftDial2.position.set(0.7, 0.0, 0.95);
+    leftTvGroup.add(leftDial2);
+
+    const leftTvLight = new THREE.SpotLight(0x00ff88, 25.0, 20);
+    leftTvLight.position.set(0, 0, 1.0);
+    leftTvLight.target.position.set(5, -1, 3); // Aim towards table center
+    leftTvGroup.add(leftTvLight);
+    leftTvGroup.add(leftTvLight.target);
+
+    scene.add(leftTvGroup);
+
+
+    // === TERMINAL SCREEN (Right Side) ===
+    const rightTvGroup = new THREE.Group();
+    rightTvGroup.position.set(12, 1.5, -4);
+    rightTvGroup.rotation.y = -0.8;
+    rightTvGroup.scale.set(1.1, 1.1, 1.1);
+
+    const rightTvCase = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.6, 1.6), tvCaseMat);
+    rightTvGroup.add(rightTvCase);
+
+    const rightTvBevel = new THREE.Mesh(new THREE.BoxGeometry(2.0, 1.4, 0.1), tvCaseMat);
+    rightTvBevel.position.set(0, 0, 0.8);
+    rightTvGroup.add(rightTvBevel);
+
+    const rightTvScreenMat = new THREE.MeshStandardMaterial({
+        color: 0x331111,
+        emissive: 0xff3300, // Glowing Amber/Red terminal screen
+        emissiveIntensity: 2.5,
+        roughness: 0.1,
+        metalness: 0.9
+    });
+    const rightTvScreen = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.1, 0.05), rightTvScreenMat);
+    rightTvScreen.position.set(-0.1, 0, 0.85);
+    rightTvGroup.add(rightTvScreen);
+
+    // TV Knobs
+    const rightDial1 = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.1, 8), knobMat);
+    rightDial1.rotation.x = Math.PI / 2;
+    rightDial1.position.set(0.8, 0.3, 0.85);
+    rightTvGroup.add(rightDial1);
+
+    const rightDial2 = rightDial1.clone();
+    rightDial2.position.set(0.8, -0.1, 0.85);
+    rightTvGroup.add(rightDial2);
+
+    const rightTvLight = new THREE.SpotLight(0xff4400, 20.0, 20);
+    rightTvLight.position.set(0, 0, 0.9);
+    rightTvLight.target.position.set(-5, -1, 3); // Aim towards table center
+    rightTvGroup.add(rightTvLight);
+    rightTvGroup.add(rightTvLight.target);
+
+    scene.add(rightTvGroup);
+
     // Floor Debris (Random papers/scraps)
     if (!isMobile) {
         const debrisGeo = new THREE.PlaneGeometry(0.3, 0.4);

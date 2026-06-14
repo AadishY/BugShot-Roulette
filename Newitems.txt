@@ -1,0 +1,7 @@
+1. Luckycharm- Improve probablity of receiving good items that you actually needed in next shipment
+2. JAckpot- Make you immnue to next 3 bullets (still count if bullet is shooted by you or dealer or they are blank)
+3. Silencer. Function: Attaches to the barrel for one shot. If you shoot the opponent and it turns out to be a Blank, you do not lose your turn.
+4. Crusher- destory 1 random item from others inventory
+5. Clone- Copy all items effect use by the dealer on its previous turn
+6. Freeze/Flashbang — Prevents the opponent from using an item on their next turn.
+7. totem- Survive at 1 hp only if damage is of 1hp but items like choke and saw which can trigger 2hp damage will not help and you will die

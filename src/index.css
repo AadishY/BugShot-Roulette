@@ -121,3 +121,27 @@
 .border-glow-red {
     animation: border-glow-red 2s ease-in-out infinite;
 }
+
+/* Disable heavy GPU-taxing keyframe filters on mobile / tablet screens */
+@media (max-width: 1024px) {
+    .scan-line {
+        animation: none !important;
+        background: transparent !important;
+        display: none !important;
+    }
+    .vhs-flicker {
+        animation: none !important;
+    }
+    .animate-glitch {
+        animation: none !important;
+    }
+    .animate-intense-glitch {
+        animation: none !important;
+    }
+    .crt-overlay {
+        animation: none !important;
+    }
+    .blood-overlay.blood-active {
+        animation: none !important;
+    }
+}

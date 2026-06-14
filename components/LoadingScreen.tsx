@@ -20,6 +20,29 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = ({
     const [progress, setProgress] = useState(0);
     const [text, setText] = useState(initialText);
     const [terminalLines, setTerminalLines] = useState<string[]>([]);
+    const [warningText, setWarningText] = useState("UNAUTHORIZED ACCESS IS PUNISHABLE BY DEATH");
+
+    useEffect(() => {
+        const warnings = [
+            "UNAUTHORIZED ACCESS IS PUNISHABLE BY DEATH",
+            "THE SHELL DOES NOT DISCRIMINATE",
+            "TRUST IS A DECREASING RESOURCE",
+            "THE DEALER IS ALWAYS WATCHING",
+            "DOUBLE OR NOTHING IS YOUR ONLY WAY OUT",
+            "LIVE OR BLANK: DECIDE",
+            "MIND THE SAW. IT BITES.",
+            "NO QUANTUM IMMORTALITY ALLOWED",
+            "LIABILITY WAIVER: SIGNED AND SIGNED AGAIN",
+            "YOUR BRAINWAVES ARE BEING MONITORED",
+            "DEVIATION FROM PROTOCOL RESULTS IN IMMEDIATE TERMINATION",
+            "SURRENDER IS NOT AN OPTION IN THIS BUNKER",
+            "THE CONTRACT IS BINDING. SOULS ARE NON-REFUNDABLE.",
+            "KEEP YOUR FINGERS CLEAR OF THE RECEIVER",
+            "THE ODDS ARE EQUAL, THE CONSEQUENCES ARE NOT"
+        ];
+        const randomWarning = warnings[Math.floor(Math.random() * warnings.length)];
+        setWarningText(randomWarning);
+    }, []);
 
     // Progress Timer Effect
     useEffect(() => {
@@ -100,7 +123,7 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = ({
                 </div>
 
                 <div className="mt-2 text-[10px] text-green-800 animate-pulse font-bold tracking-[0.2em] uppercase">
-                    Unauthorized access is punishable by death
+                    {warningText}
                 </div>
             </div>
 

@@ -563,7 +563,7 @@ export default function App() {
             // @ts-ignore
             text={appState === 'LOADING_GAME' ? "INITIALIZING TABLE..." : appState === 'LOADING_MP' ? "CONNECTING TO SERVER..." : "LOADING..."}
             // @ts-ignore
-            duration={appState === 'LOADING_GAME' ? 2000 : appState === 'LOADING_MP' ? 1500 : 3500}
+            duration={appState === 'LOADING_GAME' ? 800 : appState === 'LOADING_MP' ? 800 : 1200}
             onBack={handleBackToMenu}
             // @ts-ignore
             error={appState === 'LOADING_MP' ? mp.error : null}

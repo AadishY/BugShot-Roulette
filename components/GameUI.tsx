@@ -172,9 +172,11 @@ export const GameUI: React.FC<GameUIProps> = ({
 
     return (
         <>
-            {/* Falling Shells Background - Always mounted for persistence, paused when not needed */}
+            {/* Falling Shells Background - Rendered only when active to free WebGL context and improve memory/performance */}
             <div className={`absolute inset-0 bg-black transition-opacity ${gameState.phase === 'BOOT' || gameState.phase === 'INTRO' ? 'opacity-100 duration-1000' : 'opacity-0 duration-0 pointer-events-none'}`}>
-                <ShellBackground active={gameState.phase === 'BOOT' || gameState.phase === 'INTRO'} />
+                {gameState.phase === 'INTRO' && (
+                    <ShellBackground active={true} />
+                )}
             </div>
 
             {gameState.phase === 'BOOT' && <BootScreen onContinue={onBootComplete} />}

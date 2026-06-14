@@ -45,6 +45,14 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ winner, onResetG
         const quotes = winner === 'PLAYER' ? WIN_QUOTES : LOSS_QUOTES;
         setQuote(quotes[Math.floor(Math.random() * quotes.length)]);
 
+        if (matchData) {
+            if (winner === 'PLAYER') {
+                matchData.result = 'WIN';
+            } else if (winner === 'DEALER') {
+                matchData.result = 'LOSS';
+            }
+        }
+
         if (matchData && !hasSavedRef.current) {
             // Check if current user is developer (devs can save stats even with debug)
             let isDeveloper = false;

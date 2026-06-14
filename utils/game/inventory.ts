@@ -102,7 +102,13 @@ export const getContractLoot = (): ItemType[] => {
     return [item1, item2];
 };
 
-export const generateLootBatch = (amount: number, isHardMode: boolean, forDealer: boolean, dealerHp: number): ItemType[] => {
+export const generateLootBatch = (
+    amount: number, 
+    isHardMode: boolean, 
+    forDealer: boolean, 
+    dealerHp: number,
+    existingItems: ItemType[] = []
+): ItemType[] => {
     const batch: ItemType[] = [];
     const counts: Record<string, number> = {};
 
@@ -110,7 +116,7 @@ export const generateLootBatch = (amount: number, isHardMode: boolean, forDealer
         let item: ItemType | null = null;
         let tries = 0;
 
-        // Soft duplicate limit: Max 2 of same item per batch
+        // Strict duplicate limit: Max 1 of same item per batch, Max 2 total (including existing inventory)
         do {
             let candidate: ItemType;
 
@@ -123,12 +129,20 @@ export const generateLootBatch = (amount: number, isHardMode: boolean, forDealer
             }
 
             const currentCount = counts[candidate] || 0;
+            const inventoryCount = existingItems.filter(x => x === candidate).length;
 
-            if (currentCount < 2) {
+            // Probabilistic penalty: if already in batch or existing inventory, 80% chance to reroll
+            const isDuplicate = currentCount > 0 || inventoryCount > 0;
+            if (isDuplicate && Math.random() < 0.80 && tries < 20) {
+                tries++;
+                continue;
+            }
+
+            if (currentCount < 1 && (currentCount + inventoryCount) < 2) {
                 item = candidate;
             }
             tries++;
-        } while (!item && tries < 15);
+        } while (!item && tries < 25);
 
         // Fallback if random keeps giving same item
         if (!item) {
@@ -152,7 +166,9 @@ export const distributeItems = async (
     setShowLootOverlay: StateSetter<boolean>,
     dealerHp: number = 2,
     pItemsOverride?: ItemType[],
-    dItemsOverride?: ItemType[]
+    dItemsOverride?: ItemType[],
+    playerItems: ItemType[] = [],
+    dealerItems: ItemType[] = []
 ) => {
     // If forceClear, ensure items are cleared FIRST before anything else
     if (forceClear) {
@@ -181,13 +197,13 @@ export const distributeItems = async (
         else amount = 2;
     }
 
-    const generateLoot = (forDealer: boolean) => {
-        return generateLootBatch(amount, gameState.isHardMode, forDealer, dealerHp);
+    const generateLoot = (forDealer: boolean, currentItems: ItemType[]) => {
+        return generateLootBatch(amount, gameState.isHardMode, forDealer, dealerHp, currentItems);
     };
 
     // Generate loot pools separately
-    const pNew = pItemsOverride || generateLoot(false);
-    const dNew = dItemsOverride || generateLoot(true);
+    const pNew = pItemsOverride || generateLoot(false, forceClear ? [] : playerItems);
+    const dNew = dItemsOverride || generateLoot(true, forceClear ? [] : dealerItems);
 
     // SAFETY: Clear any previous overlay state explicitely before showing new
     setShowLootOverlay(false);
@@ -203,7 +219,7 @@ export const distributeItems = async (
     await wait(50);
 
     setShowLootOverlay(true);
-    await wait(2500); // Allow time to see items (reduced for pacing)
+    await wait(4000); // Allow time to see items (increased for better pacing)
 
     // Apply items to inventories - player gets pNew, dealer gets dNew
     setPlayer(p => {

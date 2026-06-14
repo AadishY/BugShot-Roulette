@@ -149,7 +149,9 @@ class AudioManager {
 
         // Cleanup when done (garbage collection help)
         sound.onended = () => {
-            sound.remove();
+            sound.pause();
+            sound.src = '';
+            sound.onended = null;
         };
     }
 

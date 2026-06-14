@@ -100,15 +100,15 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
         if (isMobileUA || ios) setIsInstallable(true);
 
         const handleResize = () => {
-            const hScale = Math.min(1, (window.innerHeight - 20) / 650);
-            const wScale = Math.min(1, (window.innerWidth - 20) / 850);
+            const hScale = Math.min(1, (window.innerHeight - 10) / 600);
+            const wScale = Math.min(1, (window.innerWidth - 10) / 450);
             let newScale = Math.min(hScale, wScale);
             if (window.innerWidth < 500) {
-                newScale = Math.max(newScale, 0.55);
+                newScale = Math.max(0.45, Math.min(0.85, window.innerWidth / 450));
             } else {
                 newScale = Math.max(newScale, 0.4);
             }
-            if (newScale > 1.2) newScale = 1.2;
+            if (newScale > 1.1) newScale = 1.1;
             setScale(newScale);
         };
 
@@ -346,10 +346,41 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                 <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-in fade-in duration-300">
                     <form
                         onSubmit={handleLoginSubmit}
-                        className="relative w-full max-w-sm bg-stone-950/90 border-2 border-stone-800/80 p-6 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.8)] font-mono text-center"
+                        className="relative w-full max-w-lg bg-stone-950/95 border border-stone-850 p-10 md:p-12 rounded-none shadow-[0_25px_80px_rgba(0,0,0,0.95)] font-mono text-center hover:border-red-900/50 transition-all"
+                        style={{ clipPath: 'polygon(0 0, 100% 0, 100% calc(100% - 20px), calc(100% - 20px) 100%, 0 100%)' }}
                     >
-                        <div className="absolute top-0 left-0 w-full h-[2px] bg-red-600/30 animate-[scan-line-move_4s_linear_infinite]" />
-                        <div className="flex border-b border-stone-900 mb-6 bg-stone-900/10 rounded-t-lg overflow-hidden">
+                        {/* Top-Right Cross Close Button */}
+                        <button
+                            type="button"
+                            onClick={() => {
+                                audioManager.playSound('click');
+                                setShowLoginModal(false);
+                                setLoginError('');
+                                setLoginSuccess('');
+                                setLoginPassword('');
+                                setLoginUsername('');
+                            }}
+                            className="absolute top-4 right-4 text-stone-500 hover:text-red-500 hover:scale-110 active:scale-95 transition-all p-2 bg-stone-900 border border-stone-800 hover:border-red-600/50 rounded-xl z-20 cursor-pointer shadow-md hover:shadow-[0_0_15px_rgba(239,68,68,0.4)]"
+                            title="Close Terminal"
+                        >
+                            <X size={20} />
+                        </button>
+
+                        {/* Neon Cyberpunk Corner Borders */}
+                        <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-red-600" />
+                        <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-red-600" />
+                        <div className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-red-600" />
+                        <div className="absolute bottom-5 right-0 w-4 h-2 border-r-2 border-red-600" />
+                        
+                        <div className="text-[9px] text-stone-500 tracking-[0.3em] uppercase mb-6 text-left border-b border-stone-900 pb-3 flex justify-between items-center pr-8">
+                            <span>SESSION ACCESS // SECURE CHANNEL</span>
+                            <span className="flex h-2 w-2 relative">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-600 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-2 w-2 bg-red-600"></span>
+                            </span>
+                        </div>
+
+                        <div className="flex border border-stone-900 mb-8 bg-stone-900/5 rounded-none overflow-hidden p-0.5">
                             <button
                                 type="button"
                                 onClick={() => {
@@ -358,9 +389,10 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                     setLoginError('');
                                     setLoginSuccess('');
                                 }}
-                                className={`flex-1 py-3 text-[10px] font-black tracking-widest uppercase transition-all cursor-pointer ${loginTab === 'signin' ? 'text-red-500 bg-red-950/10 border-b-2 border-red-600' : 'text-stone-500 border-b-2 border-transparent hover:text-stone-300'}`}
+                                className={`flex-1 py-3 text-[11px] font-black tracking-widest uppercase transition-all cursor-pointer flex items-center justify-center gap-1.5 ${loginTab === 'signin' ? 'text-red-500 bg-red-950/20 border border-red-900/40' : 'text-stone-500 hover:text-stone-300'}`}
                             >
-                                Sign In
+                                {loginTab === 'signin' && <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />}
+                                SIGN IN
                             </button>
                             <button
                                 type="button"
@@ -370,57 +402,66 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                     setLoginError('');
                                     setLoginSuccess('');
                                 }}
-                                className={`flex-1 py-3 text-[10px] font-black tracking-widest uppercase transition-all cursor-pointer ${loginTab === 'register' ? 'text-red-500 bg-red-950/10 border-b-2 border-red-600' : 'text-stone-500 border-b-2 border-transparent hover:text-stone-300'}`}
+                                className={`flex-1 py-3 text-[11px] font-black tracking-widest uppercase transition-all cursor-pointer flex items-center justify-center gap-1.5 ${loginTab === 'register' ? 'text-red-500 bg-red-950/20 border border-red-900/40' : 'text-stone-500 hover:text-stone-300'}`}
                             >
-                                Register
+                                {loginTab === 'register' && <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />}
+                                REGISTER
                             </button>
                         </div>
 
-                        <div className="space-y-4">
-                            <div className="relative">
-                                <User className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-600" size={16} />
-                                <input
-                                    type="text"
-                                    value={loginUsername}
-                                    onChange={(e) => setLoginUsername(e.target.value)}
-                                    placeholder="Username"
-                                    maxLength={12}
-                                    className="w-full bg-stone-950/60 border border-stone-800 p-3.5 pl-11 text-xs font-bold text-white outline-none focus:border-red-600/50 transition-all tracking-widest uppercase rounded-xl placeholder-stone-700"
-                                    required
-                                />
+                        <div className="space-y-6">
+                            <div>
+                                <div className="text-left mb-2 text-[9px] text-red-500/60 font-bold tracking-widest uppercase flex items-center gap-1">
+                                    <User size={10} /> [SYS_VAL::ID_INPUT]
+                                </div>
+                                <div className="relative">
+                                    <input
+                                        type="text"
+                                        value={loginUsername}
+                                        onChange={(e) => setLoginUsername(e.target.value)}
+                                        placeholder="INPUT CODENAME"
+                                        maxLength={12}
+                                        className="w-full bg-stone-950 border border-stone-850 p-4.5 text-sm font-bold text-stone-200 outline-none focus:border-red-600 focus:shadow-[0_0_12px_rgba(239,68,68,0.25)] transition-all tracking-[0.25em] uppercase rounded-none placeholder-stone-850"
+                                        required
+                                    />
+                                </div>
                             </div>
-                            <div className="relative">
-                                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-600" size={16} />
-                                <input
-                                    type="password"
-                                    value={loginPassword}
-                                    onChange={(e) => setLoginPassword(e.target.value)}
-                                    placeholder="Password"
-                                    className="w-full bg-stone-950/60 border border-stone-800 p-3.5 pl-11 text-xs font-bold text-white outline-none focus:border-red-600/50 transition-all tracking-widest uppercase rounded-xl placeholder-stone-700"
-                                    required
-                                />
+                            <div>
+                                <div className="text-left mb-2 text-[9px] text-red-500/60 font-bold tracking-widest uppercase flex items-center gap-1">
+                                    <Lock size={10} /> [SYS_VAL::SECURE_PWD]
+                                </div>
+                                <div className="relative">
+                                    <input
+                                        type="password"
+                                        value={loginPassword}
+                                        onChange={(e) => setLoginPassword(e.target.value)}
+                                        placeholder="INPUT ENCRYPT KEY"
+                                        className="w-full bg-stone-950 border border-stone-850 p-4.5 text-sm font-bold text-stone-200 outline-none focus:border-red-600 focus:shadow-[0_0_12px_rgba(239,68,68,0.25)] transition-all tracking-[0.25em] uppercase rounded-none placeholder-stone-850"
+                                        required
+                                    />
+                                </div>
                             </div>
                         </div>
 
                         {loginError && (
-                            <div className="mt-4 text-[10px] text-red-500 font-bold tracking-wider uppercase animate-[shake_0.5s_ease-in-out]">
-                                [ERROR: {loginError}]
+                            <div className="mt-6 text-[10px] text-red-500 font-bold tracking-wider uppercase border border-red-900/40 bg-red-950/10 p-3 animate-[shake_0.5s_ease-in-out]">
+                                [CRITICAL FAULT: {loginError}]
                             </div>
                         )}
 
                         {loginSuccess && (
-                            <div className="mt-4 text-[10px] text-green-500 font-bold tracking-wider uppercase animate-pulse">
-                                [{loginSuccess}]
+                            <div className="mt-6 text-[10px] text-green-500 font-bold tracking-wider uppercase border border-green-900/40 bg-green-950/10 p-3 animate-pulse">
+                                [SYNC COMPLETE: {loginSuccess}]
                             </div>
                         )}
 
-                        <div className="mt-6 flex flex-col gap-3">
+                        <div className="mt-10 flex flex-col gap-4">
                             <button
                                 type="submit"
                                 disabled={isLoadingRedis}
-                                className="w-full py-4 bg-red-900/20 hover:bg-red-750 text-white font-black text-sm tracking-[0.2em] border border-red-700/50 hover:border-red-500 transition-all active:scale-[0.98] disabled:opacity-50 uppercase rounded-xl cursor-pointer"
+                                className="w-full py-4.5 bg-red-950/20 hover:bg-red-750 text-white font-black text-xs tracking-[0.25em] border border-red-900/50 hover:border-red-500 transition-all active:scale-[0.98] disabled:opacity-50 uppercase rounded-none cursor-pointer"
                             >
-                                {isLoadingRedis ? 'CONNECTING NETWORK...' : (loginTab === 'signin' ? 'AUTHORIZE SESSION' : 'ESTABLISH IDENTITY')}
+                                {isLoadingRedis ? 'ESTABLISHING NET_LINK...' : (loginTab === 'signin' ? 'AUTHORIZE CONSOLE' : 'REGISTER CODENAME')}
                             </button>
                             <button
                                 type="button"
@@ -434,7 +475,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                 }}
                                 className="w-full py-2 bg-transparent text-stone-600 hover:text-stone-400 font-bold text-[10px] tracking-[0.3em] uppercase transition-colors cursor-pointer"
                             >
-                                — ABORT CONSOLE —
+                                — TERMINATE CONNECTION —
                             </button>
                         </div>
                     </form>
@@ -459,18 +500,47 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                         
                         <div className="space-y-4 text-left max-h-72 overflow-y-auto pr-1 select-text scrollbar-thin text-xs text-stone-400">
                             <div className="space-y-2">
-                                <span className="text-stone-300 font-bold block border-b border-stone-900 pb-1">[June 14, 2026]</span>
+                                <span className="text-stone-300 font-bold block border-b border-stone-900 pb-1">[June 14, 2026 - Performance & Polish]</span>
+                                <ul className="list-none space-y-1.5 pl-1">
+                                    <li className="flex items-start gap-2">
+                                        <span className="text-green-500 font-bold">+</span>
+                                        <span>Implemented device-aware graphics profiles (Mobile, Tablet, PC)</span>
+                                    </li>
+                                    <li className="flex items-start gap-2">
+                                        <span className="text-green-500 font-bold">+</span>
+                                        <span>Disabled shadows and heavy lighting routines on Mobile and Tablet to secure smooth 60FPS</span>
+                                    </li>
+                                    <li className="flex items-start gap-2">
+                                        <span className="text-green-500 font-bold">+</span>
+                                        <span>Redesigned credentials modal with modern Cyberpunk terminal style</span>
+                                    </li>
+                                    <li className="flex items-start gap-2">
+                                        <span className="text-green-500 font-bold">+</span>
+                                        <span>Implemented strict duplicate item rerolling to make hoarding duplicate items more difficult</span>
+                                    </li>
+                                    <li className="flex items-start gap-2">
+                                        <span className="text-green-500 font-bold">+</span>
+                                        <span>Optimized menu falling shells and mobile boot sequences</span>
+                                    </li>
+                                    <li className="flex items-start gap-2">
+                                        <span className="text-green-500 font-bold">+</span>
+                                        <span>Added detailed probabilities and upcoming experimental gear details (Lucky Charm, Jackpot) to the Guide manual</span>
+                                    </li>
+                                </ul>
+                            </div>
+                            <div className="space-y-2">
+                                <span className="text-stone-500 font-bold block border-b border-stone-950 pb-1">[Previous Updates]</span>
                                 <ul className="list-none space-y-1.5 pl-1">
                                     <li className="flex items-start gap-2">
                                         <span className="text-green-500 font-bold">+</span>
                                         <span>Added developer debug overlay menu</span>
                                     </li>
                                     <li className="flex items-start gap-2">
-                                        <span className="text-red-500 font-bold">*</span>
+                                        <span className="text-stone-500 font-bold">*</span>
                                         <span>Fixed dealer-turn shell editor overrides</span>
                                     </li>
                                     <li className="flex items-start gap-2">
-                                        <span className="text-red-500 font-bold">*</span>
+                                        <span className="text-stone-500 font-bold">*</span>
                                         <span>Resolved transitional camera clipping &amp; grey screen bugs</span>
                                     </li>
                                 </ul>

@@ -1,62 +1,71 @@
 import * as THREE from 'three';
+import { getDeviceType } from '../gameUtils';
 
 export const setupLighting = (scene: THREE.Scene) => {
     // ═══════════════════════════════════════════════════════════════
     // BUCKSHOT ROULETTE STYLE LIGHTING - Dark Industrial Bunker
     // ═══════════════════════════════════════════════════════════════
 
-    const isMobile = typeof window !== 'undefined' && window.innerWidth < 900;
+    const device = getDeviceType();
+    const isMobile = device === 'mobile';
+    const isTablet = device === 'tablet';
 
     // Slight fog for depth - bit thicker for atmosphere
     scene.fog = new THREE.FogExp2(0x0a0a0a, 0.025);
 
     // Reduced ambient for high contrast
-    const ambient = new THREE.AmbientLight(0x221111, 0.15);
+    const ambient = new THREE.AmbientLight(0x221111, isMobile ? 0.25 : 0.15);
     scene.add(ambient);
 
     // ═══════════════════════════════════════════════════════════════
     // MAIN SPOTLIGHT - Essential (More Intense)
     // ═══════════════════════════════════════════════════════════════
-    const mainSpotlight = new THREE.SpotLight(0xffddaa, 5500);
+    const mainSpotlight = new THREE.SpotLight(0xffddaa, isMobile ? 3500 : 5500);
     mainSpotlight.position.set(0, 18, -2);
     mainSpotlight.target.position.set(0, -1, 0);
     mainSpotlight.angle = 0.38;
     mainSpotlight.penumbra = 0.8;
     mainSpotlight.decay = 2.5;
     mainSpotlight.distance = 60;
-    mainSpotlight.castShadow = true;
-
-    // Shadow Optimization
-    mainSpotlight.shadow.mapSize.width = isMobile ? 512 : 2048;
-    mainSpotlight.shadow.mapSize.height = isMobile ? 512 : 2048;
+    
+    // Shadows: Only on PC and optionally Tablet
+    mainSpotlight.castShadow = !isMobile;
+    mainSpotlight.shadow.mapSize.width = isTablet ? 512 : 1024;
+    mainSpotlight.shadow.mapSize.height = isTablet ? 512 : 1024;
     mainSpotlight.shadow.bias = -0.0004;
-    mainSpotlight.shadow.radius = isMobile ? 1 : 2.5;
+    mainSpotlight.shadow.radius = isTablet ? 1.5 : 2.5;
 
     scene.add(mainSpotlight);
     scene.add(mainSpotlight.target);
 
     // Gun Spot - Essential (Brighter)
-    const gunSpot = new THREE.SpotLight(0xffeedd, 1200);
+    const gunSpot = new THREE.SpotLight(0xffeedd, isMobile ? 800 : 1200);
     gunSpot.position.set(0, 15, 2);
     gunSpot.target.position.set(0, 0, 2);
     gunSpot.angle = 0.45;
     gunSpot.penumbra = 0.6;
-    gunSpot.castShadow = !isMobile;
+    gunSpot.castShadow = (device === 'pc');
+    if (device === 'pc') {
+        gunSpot.shadow.mapSize.width = 512;
+        gunSpot.shadow.mapSize.height = 512;
+    }
     scene.add(gunSpot);
     scene.add(gunSpot.target);
 
     // Bulb - High Intensity Point
-    const bulbLight = new THREE.PointLight(0xffaa44, 45.0, 50);
+    const bulbLight = new THREE.PointLight(0xffaa44, isMobile ? 30.0 : 45.0, 50);
     bulbLight.position.set(0, 8, 0);
-    bulbLight.castShadow = !isMobile;
-    if (!isMobile) {
+    bulbLight.castShadow = (device === 'pc');
+    if (device === 'pc') {
+        bulbLight.shadow.mapSize.width = 512;
+        bulbLight.shadow.mapSize.height = 512;
         bulbLight.shadow.bias = -0.0001;
         bulbLight.shadow.radius = 6;
     }
     scene.add(bulbLight);
 
     // Dealer Rim - Essential for look (Stronger)
-    const dealerRim = new THREE.SpotLight(0xff7700, 60);
+    const dealerRim = new THREE.SpotLight(0xff7700, isMobile ? 35 : 60);
     dealerRim.position.set(0, 14, -35);
     dealerRim.target.position.set(0, 4, -14);
     dealerRim.angle = 0.6;
@@ -72,13 +81,18 @@ export const setupLighting = (scene: THREE.Scene) => {
     roomRedLight.position.set(0, 10, 0);
     scene.add(roomRedLight);
 
-    const underLight = new THREE.PointLight(0xff1111, 6.0, 20);
+    const underLight = new THREE.PointLight(0xff1111, isMobile ? 3.0 : 6.0, 20);
     underLight.position.set(0, -2, -10);
-    scene.add(underLight);
+    // Add only on PC/Tablet
+    if (device !== 'mobile') {
+        scene.add(underLight);
+    }
 
     const tableGlow = new THREE.PointLight(0x445533, 4.0, 15);
     tableGlow.position.set(0, 0, 0);
-    scene.add(tableGlow);
+    if (device !== 'mobile') {
+        scene.add(tableGlow);
+    }
 
     // --- OPTIONAL LIGHTS ---
     // Rims (More colorful)
@@ -87,60 +101,78 @@ export const setupLighting = (scene: THREE.Scene) => {
     bgRim.target.position.set(0, 2, -10);
     bgRim.angle = 1.0;
     bgRim.penumbra = 0.8;
-    scene.add(bgRim);
-    scene.add(bgRim.target);
+    if (device === 'pc') {
+        scene.add(bgRim);
+        scene.add(bgRim.target);
+    }
 
     const coldRim = new THREE.SpotLight(0x0044ff, 40); // Boosted cold rim
     coldRim.position.set(-20, 10, -25);
     coldRim.target.position.set(0, 2, -10);
     coldRim.angle = 1.0;
     coldRim.penumbra = 0.8;
-    scene.add(coldRim);
-    scene.add(coldRim.target);
+    if (device !== 'mobile') {
+        scene.add(coldRim);
+        scene.add(coldRim.target);
+    }
 
     // Fills
     const playerFill = new THREE.DirectionalLight(0x1a2233, 0.25);
     playerFill.position.set(-5, 4, 15);
-    scene.add(playerFill);
+    if (device === 'pc') {
+        scene.add(playerFill);
+    }
 
     const sideFill = new THREE.PointLight(0x332222, 5, 40);
     sideFill.position.set(18, 2, 8);
-    scene.add(sideFill);
+    if (device === 'pc') {
+        scene.add(sideFill);
+    }
 
     const rimLight = new THREE.SpotLight(0x442222, 10);
     rimLight.position.set(0, 12, -30);
     rimLight.lookAt(0, 5, -14);
-    scene.add(rimLight);
+    if (device === 'pc') {
+        scene.add(rimLight);
+    }
 
     // Environment Background Lights
-    const hemiLight = new THREE.HemisphereLight(0x332222, 0x0a0a0a, 0.4); // Boosted ambient hemilight
-    scene.add(hemiLight);
+    const hemiLight = new THREE.HemisphereLight(0x332222, 0x0a0a0a, 0.4);
+    if (device !== 'mobile') {
+        scene.add(hemiLight);
+    }
 
-    const deepBgLight = new THREE.PointLight(0x334455, 90, 120); // Boosted deep background light
+    const deepBgLight = new THREE.PointLight(0x334455, 90, 120);
     deepBgLight.position.set(0, 12, -20);
-    scene.add(deepBgLight);
+    if (device !== 'mobile') {
+        scene.add(deepBgLight);
+    }
 
-    const leftPropLight = new THREE.PointLight(0xaa6644, 25.0, 30); // Boosted left props
+    const leftPropLight = new THREE.PointLight(0xaa6644, 25.0, 30);
     leftPropLight.position.set(-15, 2, 10);
-    scene.add(leftPropLight);
+    if (device === 'pc') {
+        scene.add(leftPropLight);
+    }
 
-    const rightPropLight = new THREE.PointLight(0x4466aa, 25.0, 30); // Boosted right props
+    const rightPropLight = new THREE.PointLight(0x4466aa, 25.0, 30);
     rightPropLight.position.set(15, 2, 10);
-    scene.add(rightPropLight);
+    if (device === 'pc') {
+        scene.add(rightPropLight);
+    }
 
-    // Warm dramatic wall wash spotlight behind the player (illuminating front wall at Z=18)
+    // Warm dramatic wall wash spotlight
     const playerWallWash = new THREE.SpotLight(0x775544, 40);
     playerWallWash.position.set(0, 18, -2);
     playerWallWash.target.position.set(0, 5, 18);
     playerWallWash.angle = 1.0;
     playerWallWash.penumbra = 0.5;
-    scene.add(playerWallWash);
-    scene.add(playerWallWash.target);
+    if (device === 'pc') {
+        scene.add(playerWallWash);
+        scene.add(playerWallWash.target);
+    }
 
     // --- HEAVY LIGHTS (Desktop Only) ---
-    let backFlood: THREE.DirectionalLight | undefined;
-
-    if (!isMobile) {
+    if (device === 'pc') {
         // Table Accents
         const tableAccent1 = new THREE.PointLight(0x44ff44, 1.5, 8);
         tableAccent1.position.set(-10, -0.5, 0);
@@ -167,7 +199,7 @@ export const setupLighting = (scene: THREE.Scene) => {
         cornerLight2.position.set(12, 10, -12);
         scene.add(cornerLight2);
 
-        backFlood = new THREE.DirectionalLight(0x554444, 0.5);
+        const backFlood = new THREE.DirectionalLight(0x554444, 0.5);
         backFlood.position.set(0, 15, 10);
         backFlood.target.position.set(0, 0, -25);
         scene.add(backFlood);
@@ -208,10 +240,10 @@ export const setupLighting = (scene: THREE.Scene) => {
         bulbLight,
         gunSpot,
         tableGlow,
-        rimLight, // Now defined for all
-        fillLight: playerFill, // Now defined for all
+        rimLight, 
+        fillLight: playerFill, 
         ambient,
-        bgRim, // Now defined for all
+        bgRim, 
         dealerRim,
         underLight,
         mainSpotlight
