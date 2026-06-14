@@ -40,8 +40,9 @@ export const BootScreen: React.FC<BootScreenProps> = ({ onContinue }) => {
             setLoadingProgress(p => {
                 if (p >= 100) {
                     clearInterval(interval);
-                    // Small delay before showing title screen
-                    setTimeout(() => setLoadingComplete(true), isMobileOrTablet ? 150 : 300);
+                    setTimeout(() => {
+                        if (onContinue) onContinue();
+                    }, isMobileOrTablet ? 150 : 300);
                     return 100;
                 }
                 return p + 10;
@@ -53,55 +54,6 @@ export const BootScreen: React.FC<BootScreenProps> = ({ onContinue }) => {
             clearInterval(interval);
         };
     }, [isMobileOrTablet]);
-
-    const handleContinue = async () => {
-        if (!loadingComplete) return;
-
-        // Try to enter fullscreen on first user interaction
-        try {
-            if (!document.fullscreenElement) {
-                await document.documentElement.requestFullscreen().catch(() => { });
-            }
-        } catch (e) { }
-
-        // Initialize audio on user click
-        await audioManager.initialize();
-        audioManager.playSound('click');
-        // Notify parent to transition to INTRO
-        if (onContinue) onContinue();
-    };
-
-    // After loading completes, show title screen
-    if (loadingComplete) {
-        return (
-            <div
-                className="fixed inset-0 z-[100] bg-black flex flex-col items-center justify-center font-mono cursor-pointer animate-in fade-in duration-1000 overflow-hidden"
-                onClick={handleContinue}
-            >
-                {/* Background ambient light */}
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(220,38,38,0.05)_0%,transparent_70%)] animate-pulse" />
-
-                <div className="text-center relative z-10 p-4">
-                    <h1 className="text-5xl sm:text-7xl md:text-9xl font-black text-stone-100 mb-8 tracking-tighter leading-none select-none drop-shadow-[0_0_20px_rgba(255,255,255,0.2)]">
-                        <span className="block animate-in slide-in-from-top duration-700">AADISH</span>
-                        <span className="block text-red-700 animate-[text-pop_0.5s_ease-out] relative">
-                            ROULETTE
-                            {device === 'pc' && (
-                                <span className="absolute -inset-1 text-red-400 opacity-20 blur-sm animate-glitch pointer-events-none">ROULETTE</span>
-                            )}
-                        </span>
-                    </h1>
-                    <div className="text-stone-500 text-xs sm:text-sm md:text-xl tracking-[0.5em] font-bold uppercase transition-all duration-300 group hover:text-stone-100">
-                        <div className="animate-pulse mb-2">[ CLICK TO BIND SOUL ]</div>
-                        <div className="text-[9px] sm:text-[10px] text-stone-750 group-hover:text-red-900 transition-colors">By entering, you waive all rights to physical continuity</div>
-                    </div>
-                </div>
-
-                {/* Scanline overlay */}
-                {device === 'pc' && <div className="scan-line !opacity-20" />}
-            </div>
-        );
-    }
 
     // Boot sequence screen
     return (

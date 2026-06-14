@@ -30,4 +30,5 @@ export const DEFAULT_SETTINGS: GameSettings = {
   debugMode: false
 };
 
-export const GAME_VERSION = '1.0.6';
+export const GAME_VERSION = '1.1.0';
+

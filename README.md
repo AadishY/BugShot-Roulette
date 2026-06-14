@@ -2,7 +2,7 @@
 
 # 🎯 AADISH ROULETTE
 
-<img src="image/favicon/android-chrome-512x512.png" alt="Aadish Roulette Logo" width="200" height="200" />
+<img src="image/favicon/android-chrome-512x512.png" alt="Aadish Roulette Logo" width="160" height="160" />
 
 ### A Deadly Game of Chance
 
@@ -21,68 +21,113 @@
 
 ## 🎬 About
 
-**Aadish Roulette** is a web-based reimagining of the deadly shotgun game, inspired by Mike Klubnika's *Buckshot Roulette*. Built with React and Three.js, it features stunning 3D visuals, atmospheric effects, and intense strategic gameplay.
-
-### Key Features
-
-| Feature | Description |
-|---------|-------------|
-| 🎮 **3D Environment** | Fully interactive table, gun, and dealer using Three.js |
-| 🌟 **Atmospheric Visuals** | Dynamic lighting, dust particles, CRT effects, volumetric fog |
-| 🤖 **Smarter AI** | Dealer tracks shells, uses aggressive combos, and takes calculated risks |
-| 🌐 **Multiplayer** | Play against real opponents online |
-| 📱 **Mobile Optimized** | 30 FPS cap, reduced effects, touch-friendly UI for Android/iOS |
-| 📲 **PWA Supported** | Installable on Mobile/Desktop for native-like experience |
-| 🎬 **Smooth Animations** | Sequential item animations with proper timing and feedback |
-
----
-
-## 🔧 Item System
-
-Use items strategically to gain an advantage:
-
-| Item | Effect |
-|------|--------|
-| 🔍 **Magnifying Glass** | Reveals the current shell in the chamber |
-| 🍺 **Beer** | Ejects the current shell without firing |
-| 🚬 **Cigarettes** | Restores 1 HP |
-| 🔗 **Handcuffs** | Skips opponent's next turn |
-| ✂️ **Hand Saw** | Doubles damage of next shot (2 damage) |
-| 📞 **Burner Phone** | Reveals a random future shell position (95% accuracy) |
-| 🔄 **Inverter** | Swaps current shell polarity (LIVE ↔ BLANK) |
-| 💉 **Adrenaline** | Steals an item from opponent and uses it immediately |
-| 📡 **Remote** | Reverses turn order (Multiplayer Only) |
-| ⚡ **Big Inverter** | Inverts the polarity of ALL remaining shells |
-| 🥋 **Choke** | Chokes the shotgun to fire 2 rounds at once |
-| 🩸 **Blood Contract** | Sacrifice 1 HP for 2 High-Tier Items (Player Exclusive) |
+**Aadish Roulette** is a web-based reimagining of the deadly shotgun game, inspired by Mike Klubnika's *Buckshot Roulette*. Built with React, TypeScript, and Three.js, it features 3D layouts, retro CRT filters, atmospheric volumetric lighting, and strategic item play.
 
 ---
 
 ## 🎮 How to Play
 
-1. **Enter Your Name** - Type your name at the start screen
-2. **Take Turns** - You and the dealer alternate turns
-3. **Grab the Gun** - Pick up the shotgun when it's your turn
-4. **Choose Your Target** - Shoot opponent (1 damage if LIVE) or yourself (if BLANK, get extra turn!)
-5. **Use Items** - Strategic item use before shooting can change everything
-6. **Survive** - Reduce opponent's HP to zero to win!
+1. **Enter Your Identity**: Input your codename and click "Bind Soul" on the startup terminal.
+2. **Mag Capacity**: A magazine of 2 to 8 random shells is loaded. You are shown how many are **LIVE** (red) and how many are **BLANK** (blue).
+3. **Choosing Targets**: Shoot the dealer (1 damage if Live, turn ends) or yourself (if Blank, you retain your turn!).
+4. **Use Items**: Strategically consume items before grabbing the gun to turn the odds in your favor.
+5. **Win or Die**: Knock the opponent's health to 0 to advance or win.
 
-### Controls
+---
 
-- **Mouse/Touch** - Aim and interact with UI
-- **Landscape Mode** - Required for mobile devices
-- **Fullscreen** - Recommended for best experience
+## 🔧 Item Guide & Descriptions
+
+| Icon | Item Name | Gameplay Description & Tactical Strategy |
+| :---: | :--- | :--- |
+| 🚬 | **Cigarettes** | Restores 1 HP. Always use when injured and looking to stay out of critical HP ranges. |
+| 🍺 | **Beer** | Ejects the current shell without firing it. Essential for clearing known live shells targetted at yourself, or checking blanks. |
+| 🔗 | **Handcuffs** | Skips the opponent's next turn. Double cuffs are blocked; you cannot bypass two consecutive turns. |
+| 🔍 | **Magnifying Glass** | inspects the current shell in the chamber, revealing to you whether it is LIVE or BLANK. |
+| ✂️ | **Hand Saw** | Saws off the shotgun barrel. Doubled damage on the next shot (2 damage if Live, 0 if Blank). |
+| 📞 | **Burner Phone** | Reveals the polarity of a random future shell position (e.g. "THE 3RD SHELL IS LIVE"). |
+| 🔄 | **Inverter** | Inverts the polarity of the current shell (changes Live into Blank, or Blank into Live). |
+| 💉 | **Adrenaline** | Steals an item from the opponent's inventory and uses it immediately. Cannot steal another Adrenaline. |
+| 📡 | **Remote** | Reverses the current turn order (active in Multiplayer mode). |
+| ⚡ | **Big Inverter** | Inverts the polarity of ALL remaining shells currently loaded in the magazine. |
+| 🥋 | **Choke** | Chokes the shotgun to fire a double-barrel volley, shooting the current and the next shell simultaneously. Normalizes split damage on split shells, or double damage if both are live. |
+| 🩸 | **Blood Contract** | Sacrifice 1 HP to gain 2 high-tier loot items from a high-tier distribution pool. (Player-only item). |
+
+---
+
+## ⚙️ Game Modes
+
+### Normal Mode
+- **Starting HP**: 4 HP for both player and dealer.
+- **Item Shipments**:
+  - Rounds 1-3: 2 items per shipment.
+  - Rounds 4-9: 3 items per shipment.
+  - Rounds 10+: 4 items per shipment.
+- **Cheating**: Dealer uses standard item probabilities and logical AI options.
+
+### Hard Mode (High-Stakes Protocols)
+- **Starting HP Progression**:
+  - Stage 1: 2 HP.
+  - Stage 2: 3 HP.
+  - Stage 3: 4 HP.
+- **Item Shipments**:
+  - Stage 1-2: 2 items per shipment.
+  - Stage 3: 1 to 4 random items per shipment.
+  - Stage 4+: 4 items per shipment.
+- **Duplicate Penalty**: If a drawn item is already present in the batch or in your inventory, there is an **80% chance to reroll** (up to 20 attempts) to reduce item hoarding.
+- **Dealer Cheating Mode**: In Hard Mode, the Dealer is granted item cheating privileges, drawing items tailored specifically to their combat state (Panic vs. Aggressive).
+
+---
+
+## 📊 Item Drop Probabilities
+
+### Player Item Pool
+Contracts are calculated first. If the contract test succeeds, it is drawn; otherwise, standard items are drawn from the remaining probability pool.
+
+| Item | Normal Mode (Total Probability) | Hard Mode (Total Probability) |
+| :--- | :---: | :---: |
+| **Blood Contract** | **10.0%** (10% first test) | **7.0%** (7% first test) |
+| **Beer** | **13.5%** | **16.74%** |
+| **Cigarettes** | **11.7%** | **4.65%** |
+| **Magnifying Glass** | **9.0%** | **9.30%** |
+| **Handcuffs** | **9.0%** | **9.30%** |
+| **Burner Phone** | **10.8%** | **14.88%** |
+| **Hand Saw** | **9.0%** | **9.30%** |
+| **Inverter** | **9.0%** | **8.37%** |
+| **Adrenaline** | **7.2%** | **13.02%** *(incl. 5% fallback)* |
+| **Choke** | **5.4%** | **3.72%** |
+| **Big Inverter** | **5.4%** | **3.72%** |
+
+*Note: Dealer cannot draw a Blood Contract.*
+
+---
+
+### Dealer Item Pool (Hard Mode Cheating)
+In Hard Mode, the dealer draws items tailored dynamically to their current HP level:
+
+#### 1. Survival Panic Mode (Dealer HP <= 2)
+Dealer focuses purely on healing, turn-skipping, and emergency damage:
+- 🚬 **Cigarettes (Heal)**: **40.0%**
+- 🍺 **Beer (Eject shell)**: **20.0%**
+- 💉 **Adrenaline (Steal item)**: **10.0%**
+- 🔗 **Handcuffs (Skip player)**: **10.0%**
+- ✂️ **Hand Saw (Damage)**: **10.0%**
+- 🥋 **Choke (Damage)**: **10.0%**
+
+#### 2. Aggressive Killer Mode (Dealer HP > 2)
+Dealer focuses on maximizing damage output and board control:
+- ✂️ **Hand Saw (Double damage)**: **25.0%**
+- 🥋 **Choke (Double barrel volley)**: **25.0%**
+- 🔍 **Magnifying Glass (Intel)**: **15.0%**
+- 🔗 **Handcuffs (Skip player)**: **10.0%**
+- 🔄 **Inverter (Polarity swap)**: **10.0%**
+- 💉 **Adrenaline (Steal item)**: **10.0%**
+- ⚡ **Big Inverter (Bulk swap)**: **5.0%**
 
 ---
 
 ## 🛠️ Installation & Development
 
 This project uses [Vite](https://vitejs.dev/) + [React](https://react.dev/) + [Three.js](https://threejs.org/).
-
-### Prerequisites
-
-- Node.js 18+ 
-- npm or yarn
 
 ### Quick Start
 
@@ -101,8 +146,6 @@ npm run dev
 npm run build
 ```
 
-The development server runs at `http://localhost:5173`
-
 ---
 
 ## 🚀 Tech Stack
@@ -120,57 +163,11 @@ The development server runs at `http://localhost:5173`
 
 ---
 
-## 📁 Project Structure
-
-```
-AadishRoulette/
-├── components/          # React components
-│   ├── ui/             # UI components (buttons, overlays, etc.)
-│   ├── ThreeScene.tsx  # 3D scene and rendering
-│   ├── GameUI.tsx      # Main game interface
-│   └── TutorialGuide.tsx # Tutorial carousel
-├── hooks/              # Custom React hooks
-│   ├── useGameLogic.ts # Single-player game logic
-│   ├── useDealerAI.ts  # AI opponent logic
-│   └── useSocket.ts    # Multiplayer connection
-├── utils/              # Utility functions
-│   ├── itemActions.ts  # Item effect handlers
-│   ├── sceneLogic.ts   # 3D animation logic
-│   └── threeHelpers.ts # 3D object creation
-├── image/              # Assets (favicon, preview images)
-├── App.tsx             # Main application
-├── index.html          # Entry HTML with SEO
-└── server.js           # Multiplayer server
-```
-
----
-
-## 🌐 Deployment
-
-### Vercel (Recommended)
-
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/AadishY/Aadish-Roulette)
-
-### Manual Deployment
-
-```bash
-npm run build
-# Deploy the 'dist' folder to your hosting provider
-```
-
----
-
 ## 📜 Credits
 
 - **Original Game Concept**: [Mike Klubnika](https://mikeklubnika.itch.io/) (Buckshot Roulette)
 - **Web Development**: [Aadish](https://github.com/AadishY)
-- **Technologies**: React, Three.js, Lucide Icons, TailwindCSS, Socket.io
-
----
-
-## 📄 License
-
-This project is for educational and entertainment purposes. The original Buckshot Roulette game concept belongs to Mike Klubnika.
+- **Technologies**: React, Three.js, TypeScript, Vite, TailwindCSS, Socket.io, Lucide Icons
 
 ---
 
@@ -178,8 +175,6 @@ This project is for educational and entertainment purposes. The original Bucksho
 
 **Made with ❤️ by [Aadish](https://github.com/AadishY)**
 
-*Version 1.0.6 • 2025*
-
-[![GitHub Stars](https://img.shields.io/github/stars/AadishY/Aadish-Roulette?style=social)](https://github.com/AadishY/Aadish-Roulette)
+*Version 1.1.0 • 2026*
 
 </div>

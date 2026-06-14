@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { Settings as SettingsIcon, HelpCircle, Trophy, ShieldAlert, Lock, User, Terminal, BookOpen, Crown, Shield, Skull, X, Crosshair, Swords, Activity, Award } from 'lucide-react';
 import { audioManager } from '../../utils/audioManager';
 import { loginUser, registerUser, getLeaderboard } from '../../utils/redisService';
+import { GAME_VERSION } from '../../constants';
 
 interface IntroScreenProps {
     playerName: string;
@@ -26,6 +27,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
     const nameInputRef = useRef<HTMLInputElement>(null);
     const [scale, setScale] = React.useState(1);
     const [showHardModeWarning, setShowHardModeWarning] = React.useState(false);
+    const [hasBoundSoul, setHasBoundSoul] = React.useState(false);
 
     // Dialog & UI state
     const [showChangelog, setShowChangelog] = React.useState(false);
@@ -79,6 +81,19 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
             setInputName(loggedInUser.username.toUpperCase());
         }
     }, []); // Only on mount
+
+    useEffect(() => {
+        if (hasBoundSoul) {
+            const lastSeen = localStorage.getItem('aadish_roulette_changelog_seen');
+            const currentVersion = GAME_VERSION;
+            if (lastSeen !== currentVersion) {
+                setTimeout(() => {
+                    setShowChangelog(true);
+                    localStorage.setItem('aadish_roulette_changelog_seen', currentVersion);
+                }, 800);
+            }
+        }
+    }, [hasBoundSoul]);
 
     useEffect(() => {
         // Detect Standalone Mode
@@ -240,6 +255,41 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
     const winRate = selectedCareerUser ? Math.round((selectedCareerUser.wins / Math.max(1, selectedCareerUser.wins + selectedCareerUser.losses)) * 100) : 0;
     const precisionRate = selectedCareerUser && selectedCareerUser.stats.shotsFired > 0 ? Math.round((selectedCareerUser.stats.shotsHit / selectedCareerUser.stats.shotsFired) * 100) : 0;
 
+    if (!hasBoundSoul) {
+        return (
+            <div 
+                className="absolute inset-0 z-50 flex flex-col items-center justify-center overflow-hidden pointer-events-auto bg-black/45 backdrop-blur-[2px] font-mono cursor-pointer animate-in fade-in duration-1000 select-none"
+                onClick={async () => {
+                    await audioManager.initialize();
+                    audioManager.playSound('click');
+                    setHasBoundSoul(true);
+                }}
+            >
+                {/* Background ambient light */}
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(220,38,38,0.05)_0%,transparent_70%)] animate-pulse pointer-events-none" />
+
+                <div className="text-center relative z-10 p-4">
+                    <h1 className="text-5xl sm:text-7xl md:text-9xl font-black text-stone-100 mb-8 tracking-tighter leading-none drop-shadow-[0_0_20px_rgba(255,255,255,0.2)]">
+                        <span className="block animate-in slide-in-from-top duration-700">AADISH</span>
+                        <span className="block text-red-700 animate-[text-pop_0.5s_ease-out] relative">
+                            ROULETTE
+                            {!isMobile && (
+                                <span className="absolute -inset-1 text-red-400 opacity-20 blur-sm animate-glitch pointer-events-none">ROULETTE</span>
+                            )}
+                        </span>
+                    </h1>
+                    <div className="text-stone-500 text-xs sm:text-sm md:text-xl tracking-[0.5em] font-bold uppercase transition-all duration-300 group hover:text-stone-100">
+                        <div className="animate-pulse mb-2">[ CLICK TO BIND SOUL ]</div>
+                        <div className="text-[9px] sm:text-[10px] text-stone-750 group-hover:text-red-900 transition-colors">By entering, you waive all rights to physical continuity</div>
+                    </div>
+                </div>
+
+                {/* Scanline overlay */}
+                {!isMobile && <div className="scan-line !opacity-20 pointer-events-none" />}
+            </div>
+        );
+    }
+
     return (
         <div className="absolute inset-0 z-50 flex items-center justify-center overflow-hidden pointer-events-auto bg-black/40 backdrop-blur-[2px]">
             
@@ -341,128 +391,84 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                 </div>
             )}
 
-            {/* Login / Register Modal */}
+            {/* Redesigned Cyberpunk Login / Register Modal */}
             {showLoginModal && (
-                <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-in fade-in duration-300">
-                    <form
-                        onSubmit={handleLoginSubmit}
-                        className="relative w-full max-w-lg bg-stone-950/95 border border-stone-850 p-10 md:p-12 rounded-none shadow-[0_25px_80px_rgba(0,0,0,0.95)] font-mono text-center hover:border-red-900/50 transition-all"
-                        style={{ clipPath: 'polygon(0 0, 100% 0, 100% calc(100% - 20px), calc(100% - 20px) 100%, 0 100%)' }}
+                <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-2xl p-4 animate-in fade-in duration-300 overflow-y-auto">
+                    {/* Glowing background circles for ambient depth */}
+                    <div className="absolute w-[500px] h-[500px] bg-red-950/15 rounded-full blur-[120px] pointer-events-none -translate-x-1/4 -translate-y-1/4" />
+                    <div className="absolute w-[400px] h-[400px] bg-red-900/10 rounded-full blur-[100px] pointer-events-none translate-x-1/4 translate-y-1/4" />
+                    
+                    <div
+                        className="relative w-full max-w-2xl bg-stone-950 border border-red-500/20 rounded-2xl shadow-[0_0_80px_rgba(0,0,0,0.9),0_0_40px_rgba(239,68,68,0.1)] font-mono text-stone-300 flex flex-col md:flex-row overflow-hidden hover:border-red-500/35 transition-all duration-700"
+                        style={{ transform: `scale(${scale})`, transformOrigin: 'center' }}
                     >
-                        {/* Top-Right Cross Close Button */}
-                        <button
-                            type="button"
-                            onClick={() => {
-                                audioManager.playSound('click');
-                                setShowLoginModal(false);
-                                setLoginError('');
-                                setLoginSuccess('');
-                                setLoginPassword('');
-                                setLoginUsername('');
-                            }}
-                            className="absolute top-4 right-4 text-stone-500 hover:text-red-500 hover:scale-110 active:scale-95 transition-all p-2 bg-stone-900 border border-stone-800 hover:border-red-600/50 rounded-xl z-20 cursor-pointer shadow-md hover:shadow-[0_0_15px_rgba(239,68,68,0.4)]"
-                            title="Close Terminal"
-                        >
-                            <X size={20} />
-                        </button>
-
-                        {/* Neon Cyberpunk Corner Borders */}
-                        <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-red-600" />
-                        <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-red-600" />
-                        <div className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-red-600" />
-                        <div className="absolute bottom-5 right-0 w-4 h-2 border-r-2 border-red-600" />
+                        {/* CRT Scanline Overlay Effect */}
+                        {!isMobile && (
+                            <div className="absolute inset-0 pointer-events-none opacity-30 mix-blend-overlay bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] bg-[size:100%_4px,6px_100%]" />
+                        )}
                         
-                        <div className="text-[9px] text-stone-500 tracking-[0.3em] uppercase mb-6 text-left border-b border-stone-900 pb-3 flex justify-between items-center pr-8">
-                            <span>SESSION ACCESS // SECURE CHANNEL</span>
-                            <span className="flex h-2 w-2 relative">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-600 opacity-75"></span>
-                                <span className="relative inline-flex rounded-full h-2 w-2 bg-red-600"></span>
-                            </span>
-                        </div>
+                        {/* Top corner tech ticks */}
+                        <div className="absolute top-3 left-3 w-3 h-3 border-t-2 border-l-2 border-red-600/40 pointer-events-none" />
+                        <div className="absolute top-3 right-3 w-3 h-3 border-t-2 border-r-2 border-red-600/40 pointer-events-none" />
+                        <div className="absolute bottom-3 left-3 w-3 h-3 border-b-2 border-l-2 border-red-600/40 pointer-events-none" />
+                        <div className="absolute bottom-3 right-3 w-3 h-3 border-b-2 border-r-2 border-red-600/40 pointer-events-none" />
 
-                        <div className="flex border border-stone-900 mb-8 bg-stone-900/5 rounded-none overflow-hidden p-0.5">
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    audioManager.playSound('click');
-                                    setLoginTab('signin');
-                                    setLoginError('');
-                                    setLoginSuccess('');
-                                }}
-                                className={`flex-1 py-3 text-[11px] font-black tracking-widest uppercase transition-all cursor-pointer flex items-center justify-center gap-1.5 ${loginTab === 'signin' ? 'text-red-500 bg-red-950/20 border border-red-900/40' : 'text-stone-500 hover:text-stone-300'}`}
-                            >
-                                {loginTab === 'signin' && <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />}
-                                SIGN IN
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    audioManager.playSound('click');
-                                    setLoginTab('register');
-                                    setLoginError('');
-                                    setLoginSuccess('');
-                                }}
-                                className={`flex-1 py-3 text-[11px] font-black tracking-widest uppercase transition-all cursor-pointer flex items-center justify-center gap-1.5 ${loginTab === 'register' ? 'text-red-500 bg-red-950/20 border border-red-900/40' : 'text-stone-500 hover:text-stone-300'}`}
-                            >
-                                {loginTab === 'register' && <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />}
-                                REGISTER
-                            </button>
-                        </div>
-
-                        <div className="space-y-6">
+                        {/* LEFT SIDEBAR: System Diagnostics (Hidden on tiny screens, beautiful sidebar on desktop) */}
+                        <div className="w-full md:w-5/12 bg-stone-950 border-b md:border-b-0 md:border-r border-stone-900 p-6 md:p-8 flex flex-col justify-between select-none relative overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(220,38,38,0.05)_0%,transparent_80%)]">
+                            {/* Inner tech lines */}
+                            <div className="absolute right-0 top-0 bottom-0 w-[1px] bg-gradient-to-b from-stone-900 via-red-950/20 to-stone-900" />
+                            
                             <div>
-                                <div className="text-left mb-2 text-[9px] text-red-500/60 font-bold tracking-widest uppercase flex items-center gap-1">
-                                    <User size={10} /> [SYS_VAL::ID_INPUT]
+                                {/* Cyberpunk HUD header */}
+                                <div className="flex items-center gap-2 text-red-500 mb-6">
+                                    <Activity size={18} className="animate-pulse" />
+                                    <span className="text-[10px] font-black tracking-[0.3em] uppercase">LINK_DIAGNOSTICS</span>
                                 </div>
-                                <div className="relative">
-                                    <input
-                                        type="text"
-                                        value={loginUsername}
-                                        onChange={(e) => setLoginUsername(e.target.value)}
-                                        placeholder="INPUT CODENAME"
-                                        maxLength={12}
-                                        className="w-full bg-stone-950 border border-stone-850 p-4.5 text-sm font-bold text-stone-200 outline-none focus:border-red-600 focus:shadow-[0_0_12px_rgba(239,68,68,0.25)] transition-all tracking-[0.25em] uppercase rounded-none placeholder-stone-850"
-                                        required
-                                    />
+
+                                {/* Status indicators */}
+                                <div className="space-y-4 font-mono text-[10px] text-stone-500">
+                                    <div className="bg-stone-900/30 border border-stone-900/60 p-3 rounded-lg space-y-2">
+                                        <div className="flex justify-between items-center">
+                                            <span>SYS_STATUS:</span>
+                                            <span className="text-green-500 font-bold flex items-center gap-1.5">
+                                                <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-ping" />
+                                                SECURE
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between items-center">
+                                            <span>GATEWAY:</span>
+                                            <span className="text-stone-300 font-bold">REDIS_SHADOW</span>
+                                        </div>
+                                        <div className="flex justify-between items-center">
+                                            <span>CIPHER:</span>
+                                            <span className="text-red-500 font-bold">AES_256_GCM</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Mock server logs block */}
+                                    <div className="space-y-1 text-[8px] leading-relaxed opacity-60">
+                                        <div className="text-red-500/80">&gt; INITIALIZING SECURE HANDSHAKE...</div>
+                                        <div>&gt; AUTH_METHOD: SHADOW_HASH_v2</div>
+                                        <div>&gt; LOCAL_ADDR: 127.0.0.1:25600</div>
+                                        <div>&gt; HEARTBEAT: OK (45ms)</div>
+                                        <div>&gt; DECRYPT_PROTO: ACTIVE</div>
+                                    </div>
                                 </div>
                             </div>
-                            <div>
-                                <div className="text-left mb-2 text-[9px] text-red-500/60 font-bold tracking-widest uppercase flex items-center gap-1">
-                                    <Lock size={10} /> [SYS_VAL::SECURE_PWD]
-                                </div>
-                                <div className="relative">
-                                    <input
-                                        type="password"
-                                        value={loginPassword}
-                                        onChange={(e) => setLoginPassword(e.target.value)}
-                                        placeholder="INPUT ENCRYPT KEY"
-                                        className="w-full bg-stone-950 border border-stone-850 p-4.5 text-sm font-bold text-stone-200 outline-none focus:border-red-600 focus:shadow-[0_0_12px_rgba(239,68,68,0.25)] transition-all tracking-[0.25em] uppercase rounded-none placeholder-stone-850"
-                                        required
-                                    />
-                                </div>
+
+                            {/* Footer guidelines */}
+                            <div className="mt-8 pt-4 border-t border-stone-900 text-[8px] text-stone-600 leading-normal">
+                                <span className="text-red-900 font-bold block mb-1">CLASSIFIED CONTRACT NOTICE:</span>
+                                Unauthorized attempts to decrypt memory states are tracked. All input data binds with soul state.
                             </div>
                         </div>
 
-                        {loginError && (
-                            <div className="mt-6 text-[10px] text-red-500 font-bold tracking-wider uppercase border border-red-900/40 bg-red-950/10 p-3 animate-[shake_0.5s_ease-in-out]">
-                                [CRITICAL FAULT: {loginError}]
-                            </div>
-                        )}
-
-                        {loginSuccess && (
-                            <div className="mt-6 text-[10px] text-green-500 font-bold tracking-wider uppercase border border-green-900/40 bg-green-950/10 p-3 animate-pulse">
-                                [SYNC COMPLETE: {loginSuccess}]
-                            </div>
-                        )}
-
-                        <div className="mt-10 flex flex-col gap-4">
-                            <button
-                                type="submit"
-                                disabled={isLoadingRedis}
-                                className="w-full py-4.5 bg-red-950/20 hover:bg-red-750 text-white font-black text-xs tracking-[0.25em] border border-red-900/50 hover:border-red-500 transition-all active:scale-[0.98] disabled:opacity-50 uppercase rounded-none cursor-pointer"
-                            >
-                                {isLoadingRedis ? 'ESTABLISHING NET_LINK...' : (loginTab === 'signin' ? 'AUTHORIZE CONSOLE' : 'REGISTER CODENAME')}
-                            </button>
+                        {/* RIGHT PANE: The Auth Form */}
+                        <form
+                            onSubmit={handleLoginSubmit}
+                            className="flex-1 p-6 md:p-8 flex flex-col justify-center relative bg-[radial-gradient(circle_at_bottom_right,rgba(239,68,68,0.03)_0%,transparent_70%)]"
+                        >
+                            {/* Close button in top-right */}
                             <button
                                 type="button"
                                 onClick={() => {
@@ -473,12 +479,149 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                     setLoginPassword('');
                                     setLoginUsername('');
                                 }}
-                                className="w-full py-2 bg-transparent text-stone-600 hover:text-stone-400 font-bold text-[10px] tracking-[0.3em] uppercase transition-colors cursor-pointer"
+                                className="absolute top-4 right-4 text-stone-500 hover:text-red-500 transition-all p-1.5 border border-transparent hover:border-red-900/40 hover:bg-red-950/20 rounded-md z-20 cursor-pointer text-xs flex items-center justify-center gap-1 font-bold"
+                                title="Shutdown Terminal"
                             >
-                                — TERMINATE CONNECTION —
+                                <span className="text-[9px] tracking-wider uppercase opacity-0 hover:opacity-100 transition-opacity">CLOSE</span>
+                                <X size={16} />
                             </button>
-                        </div>
-                    </form>
+
+                            {/* Header details */}
+                            <div className="mb-6 mt-2">
+                                <div className="text-[9px] text-stone-500 tracking-[0.45em] uppercase mb-1 flex items-center gap-1.5">
+                                    <Terminal size={12} className="text-red-600 animate-pulse" />
+                                    <span>CON_SECURITY_PORTAL</span>
+                                </div>
+                                <h3 className="text-lg font-black text-stone-100 tracking-wider uppercase">AGENT AUTHENTICATION</h3>
+                            </div>
+
+                            {/* Tabs Switcher: Styled like command flags */}
+                            <div className="grid grid-cols-2 gap-2 mb-6 bg-stone-950 border border-stone-900 p-1 rounded-xl">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        audioManager.playSound('click');
+                                        setLoginTab('signin');
+                                        setLoginError('');
+                                        setLoginSuccess('');
+                                    }}
+                                    className={`py-2 text-[9px] font-black tracking-widest uppercase transition-all duration-300 cursor-pointer rounded-lg border ${loginTab === 'signin' ? 'text-green-400 bg-green-950/10 border-green-800/40 shadow-[0_0_10px_rgba(34,197,94,0.05)]' : 'text-stone-500 border-transparent hover:text-stone-300 hover:bg-stone-900/40'}`}
+                                >
+                                    [ SIGN_IN ]
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        audioManager.playSound('click');
+                                        setLoginTab('register');
+                                        setLoginError('');
+                                        setLoginSuccess('');
+                                    }}
+                                    className={`py-2 text-[9px] font-black tracking-widest uppercase transition-all duration-300 cursor-pointer rounded-lg border ${loginTab === 'register' ? 'text-red-400 bg-red-950/10 border-red-800/40 shadow-[0_0_10px_rgba(220,38,38,0.05)]' : 'text-stone-500 border-transparent hover:text-stone-300 hover:bg-stone-900/40'}`}
+                                >
+                                    [ REGISTER ]
+                                </button>
+                            </div>
+
+                            {/* Form Input Fields */}
+                            <div className="space-y-5">
+                                {/* Username Input */}
+                                <div>
+                                    <div className="flex justify-between items-center mb-1.5 px-1">
+                                        <span className="text-[8px] text-stone-500 font-bold tracking-widest uppercase flex items-center gap-1">
+                                            <User size={10} className="text-red-600" />
+                                            CODENAME_INPUT
+                                        </span>
+                                        <span className="text-[7px] text-stone-600 font-mono tracking-widest uppercase">REQ: 1-12 CHARS</span>
+                                    </div>
+                                    <div className="relative flex items-center group/input">
+                                        <span className="absolute left-3.5 text-stone-600 group-focus-within/input:text-red-500 transition-colors font-bold text-xs pointer-events-none">[</span>
+                                        <input
+                                            type="text"
+                                            value={loginUsername}
+                                            onChange={(e) => setLoginUsername(e.target.value)}
+                                            placeholder="ENTER AGENT IDENTITY"
+                                            maxLength={12}
+                                            className="w-full bg-stone-950 border border-stone-850 focus:border-red-600/45 px-7 py-3 text-xs font-mono font-bold text-stone-200 outline-none transition-all tracking-[0.15em] uppercase rounded-lg placeholder-stone-800 focus:shadow-[0_0_20px_rgba(220,38,38,0.03)]"
+                                            required
+                                        />
+                                        <span className="absolute right-3.5 text-stone-600 group-focus-within/input:text-red-500 transition-colors font-bold text-xs pointer-events-none">]</span>
+                                    </div>
+                                </div>
+
+                                {/* Password Input */}
+                                <div>
+                                    <div className="flex justify-between items-center mb-1.5 px-1">
+                                        <span className="text-[8px] text-stone-500 font-bold tracking-widest uppercase flex items-center gap-1">
+                                            <Lock size={10} className="text-red-600" />
+                                            ENCRYPTED_KEY_PASS
+                                        </span>
+                                        <span className="text-[7px] text-stone-600 font-mono tracking-widest uppercase">SECURE VAULT</span>
+                                    </div>
+                                    <div className="relative flex items-center group/input">
+                                        <span className="absolute left-3.5 text-stone-600 group-focus-within/input:text-red-500 transition-colors font-bold text-xs pointer-events-none">[</span>
+                                        <input
+                                            type="password"
+                                            value={loginPassword}
+                                            onChange={(e) => setLoginPassword(e.target.value)}
+                                            placeholder="••••••••••••••"
+                                            className="w-full bg-stone-950 border border-stone-850 focus:border-red-600/45 px-7 py-3 text-xs font-mono font-bold text-stone-200 outline-none transition-all tracking-[0.15em] uppercase rounded-lg placeholder-stone-800 focus:shadow-[0_0_20px_rgba(220,38,38,0.03)]"
+                                            required
+                                        />
+                                        <span className="absolute right-3.5 text-stone-600 group-focus-within/input:text-red-500 transition-colors font-bold text-xs pointer-events-none">]</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Error Readout */}
+                            {loginError && (
+                                <div className="mt-5 text-[8.5px] text-red-500 font-bold tracking-wider uppercase border border-red-900/40 bg-red-950/20 p-3 rounded-lg animate-[shake_0.5s_ease-in-out] flex items-center gap-2">
+                                    <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
+                                    <span>[CRITICAL FAULT: {loginError}]</span>
+                                </div>
+                            )}
+
+                            {/* Success Readout */}
+                            {loginSuccess && (
+                                <div className="mt-5 text-[8.5px] text-green-500 font-bold tracking-wider uppercase border border-green-900/40 bg-green-950/20 p-3 rounded-lg animate-pulse flex items-center gap-2">
+                                    <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-ping" />
+                                    <span>[SYNC COMPLETE: {loginSuccess}]</span>
+                                </div>
+                            )}
+
+                            {/* Action Buttons */}
+                            <div className="mt-6 space-y-3">
+                                <button
+                                    type="submit"
+                                    disabled={isLoadingRedis}
+                                    className="w-full py-3.5 bg-gradient-to-r from-red-950/65 to-red-900/50 hover:from-red-900 hover:to-red-750 text-red-400 hover:text-white font-black text-[10px] tracking-[0.25em] border border-red-900/60 hover:border-red-500 transition-all rounded-xl cursor-pointer shadow-md active:scale-[0.98] disabled:opacity-50 uppercase flex items-center justify-center gap-2 hover:shadow-[0_0_30px_rgba(220,38,38,0.25)]"
+                                >
+                                    {isLoadingRedis && <div className="w-3 h-3 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />}
+                                    <span>
+                                        {isLoadingRedis 
+                                            ? 'ESTABLISHING SECURE NET_LINK...' 
+                                            : (loginTab === 'signin' ? 'EXECUTE AUTHENTICATION' : 'ENROLL CODENAME PROTOCOL')
+                                        }
+                                    </span>
+                                </button>
+                                
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        audioManager.playSound('click');
+                                        setShowLoginModal(false);
+                                        setLoginError('');
+                                        setLoginSuccess('');
+                                        setLoginPassword('');
+                                        setLoginUsername('');
+                                    }}
+                                    className="w-full py-1.5 bg-transparent text-stone-600 hover:text-stone-400 font-bold text-[8px] tracking-[0.3em] uppercase transition-colors cursor-pointer text-center"
+                                >
+                                    — SHUTDOWN NET_LINK —
+                                </button>
+                            </div>
+                        </form>
+                    </div>
                 </div>
             )}
 
@@ -500,7 +643,32 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                         
                         <div className="space-y-4 text-left max-h-72 overflow-y-auto pr-1 select-text scrollbar-thin text-xs text-stone-400">
                             <div className="space-y-2">
-                                <span className="text-stone-300 font-bold block border-b border-stone-900 pb-1">[June 14, 2026 - Performance & Polish]</span>
+                                <span className="text-stone-300 font-bold block border-b border-stone-900 pb-1">[June 14, 2026 - Polish & Redesign (v1.1.0)]</span>
+                                <ul className="list-none space-y-1.5 pl-1">
+                                    <li className="flex items-start gap-2">
+                                        <span className="text-green-500 font-bold">+</span>
+                                        <span>Redesigned credentials modal with high-fidelity cyberpunk glassmorphism and glowing indicators</span>
+                                    </li>
+                                    <li className="flex items-start gap-2">
+                                        <span className="text-green-500 font-bold">+</span>
+                                        <span>Integrated click-to-bind title screen into IntroScreen for early falling shells animation</span>
+                                    </li>
+                                    <li className="flex items-start gap-2">
+                                        <span className="text-green-500 font-bold">+</span>
+                                        <span>Added auto-changelog popup check on first load after new version releases</span>
+                                    </li>
+                                    <li className="flex items-start gap-2">
+                                        <span className="text-green-500 font-bold">+</span>
+                                        <span>Fixed debug HP adjustments to instantly trigger appropriate Game Over win/loss result</span>
+                                    </li>
+                                    <li className="flex items-start gap-2">
+                                        <span className="text-green-500 font-bold">+</span>
+                                        <span>Aligned permanent match records to match debug kemenangan/kematian</span>
+                                    </li>
+                                </ul>
+                            </div>
+                            <div className="space-y-2">
+                                <span className="text-stone-550 font-bold block border-b border-stone-900 pb-1">[Previous Updates]</span>
                                 <ul className="list-none space-y-1.5 pl-1">
                                     <li className="flex items-start gap-2">
                                         <span className="text-green-500 font-bold">+</span>
@@ -512,36 +680,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                     </li>
                                     <li className="flex items-start gap-2">
                                         <span className="text-green-500 font-bold">+</span>
-                                        <span>Redesigned credentials modal with modern Cyberpunk terminal style</span>
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <span className="text-green-500 font-bold">+</span>
-                                        <span>Implemented strict duplicate item rerolling to make hoarding duplicate items more difficult</span>
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <span className="text-green-500 font-bold">+</span>
-                                        <span>Optimized menu falling shells and mobile boot sequences</span>
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <span className="text-green-500 font-bold">+</span>
-                                        <span>Added detailed probabilities and upcoming experimental gear details (Lucky Charm, Jackpot) to the Guide manual</span>
-                                    </li>
-                                </ul>
-                            </div>
-                            <div className="space-y-2">
-                                <span className="text-stone-500 font-bold block border-b border-stone-950 pb-1">[Previous Updates]</span>
-                                <ul className="list-none space-y-1.5 pl-1">
-                                    <li className="flex items-start gap-2">
-                                        <span className="text-green-500 font-bold">+</span>
-                                        <span>Added developer debug overlay menu</span>
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <span className="text-stone-500 font-bold">*</span>
-                                        <span>Fixed dealer-turn shell editor overrides</span>
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <span className="text-stone-500 font-bold">*</span>
-                                        <span>Resolved transitional camera clipping &amp; grey screen bugs</span>
+                                        <span>Implemented duplicate item drop reroll penalty (80% chance to reroll)</span>
                                     </li>
                                 </ul>
                             </div>
@@ -783,7 +922,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                     </h1>
                     <div className="mt-4 flex items-center justify-center gap-4">
                         <div className="h-[1px] w-12 bg-stone-800" />
-                        <p className="text-stone-500 font-bold tracking-[0.6em] text-[10px] uppercase">Simulation 1.0.6</p>
+                        <p className="text-stone-500 font-bold tracking-[0.6em] text-[10px] uppercase">Version {GAME_VERSION}</p>
                         <div className="h-[1px] w-12 bg-stone-800" />
                     </div>
                 </div>
@@ -886,7 +1025,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                     {isStandalone ? (
                         <div className="text-stone-700 text-[9px] font-black tracking-[0.8em] uppercase opacity-40">System Link: Established</div>
                     ) : (
-                        <div className="text-stone-800 text-[9px] font-black tracking-[0.8em] uppercase">Web Instance • 1.0.6</div>
+                        <div className="text-stone-800 text-[9px] font-black tracking-[0.8em] uppercase">Web Instance • {GAME_VERSION}</div>
                     )}
                 </div>
             </div>
