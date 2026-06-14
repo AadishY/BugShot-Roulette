@@ -9,6 +9,7 @@ import { GameSettings } from './types';
 import { DEFAULT_SETTINGS } from './constants';
 
 import { LoadingScreen } from './components/LoadingScreen';
+import { DebugOverlay } from './components/ui/DebugOverlay';
 import { TutorialGuide } from './components/TutorialGuide';
 import { Scoreboard } from './components/ui/Scoreboard';
 import { audioManager } from './utils/audioManager';
@@ -82,7 +83,10 @@ export default function App() {
     const saved = localStorage.getItem('aadish_roulette_settings');
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        // Always reset debug mode on fresh session
+        parsed.debugMode = false;
+        return parsed;
       } catch (e) { }
     }
     return DEFAULT_SETTINGS;
@@ -559,7 +563,7 @@ export default function App() {
             // @ts-ignore
             text={appState === 'LOADING_GAME' ? "INITIALIZING TABLE..." : appState === 'LOADING_MP' ? "CONNECTING TO SERVER..." : "LOADING..."}
             // @ts-ignore
-            duration={appState === 'LOADING_GAME' ? 1200 : 800}
+            duration={appState === 'LOADING_GAME' ? 2000 : appState === 'LOADING_MP' ? 1500 : 3500}
             onBack={handleBackToMenu}
             // @ts-ignore
             error={appState === 'LOADING_MP' ? mp.error : null}
@@ -583,12 +587,34 @@ export default function App() {
           onUpdateSettings={setSettings}
           onClose={() => setIsSettingsOpen(false)}
           onResetDefaults={handleResetSettings}
+          onExitToMenu={() => {
+            setIsSettingsOpen(false);
+            if (appState === 'GAME' && spGame.gameState.phase !== 'INTRO' && spGame.gameState.phase !== 'BOOT') {
+              // @ts-ignore
+              setAppState('LOADING_GAME');
+              setTimeout(() => {
+                handleMainMenu();
+              }, 100);
+            }
+          }}
+          showExitToMenu={appState === 'GAME' && spGame.gameState.phase !== 'INTRO' && spGame.gameState.phase !== 'BOOT'}
         />
       )}
 
       {isGuideOpen && (
         <TutorialGuide
           onClose={() => setIsGuideOpen(false)}
+        />
+      )}
+
+      {settings.debugMode && appState === 'GAME' && spGame.gameState.phase !== 'BOOT' && spGame.gameState.phase !== 'INTRO' && (
+        <DebugOverlay
+          gameState={spGame.gameState}
+          player={spGame.player}
+          dealer={spGame.dealer}
+          setPlayer={spGame.setPlayer}
+          setDealer={spGame.setDealer}
+          setGameState={spGame.setGameState}
         />
       )}
     </div>

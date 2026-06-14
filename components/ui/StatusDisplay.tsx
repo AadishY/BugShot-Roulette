@@ -83,7 +83,7 @@ const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, 
             <div className="flex flex-col items-end min-w-[80px] md:w-1/3 animate-in slide-in-from-right duration-700">
                 <div className="flex flex-col items-end">
                     <span className="text-[10px] md:text-sm font-black tracking-[0.2em] md:tracking-[0.4em] text-stone-500 mb-1 uppercase">
-                        {gameState.isMultiplayer ? (gameState.opponentName || 'OPPONENT') : 'DEALER_CORE'}
+                        {gameState.isMultiplayer ? (gameState.opponentName || 'OPPONENT') : 'DEALER'}
                     </span>
                     <div className="flex gap-1 md:gap-2">
                         {[...Array(dealer.maxHp)].map((_, i) => (

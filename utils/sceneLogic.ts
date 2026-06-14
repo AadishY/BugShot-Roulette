@@ -16,12 +16,12 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
     const brightnessMult = settings.brightness || 1.0;
     const targetFov = settings.fov || 85;
     if (camera.fov !== targetFov) {
-        camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, 0.1);
+        camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, 1 - Math.exp(-6.3 * dt));
         camera.updateProjectionMatrix();
     }
 
     // Smoothly update toneMapping exposure based on brightness setting
-    renderer.toneMappingExposure = THREE.MathUtils.lerp(renderer.toneMappingExposure, 1.8 * brightnessMult, 0.1);
+    renderer.toneMappingExposure = THREE.MathUtils.lerp(renderer.toneMappingExposure, 1.8 * brightnessMult, 1 - Math.exp(-6.3 * dt));
 
     // Apply brightness to all static lights - Optimization: use cached array length
     const lenLights = baseLights.length;
@@ -48,7 +48,7 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
 
     // Smooth flickering + brightness scaling
     // We treat 'currentBase' as the intensity WITHOUT brightness for lerping logic
-    const flickerBase = THREE.MathUtils.lerp(bulbLight.userData.flickerBase || bulbBase, target, 0.2);
+    const flickerBase = THREE.MathUtils.lerp(bulbLight.userData.flickerBase || bulbBase, target, 1 - Math.exp(-13.0 * dt));
     bulbLight.userData.flickerBase = flickerBase; // Store state
     bulbLight.intensity = flickerBase * brightnessMult;
 
@@ -68,14 +68,23 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
         bulbLight.position.z = bulbGroup.position.z - (len * Math.sin(bulbGroup.rotation.x));
     }
 
-    // FOV Handling
+    // FOV & Heartbeat Handling
     let targetCameraFOV = settings.fov || 70;
+    
+    // Heartbeat pulse calculation for self-aim (150 BPM)
+    let heartbeatPulse = 0;
+    if (turnOwner === 'PLAYER' && aimTarget === 'SELF') {
+        const beatTime = (time * 2.5) % 1.0;
+        heartbeatPulse = (beatTime < 0.15 ? Math.sin((beatTime / 0.15) * Math.PI) : (beatTime < 0.45 ? 0.5 * Math.sin(((beatTime - 0.15) / 0.3) * Math.PI) : 0));
+    }
 
     // Zoom Logic
     if (cameraView === 'TABLE') {
         targetCameraFOV *= 0.8;
     } else if (aimTarget === 'OPPONENT' && turnOwner === 'DEALER') {
         targetCameraFOV *= 0.85;
+    } else if (aimTarget === 'SELF' && turnOwner === 'PLAYER') {
+        targetCameraFOV *= (0.75 - heartbeatPulse * 0.15); // Deep contraction zoom on thumps
     } else if (aimTarget !== 'IDLE' && turnOwner === 'PLAYER') {
         targetCameraFOV *= 0.9;
     }
@@ -101,9 +110,9 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
             targets.targetPos.set(swayX, swayY, 8);
             targets.targetRot.set(swayY * 0.5, Math.PI + swayX * 0.5, 0);
         } else if (aimTarget === 'SELF') {
-            // GUN POINTED AT PLAYER - see barrel opening (the dark circle)
-            targets.targetPos.set(0, 1, -2); // Far away, slightly raised
-            targets.targetRot.set(-0.15, 0, 0); // Almost straight at camera
+            // Visceral face-to-barrel close-up coordinates
+            targets.targetPos.set(0, 1.8, 8.5);
+            targets.targetRot.set(-0.08, 0, 0);
         } else if (aimTarget === 'CHOOSING') {
             // Holding Gun, waiting for choice
             targets.targetPos.set(0.5, -1.0, 5.5); // Low, near body
@@ -155,17 +164,17 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
         const heartbeat = isTransitionalPhase ? 0 : Math.pow(Math.sin(time * 1.5), 12.0);
         const baseRed = 0.02;
         const targetIntensity = (baseRed + heartbeat * 0.45) * brightnessMult;
-        context.roomRedLight.intensity = THREE.MathUtils.lerp(context.roomRedLight.intensity, targetIntensity, 0.1);
+        context.roomRedLight.intensity = THREE.MathUtils.lerp(context.roomRedLight.intensity, targetIntensity, 1 - Math.exp(-6.3 * dt));
 
         if (bulbLight) {
             const baseBulb = 45.0 * brightnessMult;
-            bulbLight.intensity = THREE.MathUtils.lerp(bulbLight.intensity, baseBulb * (1.0 - heartbeat * 0.2), 0.1);
+            bulbLight.intensity = THREE.MathUtils.lerp(bulbLight.intensity, baseBulb * (1.0 - heartbeat * 0.2), 1 - Math.exp(-6.3 * dt));
         }
     } else if (context.roomRedLight) {
-        context.roomRedLight.intensity = THREE.MathUtils.lerp(context.roomRedLight.intensity, 0, 0.05);
+        context.roomRedLight.intensity = THREE.MathUtils.lerp(context.roomRedLight.intensity, 0, 1 - Math.exp(-3.1 * dt));
         if (bulbLight) {
             const baseBulb = 45.0 * brightnessMult;
-            bulbLight.intensity = THREE.MathUtils.lerp(bulbLight.intensity, baseBulb, 0.05);
+            bulbLight.intensity = THREE.MathUtils.lerp(bulbLight.intensity, baseBulb, 1 - Math.exp(-3.1 * dt));
         }
     }
 
@@ -194,7 +203,7 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
     // --- MUZZLE LIGHT & FLASH LOGIC ---
     if (context.muzzleLight) {
         const flashIntensity = (animState.muzzleFlashIntensity || 0) * 0.1;
-        context.muzzleLight.intensity = THREE.MathUtils.lerp(context.muzzleLight.intensity, flashIntensity, 0.4);
+        context.muzzleLight.intensity = THREE.MathUtils.lerp(context.muzzleLight.intensity, flashIntensity, 1 - Math.exp(-30.0 * dt));
 
         // Position flash at the end of barrel
         const flashZ = isSawed ? (isChoke ? 7.8 : 4.0) : (isChoke ? 15.5 : 10.5);
@@ -274,14 +283,41 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
     if (!scene.userData._targetCamPos) scene.userData._targetCamPos = new THREE.Vector3();
     const targetCamPos = scene.userData._targetCamPos;
 
+    // Phase change detection for instant snapping to prevent clipping/grey screen/gliding
+    if (scene.userData.lastPhase === undefined) scene.userData.lastPhase = phase;
+    if (scene.userData.lastPhase !== phase) {
+        if (phase === 'LOAD' || phase === 'LOOTING') {
+            camera.position.set(0, 3.8, 12);
+            targetCamPos.set(0, 3.8, 12);
+            if (!scene.userData._curLookAt) {
+                scene.userData._curLookAt = new THREE.Vector3(0, 1.5, -2);
+            } else {
+                scene.userData._curLookAt.set(0, 1.5, -2);
+            }
+            camera.rotation.set(0, 0, 0);
+            camera.lookAt(0, 1.5, -2);
+            scene.userData.cameraShake = 0;
+            scene.userData.needsRecovery = false;
+            scene.userData.hasPlayedDrop = false;
+            scene.userData.hasPlayedStand = false;
+            scene.userData.recoveryStartTime = null;
+        }
+        scene.userData.lastPhase = phase;
+    }
+
     const pSwayX = Math.sin(time * 0.5) * 0.8;
     const pSwayY = Math.cos(time * 0.3) * 0.3;
 
-    if (cameraView === 'TABLE') {
+    if (animState.playerHit) {
+        targetCamPos.set(2.8, 0.8, 10.5);
+    } else if (cameraView === 'TABLE') {
         targetCamPos.set(0, 10, 4);
     } else if (cameraView === 'DEALER_GUN') {
         // Look at the dealer holding the gun
         targetCamPos.set(pSwayX * 0.5 - 4, 3 + pSwayY * 0.2, 5);
+    } else if (phase === 'LOAD' || phase === 'LOOTING') {
+        // Force player's default POV during load/looting
+        targetCamPos.set(pSwayX * 0.5, 3.8 + pSwayY, 12);
     } else if (turnOwner === 'DEALER') {
         if (aimTarget === 'OPPONENT') {
             targetCamPos.set(pSwayX * 0.1, 1.0 + pSwayY * 0.1, 3.5); // Closer & lower
@@ -290,7 +326,7 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
         }
     } else if (turnOwner === 'PLAYER') {
         if (aimTarget === 'SELF') {
-            targetCamPos.set(pSwayX * 0.2 + 0.3, 2.5 + pSwayY * 0.2, 7); // Closer to face
+            targetCamPos.set(0, 2.3, 10.2 - heartbeatPulse * 0.25);
         } else if (aimTarget === 'OPPONENT') {
             targetCamPos.set(2.5 + pSwayX * 0.1, 3.0 + pSwayY * 0.1, 9); // Lower, closer shoulder
         } else {
@@ -298,13 +334,18 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
         }
     }
 
-    camera.position.lerp(targetCamPos, 0.08);
+    camera.position.lerp(targetCamPos, 1 - Math.exp(-5.0 * dt));
     // Dynamic lookAt with sway
     const lookAtPos = new THREE.Vector3(0, 2, -5);
-    if (cameraView === 'TABLE') {
+    if (animState.playerHit) {
+        lookAtPos.set(-0.5, 3.8, -8);
+    } else if (cameraView === 'TABLE') {
         lookAtPos.set(0, 0, 0);
     } else if (cameraView === 'DEALER_GUN') {
         lookAtPos.set(-0.5, 2, -6); // Look at dealer's chest/gun area
+    } else if (phase === 'LOAD' || phase === 'LOOTING') {
+        // Force player's lookAt target during load/looting
+        lookAtPos.set(0, 1.5, -2);
     } else if (turnOwner === 'DEALER') {
         if (aimTarget === 'OPPONENT') {
             lookAtPos.set(-0.5, 2.5, -8); // Look closer at dealer face
@@ -313,7 +354,9 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
         }
     } else if (turnOwner === 'PLAYER') {
         if (aimTarget === 'SELF') {
-            lookAtPos.set(-0.5, 1.8, 4); // Angle towards player face
+            const shakeX = (Math.sin(time * 45) * 0.015) * (1.0 + heartbeatPulse * 3.0);
+            const shakeY = (Math.cos(time * 50) * 0.015) * (1.0 + heartbeatPulse * 3.0);
+            lookAtPos.set(shakeX, 1.8 + shakeY, 8.5); // Focus directly on gun barrel at Z=8.5 with jitter
         } else if (aimTarget === 'OPPONENT') {
             lookAtPos.set(0, 1.5, -14); // Look at dealer chest/barrel
         } else {
@@ -323,7 +366,7 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
 
     // Smoothly interpolate where the camera is looking
     if (!scene.userData._curLookAt) scene.userData._curLookAt = new THREE.Vector3(0, 2, 0);
-    scene.userData._curLookAt.lerp(lookAtPos, 0.06);
+    scene.userData._curLookAt.lerp(lookAtPos, 1 - Math.exp(-3.7 * dt));
     camera.lookAt(scene.userData._curLookAt);
 
 
@@ -335,11 +378,11 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
             scene.userData.hasPlayedStand = false;
             scene.userData.recoveryStartTime = null;
         }
-        targetCamPos.set(3, -5.5, 9); // Hit floor
-        camera.lookAt(0, 10, -5); // Look WAY UP at light/dealer
-        camera.rotation.z = -0.9 + (Math.random() * 0.1);
+        targetCamPos.set(2.8, 0.8, 10.5); // Hit floor (slumped above table)
+        camera.rotation.z = -0.7 + (Math.random() * 0.1);
         scene.userData.cameraShake = 0.5;
-    } else if (animState.playerRecovering || (!animState.playerHit && camera.position.y < -4)) {
+        scene.userData.needsRecovery = true;
+    } else if (animState.playerRecovering || (scene.userData.needsRecovery && !animState.playerHit)) {
         // Recovering (Stand up slowly) - Groggy effect
         if (!scene.userData.hasPlayedStand) {
             audioManager.playSound('standing');
@@ -361,11 +404,16 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
         if (recoveryProgress < 0.5) {
             scene.userData.cameraShake = 0.05 * (1 - recoveryProgress * 2);
         }
-    } else {
-        if (camera.position.y > -2) {
+
+        if (recoveryProgress >= 1) {
+            scene.userData.needsRecovery = false;
             scene.userData.hasPlayedDrop = false;
             scene.userData.recoveryStartTime = null;
         }
+    } else {
+        scene.userData.hasPlayedDrop = false;
+        scene.userData.recoveryStartTime = null;
+        scene.userData.needsRecovery = false;
     }
 
     // Camera Lerp - Cinematic and Smooth (3.0 speed)
@@ -421,7 +469,7 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
         const maxHp = dealerGroup.userData.maxHp || 4;
         const currentHp = props.dealer.hp;
         const targetScaleX = Math.max(0, currentHp / maxHp);
-        hpFill.scale.x = THREE.MathUtils.lerp(hpFill.scale.x, targetScaleX, 0.1);
+        hpFill.scale.x = THREE.MathUtils.lerp(hpFill.scale.x, targetScaleX, 1 - Math.exp(-6.3 * dt));
         const hpWidth = (hpFill.scale.x) * 3.8;
         hpFill.position.x = (hpWidth - 3.8) / 2;
     }
@@ -447,8 +495,8 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
     if (!scene.userData.cachedHeadGroup) scene.userData.cachedHeadGroup = dealerGroup.getObjectByName("HEAD");
     const headGroup = scene.userData.cachedHeadGroup;
     if (headGroup) {
-        headGroup.rotation.y = THREE.MathUtils.lerp(headGroup.rotation.y, -mouse.x * 0.2, 0.05);
-        headGroup.rotation.x = THREE.MathUtils.lerp(headGroup.rotation.x, mouse.y * 0.1, 0.05);
+        headGroup.rotation.y = THREE.MathUtils.lerp(headGroup.rotation.y, -mouse.x * 0.2, 1 - Math.exp(-3.1 * dt));
+        headGroup.rotation.x = THREE.MathUtils.lerp(headGroup.rotation.x, mouse.y * 0.1, 1 - Math.exp(-3.1 * dt));
 
         // ENHANCED RED EYES - Skip for Player Model
         if (!gameState.isMultiplayer) {
@@ -481,7 +529,7 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
 
     if (underLight) {
         const flicker = Math.random() > 0.95 ? Math.random() * 2.0 : 2.0;
-        underLight.intensity = THREE.MathUtils.lerp(underLight.intensity, flicker, 0.05) * brightnessMult;
+        underLight.intensity = THREE.MathUtils.lerp(underLight.intensity, flicker, 1 - Math.exp(-3.1 * dt)) * brightnessMult;
     }
 
     // --- SPAWN PARTICLES ---

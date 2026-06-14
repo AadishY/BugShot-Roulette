@@ -843,20 +843,20 @@ export const createEnvironment = (scene: THREE.Scene, isMobile: boolean = false)
     }
 
     // Background point lights for ominous depth - Increased intensity
-    const clutterLight = new THREE.PointLight(0x778899, 20, 60);
+    const clutterLight = new THREE.PointLight(0x778899, 30, 60);
     clutterLight.position.set(0, 10, -20);
     scene.add(clutterLight);
 
     // Extra Fill for far corners
-    const bgFill = new THREE.PointLight(0x443322, 5, 40); // Brighter
+    const bgFill = new THREE.PointLight(0x443322, 10, 40); // Brighter
     bgFill.position.set(-20, 0, -25);
     scene.add(bgFill);
-    const bgFill2 = new THREE.PointLight(0x223344, 5, 40); // Brighter
+    const bgFill2 = new THREE.PointLight(0x223344, 10, 40); // Brighter
     bgFill2.position.set(20, 0, -25);
     scene.add(bgFill2);
 
     // Central Blue Rim for Back Wall depth
-    const bgBlueRim = new THREE.SpotLight(0x445566, 8.0);
+    const bgBlueRim = new THREE.SpotLight(0x445566, 15.0);
     bgBlueRim.position.set(0, -5, -20);
     bgBlueRim.target.position.set(0, 5, -28);
     bgBlueRim.angle = 1.0;
@@ -926,6 +926,34 @@ export const createEnvironment = (scene: THREE.Scene, isMobile: boolean = false)
     rightWall.rotation.y = -Math.PI / 2;
     rightWall.receiveShadow = !isMobile;
     scene.add(rightWall);
+
+    // Front Wall (Behind Player) - completes room enclosure at Z = 18
+    const frontWall = new THREE.Mesh(new THREE.PlaneGeometry(80, 50), brickMat);
+    frontWall.position.set(0, 5, 18);
+    frontWall.rotation.y = Math.PI;
+    frontWall.receiveShadow = !isMobile;
+    scene.add(frontWall);
+
+    // Behind Props (Behind Player, Z = 17 to 17.5)
+    // Horizontal ceiling pipes behind player
+    const behindPipe1 = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 40), pipeMat);
+    behindPipe1.rotation.z = Math.PI / 2;
+    behindPipe1.position.set(0, 11, 17.2);
+    scene.add(behindPipe1);
+
+    const behindPipe2 = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 40), rustMat);
+    behindPipe2.rotation.z = Math.PI / 2;
+    behindPipe2.position.set(0, 12, 17.5);
+    scene.add(behindPipe2);
+
+    // Vertical pipes behind player
+    const behindVPipe1 = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 20), pipeMat);
+    behindVPipe1.position.set(-15, 5, 17.3);
+    scene.add(behindVPipe1);
+
+    const behindVPipe2 = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 20), rustMat);
+    behindVPipe2.position.set(15, 5, 17.3);
+    scene.add(behindVPipe2);
 
     // === STAGE LIGHTS (Barn Doors) - ENHANCED WITH GLOW ===
     const createStageLight = (x: number, y: number, z: number, targetX: number, targetY: number, targetZ: number) => {

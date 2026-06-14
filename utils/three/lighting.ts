@@ -90,7 +90,7 @@ export const setupLighting = (scene: THREE.Scene) => {
     scene.add(bgRim);
     scene.add(bgRim.target);
 
-    const coldRim = new THREE.SpotLight(0x0044ff, 25);
+    const coldRim = new THREE.SpotLight(0x0044ff, 40); // Boosted cold rim
     coldRim.position.set(-20, 10, -25);
     coldRim.target.position.set(0, 2, -10);
     coldRim.angle = 1.0;
@@ -113,20 +113,29 @@ export const setupLighting = (scene: THREE.Scene) => {
     scene.add(rimLight);
 
     // Environment Background Lights
-    const hemiLight = new THREE.HemisphereLight(0x332222, 0x0a0a0a, 0.25);
+    const hemiLight = new THREE.HemisphereLight(0x332222, 0x0a0a0a, 0.4); // Boosted ambient hemilight
     scene.add(hemiLight);
 
-    const deepBgLight = new THREE.PointLight(0x334455, 60, 120);
+    const deepBgLight = new THREE.PointLight(0x334455, 90, 120); // Boosted deep background light
     deepBgLight.position.set(0, 12, -20);
     scene.add(deepBgLight);
 
-    const leftPropLight = new THREE.PointLight(0xaa6644, 12.0, 30);
+    const leftPropLight = new THREE.PointLight(0xaa6644, 25.0, 30); // Boosted left props
     leftPropLight.position.set(-15, 2, 10);
     scene.add(leftPropLight);
 
-    const rightPropLight = new THREE.PointLight(0x4466aa, 12.0, 30);
+    const rightPropLight = new THREE.PointLight(0x4466aa, 25.0, 30); // Boosted right props
     rightPropLight.position.set(15, 2, 10);
     scene.add(rightPropLight);
+
+    // Warm dramatic wall wash spotlight behind the player (illuminating front wall at Z=18)
+    const playerWallWash = new THREE.SpotLight(0x775544, 40);
+    playerWallWash.position.set(0, 18, -2);
+    playerWallWash.target.position.set(0, 5, 18);
+    playerWallWash.angle = 1.0;
+    playerWallWash.penumbra = 0.5;
+    scene.add(playerWallWash);
+    scene.add(playerWallWash.target);
 
     // --- HEAVY LIGHTS (Desktop Only) ---
     let backFlood: THREE.DirectionalLight | undefined;

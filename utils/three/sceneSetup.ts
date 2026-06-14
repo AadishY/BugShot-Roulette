@@ -31,7 +31,55 @@ export const initThreeScene = (container: HTMLElement, props: any): SceneContext
 
     const defaultFov = 85;
     const camera = new THREE.PerspectiveCamera(props.settings.fov || defaultFov, width / height, 0.1, 100);
-    camera.position.set(0, 4, 14);
+    
+    // Position camera instantly at its starting view location to avoid gliding from afar in the grey fog at startup
+    const initialCamPos = new THREE.Vector3(0, 3.8, 12); // Default player view
+    const pSwayX = 0;
+    const pSwayY = 0;
+    if (props.cameraView === 'TABLE') {
+        initialCamPos.set(0, 10, 4);
+    } else if (props.cameraView === 'DEALER_GUN') {
+        initialCamPos.set(pSwayX * 0.5 - 4, 3 + pSwayY * 0.2, 5);
+    } else if (props.turnOwner === 'DEALER') {
+        if (props.aimTarget === 'OPPONENT') {
+            initialCamPos.set(pSwayX * 0.1, 1.0 + pSwayY * 0.1, 3.5);
+        } else {
+            initialCamPos.set(pSwayX, 4 + pSwayY, 11);
+        }
+    } else if (props.turnOwner === 'PLAYER') {
+        if (props.aimTarget === 'SELF') {
+            initialCamPos.set(0, 2.3, 10.2);
+        } else if (props.aimTarget === 'OPPONENT') {
+            initialCamPos.set(2.5 + pSwayX * 0.1, 3.0 + pSwayY * 0.1, 9);
+        } else {
+            initialCamPos.set(pSwayX * 0.5, 3.8 + pSwayY, 12);
+        }
+    }
+    camera.position.copy(initialCamPos);
+
+    // Pre-calculate initial look-at coordinates so camera initializes pointing at the correct target immediately
+    const initialLookAt = new THREE.Vector3(0, 2, -5);
+    if (props.cameraView === 'TABLE') {
+        initialLookAt.set(0, 0, 0);
+    } else if (props.cameraView === 'DEALER_GUN') {
+        initialLookAt.set(-0.5, 2, -6);
+    } else if (props.turnOwner === 'DEALER') {
+        if (props.aimTarget === 'OPPONENT') {
+            initialLookAt.set(-0.5, 2.5, -8);
+        } else {
+            initialLookAt.set(0, 2, -14);
+        }
+    } else if (props.turnOwner === 'PLAYER') {
+        if (props.aimTarget === 'SELF') {
+            initialLookAt.set(0, 1.8, 8.5);
+        } else if (props.aimTarget === 'OPPONENT') {
+            initialLookAt.set(0, 1.5, -14);
+        } else {
+            initialLookAt.set(0, 1.5, -2);
+        }
+    }
+    camera.lookAt(initialLookAt);
+    scene.userData._curLookAt = initialLookAt.clone();
 
     // Device Detection & Optimization Profiles
     const userAgent = navigator.userAgent.toLowerCase();
@@ -156,17 +204,28 @@ export const initThreeScene = (container: HTMLElement, props: any): SceneContext
     const particles = new THREE.BufferGeometry();
     const pPositions = new Float32Array(particleCount * 3);
     const pVelocities = new Float32Array(particleCount * 3);
-    // Initialize off-screen
-    for (let i = 0; i < particleCount * 3; i++) pPositions[i] = 9999;
+    const pColors = new Float32Array(particleCount * 3);
+    // Initialize off-screen and set varying colors
+    for (let i = 0; i < particleCount; i++) {
+        pPositions[i * 3] = 9999;
+        pPositions[i * 3 + 1] = 9999;
+        pPositions[i * 3 + 2] = 9999;
+
+        // Varies from deep burgundy to rust-crimson
+        pColors[i * 3] = 0.45 + Math.random() * 0.45;     // Red
+        pColors[i * 3 + 1] = 0.02 + Math.random() * 0.06;  // Green
+        pColors[i * 3 + 2] = 0.02 + Math.random() * 0.04;  // Blue
+    }
 
     particles.setAttribute('position', new THREE.BufferAttribute(pPositions, 3));
     particles.setAttribute('velocity', new THREE.BufferAttribute(pVelocities, 3));
+    particles.setAttribute('color', new THREE.BufferAttribute(pColors, 3));
 
     const pMat = new THREE.PointsMaterial({
-        color: 0xcc0000,
-        size: 1.5,
+        vertexColors: true,
+        size: isMobile ? 1.2 : 1.8,
         transparent: true,
-        opacity: 0.9,
+        opacity: 0.95,
         sizeAttenuation: true,
         depthWrite: false,
         blending: THREE.NormalBlending

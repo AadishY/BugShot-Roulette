@@ -232,7 +232,7 @@ export const GameUI: React.FC<GameUIProps> = ({
                 {/* Overlay Text - Centered Announcements */}
                 {overlayText && !showLootOverlay && (
                     <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none px-4">
-                        {overlayText.startsWith('ROUND') || overlayText.includes('LIVE') ? (
+                        {overlayText.startsWith('ROUND') || (overlayText.includes('LIVE') && overlayText.includes('|')) ? (
                             <div className="flex flex-col items-center">
                                 {overlayText.startsWith('ROUND') ? (
                                     <div className="flex flex-col items-center gap-6 animate-in zoom-in-95 duration-1000">
@@ -422,6 +422,7 @@ export const GameUI: React.FC<GameUIProps> = ({
                         winner={gameState.winner}
                         onResetGame={onResetGame}
                         matchData={matchData}
+                        isDebugUsed={gameState.isDebugUsed}
                     />
                 )}
 
@@ -440,25 +441,25 @@ export const GameUI: React.FC<GameUIProps> = ({
                             </button>
                         </div>
 
-                        {/* Controls - Positioned Absolute to prevent floating high on mobile */}
-                        <div className="absolute bottom-16 lg:bottom-40 left-0 right-0 flex justify-center pointer-events-none z-30 pb-2 lg:pb-0">
-                            {/* Only show controls if not stealing phase */}
+                        {/* Bottom UI Area - Vertically stacked Controls & Inventory */}
+                        <div className="mt-auto w-full flex flex-col items-center gap-2 md:gap-4 pointer-events-none pb-2 md:pb-6 z-30">
+                            {/* Controls */}
                             {gameState.phase !== 'STEALING' && isMyTurn && !showLootOverlay && (
-                                <Controls
-                                    isGunHeld={isGunHeld}
-                                    isProcessing={isProcessing}
-                                    isRecovering={isRecovering}
-                                    onPickupGun={onPickupGun}
-                                    onFireShot={onFireShot}
-                                    onHoverTarget={onHoverTarget}
-                                    currentAimTarget={aimTarget}
-                                    isMultiplayer={isMultiplayer}
-                                />
+                                <div className="pointer-events-auto">
+                                    <Controls
+                                        isGunHeld={isGunHeld}
+                                        isProcessing={isProcessing}
+                                        isRecovering={isRecovering}
+                                        onPickupGun={onPickupGun}
+                                        onFireShot={onFireShot}
+                                        onHoverTarget={onHoverTarget}
+                                        currentAimTarget={aimTarget}
+                                        isMultiplayer={isMultiplayer}
+                                    />
+                                </div>
                             )}
-                        </div>
 
-                        {/* Bottom - Center Inventory */}
-                        <div className="mt-auto w-full flex justify-center pointer-events-none pb-4">
+                            {/* Inventory */}
                             <div className="pointer-events-auto">
                                 {gameState.phase === 'STEALING' ? (
                                     <Inventory

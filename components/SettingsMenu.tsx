@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { GameSettings } from '../types';
-import { X, Monitor, Scaling, Eye, RotateCcw } from 'lucide-react';
+import { X, Monitor, Scaling, Eye, RotateCcw, LogOut } from 'lucide-react';
 
 interface SettingsMenuProps {
     settings: GameSettings;
     onUpdateSettings: (newSettings: GameSettings) => void;
     onClose: () => void;
     onResetDefaults: () => void;
+    onExitToMenu?: () => void;
+    showExitToMenu?: boolean;
 }
 
 // Custom Slider Component to prevent accidental clicks
@@ -80,7 +82,7 @@ const CustomSlider: React.FC<{
     );
 };
 
-export const SettingsMenu: React.FC<SettingsMenuProps> = ({ settings, onUpdateSettings, onClose, onResetDefaults }) => {
+export const SettingsMenu: React.FC<SettingsMenuProps> = ({ settings, onUpdateSettings, onClose, onResetDefaults, onExitToMenu, showExitToMenu }) => {
     const [scale, setScale] = useState(1);
 
     useEffect(() => {
@@ -227,13 +229,58 @@ export const SettingsMenu: React.FC<SettingsMenuProps> = ({ settings, onUpdateSe
                             </div>
                         </div>
                     </div>
+
+                    {/* Debug Group */}
+                    <div className="space-y-6">
+                        <div className="flex items-center gap-2">
+                            <h3 className="text-red-500 font-extrabold tracking-[0.2em] uppercase text-[10px]">Developer</h3>
+                            <div className="h-[1px] flex-1 bg-red-950/30" />
+                        </div>
+
+                        <div className="flex items-center justify-between p-4 bg-red-950/10 border border-red-900/30 rounded-xl">
+                            <div>
+                                <span className="text-stone-300 font-bold tracking-widest text-[10px] uppercase block">Debug Overlay</span>
+                                <span className="text-[9px] text-stone-500 font-bold uppercase tracking-wider block mt-1">Enables cheats, item management, and chamber editor</span>
+                                {(() => {
+                                    const loggedInUser = localStorage.getItem('aadish_roulette_logged_in_user');
+                                    let isDev = false;
+                                    if (loggedInUser) {
+                                        try {
+                                            const u = JSON.parse(loggedInUser);
+                                            isDev = u.username?.toLowerCase() === (import.meta.env.VITE_DEV_USERNAME || 'aadish').toLowerCase();
+                                        } catch(e) {}
+                                    }
+                                    return isDev ? (
+                                        <span className="text-[9px] text-green-500 font-extrabold uppercase tracking-wider block mt-1.5">
+                                            ✓ DEVELOPER: STATS WILL BE SAVED
+                                        </span>
+                                    ) : (
+                                        <span className="text-[9px] text-red-500 font-extrabold uppercase tracking-wider block mt-1.5 animate-pulse">
+                                            ⚠ WARNING: STATS WILL NOT BE SAVED IN THIS MATCH
+                                        </span>
+                                    );
+                                })()}
+                            </div>
+                            <button
+                                onClick={() => handleChange('debugMode', !settings.debugMode)}
+                                className={`px-4 py-2 text-[10px] font-black tracking-widest uppercase transition-all rounded-lg border active:scale-95 ${settings.debugMode ? 'bg-red-600 hover:bg-red-500 text-white border-red-500' : 'bg-transparent hover:bg-stone-900 text-stone-400 border-stone-800'}`}
+                            >
+                                {settings.debugMode ? 'Enabled' : 'Disabled'}
+                            </button>
+                        </div>
+                    </div>
                 </div>
 
                 <div className="p-6 border-t border-stone-800/50 bg-stone-950/40 backdrop-blur-xl flex flex-row gap-4">
-                    <button onClick={onResetDefaults} className="flex-1 h-12 border border-stone-800 text-stone-500 hover:text-white hover:bg-white/5 px-4 font-black tracking-[0.2em] flex items-center justify-center gap-2 transition-all rounded-xl text-[10px] uppercase">
+                    <button onClick={onResetDefaults} className="flex-1 h-12 border border-stone-800 text-stone-500 hover:text-white hover:bg-white/5 px-4 font-black tracking-[0.2em] flex items-center justify-center gap-2 transition-all rounded-xl text-[10px] uppercase cursor-pointer">
                         <RotateCcw size={14} /> Reset Defaults
                     </button>
-                    <button onClick={onClose} className="flex-[1.5] h-12 bg-white text-black font-black px-6 hover:bg-stone-200 transition-all tracking-[0.3em] rounded-xl text-xs uppercase shadow-xl">
+                    {showExitToMenu && onExitToMenu && (
+                        <button onClick={onExitToMenu} className="flex-1 h-12 border border-red-900/50 bg-red-950/20 text-red-500 hover:text-red-400 hover:bg-red-950/40 hover:border-red-700/50 px-4 font-black tracking-[0.2em] flex items-center justify-center gap-2 transition-all rounded-xl text-[10px] uppercase cursor-pointer">
+                            <LogOut size={14} /> Exit to Menu
+                        </button>
+                    )}
+                    <button onClick={onClose} className="flex-[1.5] h-12 bg-white text-black font-black px-6 hover:bg-stone-200 transition-all tracking-[0.3em] rounded-xl text-xs uppercase shadow-xl cursor-pointer">
                         Return to Game
                     </button>
                 </div>

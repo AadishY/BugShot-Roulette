@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
-import { Settings as SettingsIcon, HelpCircle, Trophy, ShieldAlert } from 'lucide-react';
+import { Settings as SettingsIcon, HelpCircle, Trophy, ShieldAlert, Lock, User, Terminal, BookOpen, Crown, ChevronDown, ChevronUp, Award, Crosshair, Skull, Shield } from 'lucide-react';
 import { audioManager } from '../../utils/audioManager';
+import { loginUser, registerUser, getLeaderboard } from '../../utils/redisService';
 
 
 interface IntroScreenProps {
@@ -27,6 +28,44 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
     const [scale, setScale] = React.useState(1);
     const [showHardModeWarning, setShowHardModeWarning] = React.useState(false);
 
+    // Dialog & UI state
+    const [showChangelog, setShowChangelog] = React.useState(false);
+    const [showLoginModal, setShowLoginModal] = React.useState(false);
+    const [showLeaderboard, setShowLeaderboard] = React.useState(false);
+    const [loginTab, setLoginTab] = React.useState<'signin' | 'register'>('signin');
+    const [loginUsername, setLoginUsername] = React.useState('');
+    const [loginPassword, setLoginPassword] = React.useState('');
+    const [loginError, setLoginError] = React.useState('');
+    const [loginSuccess, setLoginSuccess] = React.useState('');
+    const [isLoadingRedis, setIsLoadingRedis] = React.useState(false);
+
+    const [loggedInUser, setLoggedInUser] = React.useState<{ username: string } | null>(() => {
+        const saved = localStorage.getItem('aadish_roulette_logged_in_user');
+        if (saved) {
+            try {
+                return JSON.parse(saved);
+            } catch (e) {}
+        }
+        return null;
+    });
+
+    // Leaderboard state
+    const [leaderboard, setLeaderboard] = React.useState<any[]>([]);
+    const [isLoadingLeaderboard, setIsLoadingLeaderboard] = React.useState(false);
+    const [expandedUser, setExpandedUser] = React.useState<string | null>(null);
+
+    const loadLeaderboardData = async () => {
+        setIsLoadingLeaderboard(true);
+        try {
+            const data = await getLeaderboard();
+            setLeaderboard(data);
+        } catch (e) {
+            console.error("Failed to load leaderboard:", e);
+        } finally {
+            setIsLoadingLeaderboard(false);
+        }
+    };
+
     // PWA Install State
     const [deferredPrompt, setDeferredPrompt] = React.useState<any>(null);
     const [isInstallable, setIsInstallable] = React.useState(false);
@@ -34,6 +73,13 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
     const [isIOS, setIsIOS] = React.useState(false);
     const [isMobile, setIsMobile] = React.useState(false);
     const [isStandalone, setIsStandalone] = React.useState(false);
+
+    // Auto-populate name from saved login session
+    useEffect(() => {
+        if (loggedInUser && !inputName) {
+            setInputName(loggedInUser.username.toUpperCase());
+        }
+    }, []); // Only on mount
 
     useEffect(() => {
         // Detect Standalone Mode
@@ -133,8 +179,122 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
         }
     };
 
+    const handleLogout = () => {
+        audioManager.playSound('click');
+        localStorage.removeItem('aadish_roulette_logged_in_user');
+        setLoggedInUser(null);
+        window.location.reload(); // Hard reset session
+    };
+
+    const handleLoginSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setLoginError('');
+        setLoginSuccess('');
+        setIsLoadingRedis(true);
+        audioManager.playSound('click');
+
+        const u = loginUsername.trim().toLowerCase();
+        const p = loginPassword.trim();
+
+        if (!u || !p) {
+            setLoginError('ALL FIELDS REQUIRED');
+            setIsLoadingRedis(false);
+            return;
+        }
+
+        try {
+            if (loginTab === 'signin') {
+                const res = await loginUser(u, p);
+                if (res.success && res.user) {
+                    setLoginSuccess('IDENTITY VERIFIED');
+                    localStorage.setItem('aadish_roulette_logged_in_user', JSON.stringify({ username: res.user.username }));
+                    localStorage.setItem('aadish_roulette_stats_v1', JSON.stringify(res.user.stats));
+                    setLoggedInUser({ username: res.user.username });
+                    setInputName(res.user.username.toUpperCase());
+                    setTimeout(() => {
+                        setShowLoginModal(false);
+                        setLoginPassword('');
+                        setLoginUsername('');
+                        setLoginSuccess('');
+                    }, 1200);
+                } else {
+                    setLoginError(res.error || 'ACCESS DENIED');
+                }
+            } else {
+                const res = await registerUser(u, p);
+                if (res.success && res.user) {
+                    setLoginSuccess('CREDENTIALS SAVED');
+                    localStorage.setItem('aadish_roulette_logged_in_user', JSON.stringify({ username: res.user.username }));
+                    localStorage.setItem('aadish_roulette_stats_v1', JSON.stringify(res.user.stats));
+                    setLoggedInUser({ username: res.user.username });
+                    setInputName(res.user.username.toUpperCase());
+                    setTimeout(() => {
+                        setShowLoginModal(false);
+                        setLoginPassword('');
+                        setLoginUsername('');
+                        setLoginSuccess('');
+                    }, 1200);
+                } else {
+                    setLoginError(res.error || 'REGISTRATION FAILED');
+                }
+            }
+        } catch (err) {
+            setLoginError('LINK FAULT');
+        } finally {
+            setIsLoadingRedis(false);
+        }
+    };
+
     return (
         <div className="absolute inset-0 z-50 flex items-center justify-center overflow-hidden pointer-events-auto bg-black/40 backdrop-blur-[2px]">
+            
+            {/* Top Right User Profile Badge Section */}
+            <div className="absolute top-6 right-6 z-[60] flex items-center gap-3">
+                {loggedInUser ? (
+                    <div className="flex items-center gap-3 bg-stone-950/80 border border-green-900/40 p-2 px-4 rounded-xl backdrop-blur-md shadow-[0_10px_30px_rgba(0,0,0,0.5)]">
+                        <div className="flex flex-col text-left">
+                            <span className="text-[7px] text-stone-500 font-bold uppercase tracking-widest leading-none mb-0.5">Agent Signed In</span>
+                            <span className="text-[11px] text-green-400 font-mono font-black uppercase tracking-wider leading-none">{loggedInUser.username}</span>
+                        </div>
+                        <button
+                            onClick={handleLogout}
+                            className="ml-2 px-2.5 py-1.5 bg-red-950/40 hover:bg-red-900 text-red-500 hover:text-white font-mono font-bold text-[8px] tracking-widest rounded-lg border border-red-900/30 uppercase transition-all cursor-pointer"
+                        >
+                            Disconnect
+                        </button>
+                    </div>
+                ) : (
+                    <button
+                        onClick={() => {
+                            audioManager.playSound('click');
+                            setShowLoginModal(true);
+                        }}
+                        className="group/signin px-5 py-2.5 bg-gradient-to-r from-red-950/60 to-stone-950/80 border border-red-700/50 text-red-400 hover:text-white hover:border-red-500 font-mono font-black text-[10px] tracking-[0.2em] rounded-xl backdrop-blur-md transition-all shadow-[0_0_25px_rgba(220,38,38,0.15)] hover:shadow-[0_0_40px_rgba(220,38,38,0.3)] hover:scale-105 active:scale-95 uppercase flex items-center gap-2.5 cursor-pointer"
+                    >
+                        <span className="relative flex h-2 w-2">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-red-600"></span>
+                        </span>
+                        Sign In / Register
+                    </button>
+                )}
+            </div>
+
+            {/* Bottom Right Floating Changelog Button */}
+            <div className="absolute bottom-6 right-6 z-[60]">
+                <button
+                    onClick={() => {
+                        audioManager.playSound('click');
+                        setShowChangelog(true);
+                    }}
+                    className="group/cl p-4 bg-gradient-to-br from-stone-900/90 to-stone-950/90 border border-stone-700/50 text-stone-400 hover:text-amber-400 hover:border-amber-600/50 rounded-full shadow-[0_10px_30px_rgba(0,0,0,0.8)] backdrop-blur-md transition-all hover:scale-110 active:scale-95 flex items-center justify-center cursor-pointer hover:shadow-[0_0_30px_rgba(245,158,11,0.15)]"
+                    title="System Changelog"
+                >
+                    <BookOpen size={20} className="group-hover/cl:rotate-[-8deg] transition-transform duration-300" />
+                </button>
+            </div>
+
+            {/* Hard Mode Warning Modal */}
             {showHardModeWarning && (
                 <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/95 animate-in fade-in zoom-in duration-500 p-4">
                     {/* Retro Static Overlay */}
@@ -173,19 +333,302 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                         audioManager.playSound('insert');
                                         onStartGame(true);
                                     }}
-                                    className="w-full py-5 bg-red-900/20 hover:bg-red-700 text-white font-black text-2xl tracking-[0.3em] border-2 border-red-700/50 hover:border-red-500 transition-all hover:scale-[1.02] hover:shadow-[0_0_50px_rgba(220,38,38,0.4)] active:scale-95 group relative overflow-hidden"
+                                    className="w-full py-5 bg-red-900/20 hover:bg-red-700 text-white font-black text-2xl tracking-[0.3em] border-2 border-red-700/50 hover:border-red-500 transition-all hover:scale-[1.02] hover:shadow-[0_0_50px_rgba(220,38,38,0.4)] active:scale-95 group relative overflow-hidden cursor-pointer"
                                 >
                                     <span className="relative z-10">ACCEPT FATE</span>
                                     <div className="absolute inset-0 bg-gradient-to-r from-transparent via-red-500/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" />
                                 </button>
                                 <button
                                     onClick={() => setShowHardModeWarning(false)}
-                                    className="w-full py-3 bg-transparent text-stone-600 font-bold hover:text-stone-400 transition-colors tracking-[0.4em] text-xs uppercase"
+                                    className="w-full py-3 bg-transparent text-stone-600 font-bold hover:text-stone-400 transition-colors tracking-[0.4em] text-xs uppercase cursor-pointer"
                                 >
                                     — ABORT MISSION —
                                 </button>
                             </div>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Login / Register Modal */}
+            {showLoginModal && (
+                <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-in fade-in duration-300">
+                    <form
+                        onSubmit={handleLoginSubmit}
+                        className="relative w-full max-w-sm bg-stone-950/90 border-2 border-stone-800/80 p-6 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.8)] font-mono text-center"
+                    >
+                        <div className="absolute top-0 left-0 w-full h-[2px] bg-red-600/30 animate-[scan-line-move_4s_linear_infinite]" />
+                        
+                        {/* Tab Headers */}
+                        <div className="flex border-b border-stone-900 mb-6 bg-stone-900/10 rounded-t-lg overflow-hidden">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    audioManager.playSound('click');
+                                    setLoginTab('signin');
+                                    setLoginError('');
+                                    setLoginSuccess('');
+                                }}
+                                className={`flex-1 py-3 text-[10px] font-black tracking-widest uppercase transition-all cursor-pointer ${loginTab === 'signin' ? 'text-red-500 bg-red-950/10 border-b-2 border-red-600' : 'text-stone-500 border-b-2 border-transparent hover:text-stone-300'}`}
+                            >
+                                Sign In
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    audioManager.playSound('click');
+                                    setLoginTab('register');
+                                    setLoginError('');
+                                    setLoginSuccess('');
+                                }}
+                                className={`flex-1 py-3 text-[10px] font-black tracking-widest uppercase transition-all cursor-pointer ${loginTab === 'register' ? 'text-red-500 bg-red-950/10 border-b-2 border-red-600' : 'text-stone-500 border-b-2 border-transparent hover:text-stone-300'}`}
+                            >
+                                Register
+                            </button>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div className="relative">
+                                <User className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-600" size={16} />
+                                <input
+                                    type="text"
+                                    value={loginUsername}
+                                    onChange={(e) => setLoginUsername(e.target.value)}
+                                    placeholder="Username"
+                                    maxLength={12}
+                                    className="w-full bg-stone-950/60 border border-stone-800 p-3.5 pl-11 text-xs font-bold text-white outline-none focus:border-red-600/50 transition-all tracking-widest uppercase rounded-xl placeholder-stone-700"
+                                    required
+                                />
+                            </div>
+                            <div className="relative">
+                                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-600" size={16} />
+                                <input
+                                    type="password"
+                                    value={loginPassword}
+                                    onChange={(e) => setLoginPassword(e.target.value)}
+                                    placeholder="Password"
+                                    className="w-full bg-stone-950/60 border border-stone-800 p-3.5 pl-11 text-xs font-bold text-white outline-none focus:border-red-600/50 transition-all tracking-widest uppercase rounded-xl placeholder-stone-700"
+                                    required
+                                />
+                            </div>
+                        </div>
+
+                        {loginError && (
+                            <div className="mt-4 text-[10px] text-red-500 font-bold tracking-wider uppercase animate-[shake_0.5s_ease-in-out]">
+                                [ERROR: {loginError}]
+                            </div>
+                        )}
+
+                        {loginSuccess && (
+                            <div className="mt-4 text-[10px] text-green-500 font-bold tracking-wider uppercase animate-pulse">
+                                [{loginSuccess}]
+                            </div>
+                        )}
+
+                        <div className="mt-6 flex flex-col gap-3">
+                            <button
+                                type="submit"
+                                disabled={isLoadingRedis}
+                                className="w-full py-4 bg-red-900/20 hover:bg-red-750 text-white font-black text-sm tracking-[0.2em] border border-red-700/50 hover:border-red-500 transition-all active:scale-[0.98] disabled:opacity-50 uppercase rounded-xl cursor-pointer"
+                            >
+                                {isLoadingRedis ? 'CONNECTING NETWORK...' : (loginTab === 'signin' ? 'AUTHORIZE SESSION' : 'ESTABLISH IDENTITY')}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    audioManager.playSound('click');
+                                    setShowLoginModal(false);
+                                    setLoginError('');
+                                    setLoginSuccess('');
+                                    setLoginPassword('');
+                                    setLoginUsername('');
+                                }}
+                                className="w-full py-2 bg-transparent text-stone-600 hover:text-stone-400 font-bold text-[10px] tracking-[0.3em] uppercase transition-colors cursor-pointer"
+                            >
+                                — ABORT CONSOLE —
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            )}
+
+            {/* Changelog Modal */}
+            {showChangelog && (
+                <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-300">
+                    <div className="relative w-full max-w-md bg-stone-950/90 border-2 border-stone-800/80 p-6 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.8)] font-mono">
+                        <div className="absolute top-0 left-0 w-full h-[2px] bg-red-600/30 animate-[scan-line-move_4s_linear_infinite]" />
+                        <div className="text-stone-300 font-black border-b border-stone-900 pb-3 mb-4 flex items-center justify-between uppercase tracking-wider text-sm">
+                            <span className="flex items-center gap-2">
+                                <Terminal size={16} className="text-red-500" />
+                                System Changelog
+                            </span>
+                            <span className="text-red-500/80 animate-pulse flex items-center gap-1.5 text-xs">
+                                <span className="w-1.5 h-1.5 bg-red-600 rounded-full" />
+                                active
+                            </span>
+                        </div>
+                        
+                        <div className="space-y-4 text-left max-h-72 overflow-y-auto pr-1 select-text scrollbar-thin text-xs text-stone-400">
+                            <div className="space-y-2">
+                                <span className="text-stone-300 font-bold block border-b border-stone-900 pb-1">[June 14, 2026]</span>
+                                <ul className="list-none space-y-1.5 pl-1">
+                                    <li className="flex items-start gap-2">
+                                        <span className="text-green-500 font-bold">+</span>
+                                        <span>Added developer debug overlay menu</span>
+                                    </li>
+                                    <li className="flex items-start gap-2">
+                                        <span className="text-red-500 font-bold">*</span>
+                                        <span>Fixed dealer-turn shell editor overrides</span>
+                                    </li>
+                                    <li className="flex items-start gap-2">
+                                        <span className="text-red-500 font-bold">*</span>
+                                        <span>Resolved transitional camera clipping &amp; grey screen bugs</span>
+                                    </li>
+                                    <li className="flex items-start gap-2">
+                                        <span className="text-red-500 font-bold">*</span>
+                                        <span>Optimized memory/WebGL loops on tab suspension</span>
+                                    </li>
+                                    <li className="flex items-start gap-2">
+                                        <span className="text-red-500 font-bold">*</span>
+                                        <span>Enhanced blood particle splatters &amp; gravity</span>
+                                    </li>
+                                    <li className="flex items-start gap-2">
+                                        <span className="text-red-500 font-bold">*</span>
+                                        <span>Refined visual effects &amp; dealer AI decision flow</span>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={() => {
+                                audioManager.playSound('click');
+                                setShowChangelog(false);
+                            }}
+                            className="mt-6 w-full py-3 bg-stone-900 border border-stone-800 hover:border-stone-600 hover:text-white text-stone-400 font-bold text-xs tracking-[0.4em] uppercase transition-all rounded-xl cursor-pointer"
+                        >
+                            Close Console
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Leaderboard Modal */}
+            {showLeaderboard && (
+                <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-in fade-in duration-300">
+                    <div className="relative w-full max-w-lg bg-stone-950/90 border-2 border-stone-800/80 p-6 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.8)] font-mono">
+                        <div className="absolute top-0 left-0 w-full h-[2px] bg-amber-600/30 animate-[scan-line-move_4s_linear_infinite]" />
+                        <div className="text-stone-300 font-black border-b border-stone-900 pb-3 mb-4 flex items-center justify-between uppercase tracking-wider text-sm">
+                            <span className="flex items-center gap-2">
+                                <Crown size={16} className="text-amber-500" />
+                                Global Leaderboard
+                            </span>
+                            <span className="text-amber-500/80 flex items-center gap-1.5 text-xs">
+                                <span className="w-1.5 h-1.5 bg-amber-600 rounded-full animate-pulse" />
+                                {leaderboard.length} agents
+                            </span>
+                        </div>
+
+                        <div className="space-y-1 max-h-80 overflow-y-auto pr-1 scrollbar-thin">
+                            {isLoadingLeaderboard ? (
+                                <div className="flex flex-col items-center justify-center py-12 gap-3">
+                                    <div className="w-6 h-6 border-2 border-amber-600/40 border-t-amber-500 rounded-full animate-spin" />
+                                    <span className="text-stone-600 text-[10px] font-bold tracking-widest uppercase">Fetching Intel...</span>
+                                </div>
+                            ) : leaderboard.length === 0 ? (
+                                <div className="text-center py-12 text-stone-600 text-xs font-bold tracking-widest uppercase">
+                                    No agents registered
+                                </div>
+                            ) : (
+                                leaderboard.map((entry, idx) => {
+                                    const isExpanded = expandedUser === entry.username;
+                                    const rankColors = idx === 0 ? 'text-amber-400 bg-amber-500/10 border-amber-600/30' : idx === 1 ? 'text-stone-300 bg-stone-500/5 border-stone-600/20' : idx === 2 ? 'text-orange-400 bg-orange-500/5 border-orange-600/20' : 'text-stone-500 bg-stone-900/20 border-stone-800/30';
+                                    const rankIcon = idx === 0 ? '👑' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`;
+                                    return (
+                                        <div key={entry.username} className={`border rounded-xl overflow-hidden transition-all duration-300 ${rankColors}`}>
+                                            <button
+                                                onClick={() => {
+                                                    audioManager.playSound('click');
+                                                    setExpandedUser(isExpanded ? null : entry.username);
+                                                }}
+                                                className="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-white/5 cursor-pointer"
+                                            >
+                                                <span className="w-8 text-center font-black text-sm shrink-0">{rankIcon}</span>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="font-black text-xs uppercase tracking-wider truncate">{entry.username}</span>
+                                                        {entry.isDeveloper && (
+                                                            <span className="px-1.5 py-0.5 bg-purple-600/30 border border-purple-500/40 text-purple-400 text-[7px] font-black tracking-widest rounded-md uppercase shrink-0">DEV</span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-4 text-[10px] font-bold tracking-wider shrink-0">
+                                                    <span className="text-green-500">{entry.wins}W</span>
+                                                    <span className="text-red-600">{entry.losses}L</span>
+                                                    {entry.hardModeWins > 0 && (
+                                                        <span className="text-amber-500 flex items-center gap-0.5">
+                                                            <Skull size={10} />{entry.hardModeWins}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                {isExpanded ? <ChevronUp size={14} className="text-stone-600 shrink-0" /> : <ChevronDown size={14} className="text-stone-600 shrink-0" />}
+                                            </button>
+                                            {isExpanded && (
+                                                <div className="px-4 pb-4 pt-1 border-t border-white/5 animate-in slide-in-from-top-2 duration-200">
+                                                    <div className="grid grid-cols-3 gap-2 text-center">
+                                                        <div className="bg-black/30 rounded-lg p-2">
+                                                            <div className="text-[8px] text-stone-600 font-bold tracking-widest uppercase mb-1">Rounds</div>
+                                                            <div className="text-sm font-black text-white">{entry.stats.totalRounds || 0}</div>
+                                                        </div>
+                                                        <div className="bg-black/30 rounded-lg p-2">
+                                                            <div className="text-[8px] text-stone-600 font-bold tracking-widest uppercase mb-1">Damage</div>
+                                                            <div className="text-sm font-black text-red-400">{entry.stats.damageDealt || 0}</div>
+                                                        </div>
+                                                        <div className="bg-black/30 rounded-lg p-2">
+                                                            <div className="text-[8px] text-stone-600 font-bold tracking-widest uppercase mb-1">Accuracy</div>
+                                                            <div className="text-sm font-black text-cyan-400">
+                                                                {entry.stats.shotsFired > 0 ? Math.round(((entry.stats.shotsHit || 0) / entry.stats.shotsFired) * 100) : 0}%
+                                                            </div>
+                                                        </div>
+                                                        <div className="bg-black/30 rounded-lg p-2">
+                                                            <div className="text-[8px] text-stone-600 font-bold tracking-widest uppercase mb-1">Items</div>
+                                                            <div className="text-sm font-black text-yellow-400">{entry.stats.itemsUsed || 0}</div>
+                                                        </div>
+                                                        <div className="bg-black/30 rounded-lg p-2">
+                                                            <div className="text-[8px] text-stone-600 font-bold tracking-widest uppercase mb-1">Best Rd</div>
+                                                            <div className="text-sm font-black text-purple-400">{entry.stats.highestRound || 0}</div>
+                                                        </div>
+                                                        <div className="bg-black/30 rounded-lg p-2">
+                                                            <div className="text-[8px] text-stone-600 font-bold tracking-widest uppercase mb-1">Score</div>
+                                                            <div className="text-sm font-black text-amber-400">{entry.stats.itemPoints || 0}</div>
+                                                        </div>
+                                                    </div>
+                                                    {(entry.stats.matchHistory || []).length > 0 && (
+                                                        <div className="mt-2 flex gap-1 justify-center flex-wrap">
+                                                            {(entry.stats.matchHistory || []).slice(0, 10).map((m: any, mi: number) => (
+                                                                <span key={mi} className={`w-5 h-5 rounded-md text-[8px] font-black flex items-center justify-center ${m.result === 'WIN' ? 'bg-green-600/30 text-green-400 border border-green-700/40' : 'bg-red-600/20 text-red-500 border border-red-800/30'}`}>
+                                                                    {m.result === 'WIN' ? 'W' : 'L'}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })
+                            )}
+                        </div>
+
+                        <button
+                            onClick={() => {
+                                audioManager.playSound('click');
+                                setShowLeaderboard(false);
+                            }}
+                            className="mt-5 w-full py-3 bg-stone-900 border border-stone-800 hover:border-stone-600 hover:text-white text-stone-400 font-bold text-xs tracking-[0.4em] uppercase transition-all rounded-xl cursor-pointer"
+                        >
+                            Close Terminal
+                        </button>
                     </div>
                 </div>
             )}
@@ -231,7 +674,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                         <button onClick={() => {
                             audioManager.playSound('click');
                             onStartGame(false);
-                        }} disabled={!inputName.trim()} className="col-span-8 px-4 py-5 bg-white text-black font-black text-xl hover:bg-stone-200 active:scale-[0.98] transition-all duration-300 disabled:opacity-20 disabled:grayscale tracking-[0.4em] rounded-xl shadow-[0_20px_50px_rgba(255,255,255,0.1)] relative overflow-hidden group/btn uppercase leading-none">
+                        }} disabled={!inputName.trim()} className="col-span-8 px-4 py-5 bg-white text-black font-black text-xl hover:bg-stone-200 active:scale-[0.98] transition-all duration-300 disabled:opacity-20 disabled:grayscale tracking-[0.4em] rounded-xl shadow-[0_20px_50px_rgba(255,255,255,0.1)] relative overflow-hidden group/btn uppercase leading-none cursor-pointer">
                             <div className="absolute inset-0 bg-gradient-to-r from-transparent via-black/10 to-transparent -translate-x-full group-hover/btn:translate-x-full transition-transform duration-1000" />
                             <span>START GAME</span>
                         </button>
@@ -239,14 +682,14 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                         <button onClick={() => {
                             audioManager.playSound('click');
                             onStartMultiplayer(inputName.trim());
-                        }} disabled={!inputName.trim()} className="col-span-4 py-5 bg-stone-950/60 border border-stone-800 text-stone-200 font-black text-[10px] md:text-sm hover:text-white hover:border-white active:scale-[0.98] transition-all duration-300 disabled:opacity-20 flex flex-col items-center justify-center gap-1 group rounded-xl hover:bg-stone-900/40 shadow-[0_10px_30px_rgba(255,255,255,0.02)] uppercase tracking-widest leading-none">
+                        }} disabled={!inputName.trim()} className="col-span-4 py-5 bg-stone-950/60 border border-stone-800 text-stone-200 font-black text-[10px] md:text-sm hover:text-white hover:border-white active:scale-[0.98] transition-all duration-300 disabled:opacity-20 flex flex-col items-center justify-center gap-1 group rounded-xl hover:bg-stone-900/40 shadow-[0_10px_30px_rgba(255,255,255,0.02)] uppercase tracking-widest leading-none cursor-pointer">
                             MULTIPLAYER
                         </button>
 
                         <button onClick={() => {
                             audioManager.playSound('click');
                             setShowHardModeWarning(true);
-                        }} disabled={!inputName.trim()} className="col-span-12 py-3 bg-stone-950/60 border border-red-900/40 text-red-600 font-black text-[9px] md:text-xs hover:text-red-500 hover:border-red-600 active:scale-[0.98] transition-all duration-300 disabled:opacity-20 flex flex-col items-center justify-center gap-1 group rounded-xl hover:bg-red-950/20 shadow-[0_10px_30px_rgba(220,38,38,0.05)] uppercase tracking-widest leading-none">
+                        }} disabled={!inputName.trim()} className="col-span-12 py-3 bg-stone-950/60 border border-red-900/40 text-red-600 font-black text-[9px] md:text-xs hover:text-red-500 hover:border-red-600 active:scale-[0.98] transition-all duration-300 disabled:opacity-20 flex flex-col items-center justify-center gap-1 group rounded-xl hover:bg-red-950/20 shadow-[0_10px_30px_rgba(220,38,38,0.05)] uppercase tracking-widest leading-none cursor-pointer">
                             HARD MODE
                         </button>
                     </div>
@@ -255,34 +698,53 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                         <button onClick={() => {
                             audioManager.playSound('click');
                             onOpenGuide();
-                        }} className="px-4 py-4 bg-stone-900/20 border border-stone-800/40 text-stone-500 font-black text-[9px] flex flex-col items-center justify-center gap-2 tracking-[0.3em] hover:text-cyan-400 hover:border-cyan-900/50 hover:bg-cyan-950/10 active:scale-95 transition-all duration-300 uppercase rounded-xl">
+                        }} className="px-4 py-4 bg-stone-900/20 border border-stone-800/40 text-stone-500 font-black text-[9px] flex flex-col items-center justify-center gap-2 tracking-[0.3em] hover:text-cyan-400 hover:border-cyan-900/50 hover:bg-cyan-950/10 active:scale-95 transition-all duration-300 uppercase rounded-xl cursor-pointer">
                             <HelpCircle size={18} className="text-stone-600" />
                             Guide
                         </button>
                         <button onClick={() => {
                             audioManager.playSound('click');
+                            if (!loggedInUser) {
+                                setShowLoginModal(true);
+                                return;
+                            }
                             onOpenScoreboard();
-                        }} className="px-4 py-4 bg-stone-900/20 border border-stone-800/40 text-stone-500 font-black text-[9px] flex flex-col items-center justify-center gap-2 tracking-[0.3em] hover:text-amber-500 hover:border-amber-900/50 hover:bg-amber-950/10 active:scale-95 transition-all duration-300 uppercase rounded-xl">
+                        }} className="px-4 py-4 bg-stone-900/20 border border-stone-800/40 text-stone-500 font-black text-[9px] flex flex-col items-center justify-center gap-2 tracking-[0.3em] hover:text-amber-500 hover:border-amber-900/50 hover:bg-amber-950/10 active:scale-95 transition-all duration-300 uppercase rounded-xl cursor-pointer relative">
                             <Trophy size={18} className="text-stone-600" />
                             Stats
+                            {!loggedInUser && <Lock size={10} className="absolute top-2 right-2 text-red-600/60" />}
                         </button>
                         <button onClick={() => {
                             audioManager.playSound('click');
                             onOpenSettings();
-                        }} className="px-4 py-4 bg-stone-900/20 border border-stone-800/40 text-stone-500 font-black text-[9px] flex flex-col items-center justify-center gap-2 tracking-[0.3em] hover:text-stone-100 hover:border-stone-600 hover:bg-stone-800/40 active:scale-95 transition-all duration-300 uppercase rounded-xl">
+                        }} className="px-4 py-4 bg-stone-900/20 border border-stone-800/40 text-stone-500 font-black text-[9px] flex flex-col items-center justify-center gap-2 tracking-[0.3em] hover:text-stone-100 hover:border-stone-600 hover:bg-stone-800/40 active:scale-95 transition-all duration-300 uppercase rounded-xl cursor-pointer">
                             <SettingsIcon size={18} className="text-stone-600" />
                             Config
                         </button>
                     </div>
+
+                    {/* Leaderboard Button */}
+                    <button
+                        onClick={() => {
+                            audioManager.playSound('click');
+                            loadLeaderboardData();
+                            setShowLeaderboard(true);
+                        }}
+                        className="mt-2 w-full py-4 bg-gradient-to-r from-amber-950/20 via-stone-900/20 to-amber-950/20 border border-amber-900/30 text-amber-600/80 font-black text-[10px] md:text-xs flex items-center justify-center gap-3 tracking-[0.3em] hover:text-amber-400 hover:border-amber-600/50 hover:bg-amber-950/20 active:scale-[0.98] transition-all duration-300 uppercase rounded-xl cursor-pointer hover:shadow-[0_0_20px_rgba(245,158,11,0.1)] group/lb"
+                    >
+                        <Crown size={16} className="text-amber-700 group-hover/lb:text-amber-400 transition-colors group-hover/lb:rotate-[-10deg] transition-transform duration-300" />
+                        Global Leaderboard
+                        <Crown size={16} className="text-amber-700 group-hover/lb:text-amber-400 transition-colors group-hover/lb:rotate-[10deg] transition-transform duration-300" />
+                    </button>
                 </div>
 
-                <div className="mt-12 flex flex-col items-center gap-4">
+                <div className="mt-8 flex flex-col items-center gap-4">
                     {!isStandalone && (isInstallable || isMobile || isIOS) && (
                         <button
                             onClick={handleInstallClick}
-                            className="px-6 py-2 rounded-full border border-blue-900/30 bg-blue-950/20 text-blue-500 text-[10px] font-black tracking-[0.5em] hover:bg-blue-900/30 hover:text-blue-400 transition-all animate-pulse uppercase"
+                            className="px-6 py-2 rounded-full border border-blue-900/30 bg-blue-950/20 text-blue-500 text-[10px] font-black tracking-[0.5em] hover:bg-blue-900/30 hover:text-blue-400 transition-all animate-pulse uppercase cursor-pointer"
                         >
-                            Deploy Local App
+                            Download the App
                         </button>
                     )}
                     {isStandalone ? (

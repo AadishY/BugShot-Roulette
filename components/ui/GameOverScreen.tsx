@@ -8,6 +8,7 @@ interface GameOverScreenProps {
     winner: TurnOwner | null;
     onResetGame: (toMenu: boolean) => void;
     matchData?: MatchStats;
+    isDebugUsed?: boolean; // Added
 }
 
 const WIN_QUOTES = [
@@ -33,7 +34,7 @@ const LOSS_QUOTES = [
 ];
 
 
-export const GameOverScreen: React.FC<GameOverScreenProps> = ({ winner, onResetGame, matchData }) => {
+export const GameOverScreen: React.FC<GameOverScreenProps> = ({ winner, onResetGame, matchData, isDebugUsed }) => {
     const [stats, setStats] = useState<GameStats | null>(null);
     const [finalScore, setFinalScore] = useState(0);
     const [displayedScore, setDisplayedScore] = useState(0);
@@ -45,7 +46,21 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ winner, onResetG
         setQuote(quotes[Math.floor(Math.random() * quotes.length)]);
 
         if (matchData && !hasSavedRef.current) {
-            saveGameStats(matchData);
+            // Check if current user is developer (devs can save stats even with debug)
+            let isDeveloper = false;
+            try {
+                const loggedInUser = localStorage.getItem('aadish_roulette_logged_in_user');
+                if (loggedInUser) {
+                    const u = JSON.parse(loggedInUser);
+                    isDeveloper = u.username?.toLowerCase() === (import.meta.env.VITE_DEV_USERNAME || 'aadish').toLowerCase();
+                }
+            } catch (e) {}
+
+            if (!isDebugUsed || isDeveloper) {
+                saveGameStats(matchData);
+            } else {
+                console.log("Stats NOT saved: debug cheats used.");
+            }
             hasSavedRef.current = true;
             const score = calculateMatchScore(matchData);
             setFinalScore(score);
@@ -53,7 +68,7 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ winner, onResetG
         } else if (!matchData) {
             setStats(getStoredStats());
         }
-    }, [matchData, winner]);
+    }, [matchData, winner, isDebugUsed]);
 
     useEffect(() => {
         if (finalScore === 0) return;
@@ -71,6 +86,16 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ winner, onResetG
         animationFrame = requestAnimationFrame(animate);
         return () => cancelAnimationFrame(animationFrame);
     }, [finalScore]);
+
+    const getRankInfo = (score: number) => {
+        if (score >= 3000) return { rank: 'S', label: 'DEATH DEFIER', color: 'text-red-500 animate-pulse drop-shadow-[0_0_15px_rgba(239,68,68,0.6)]' };
+        if (score >= 2000) return { rank: 'A', label: 'SURVIVALIST', color: 'text-orange-500 drop-shadow-[0_0_10px_rgba(249,115,22,0.4)]' };
+        if (score >= 1000) return { rank: 'B', label: 'LUCKY SHOT', color: 'text-yellow-500' };
+        if (score > 0) return { rank: 'C', label: 'CORPSE', color: 'text-stone-400' };
+        return { rank: 'F', label: 'COWARD', color: 'text-stone-600' };
+    };
+
+    const rankInfo = getRankInfo(finalScore);
 
     return (
         <div className="absolute inset-0 z-[300] flex flex-col items-center justify-center bg-black/90 backdrop-blur-xl pointer-events-auto overflow-y-auto py-10 text-stone-200 font-sans select-none animate-in fade-in duration-1000">
@@ -93,11 +118,24 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ winner, onResetG
                         — {quote} —
                     </p>
 
-                    <div className="mt-4 px-8 py-4 bg-stone-900/40 backdrop-blur-md border border-white/5 rounded-2xl">
-                        <div className="text-[10px] text-stone-500 font-bold tracking-[0.5em] uppercase mb-1">Combat Rating</div>
-                        <div className="text-4xl md:text-6xl text-yellow-500 font-black tracking-tight tabular-nums drop-shadow-[0_0_20px_rgba(234,179,8,0.3)]">
-                            {displayedScore.toLocaleString()}
+                    <div className="mt-4 flex flex-col sm:flex-row gap-4 items-center justify-center">
+                        <div className="px-8 py-4 bg-stone-900/40 backdrop-blur-md border border-white/5 rounded-2xl w-56">
+                            <div className="text-[10px] text-stone-500 font-bold tracking-[0.3em] uppercase mb-1">Combat Rating</div>
+                            <div className="text-3xl md:text-4xl text-yellow-500 font-black tracking-tight tabular-nums drop-shadow-[0_0_20px_rgba(234,179,8,0.3)]">
+                                {displayedScore.toLocaleString()}
+                            </div>
                         </div>
+                        {finalScore > 0 && (
+                            <div className="px-8 py-3 bg-stone-900/40 backdrop-blur-md border border-white/5 rounded-2xl flex items-center gap-4 w-56 text-left">
+                                <div className={`text-4xl md:text-5xl font-black ${rankInfo.color} select-none`}>
+                                    {rankInfo.rank}
+                                </div>
+                                <div>
+                                    <div className="text-[9px] text-stone-500 font-bold tracking-widest uppercase">Class Rank</div>
+                                    <div className="text-[10px] text-white font-extrabold tracking-wider uppercase">{rankInfo.label}</div>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
 

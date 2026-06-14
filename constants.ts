@@ -26,7 +26,8 @@ export const DEFAULT_SETTINGS: GameSettings = {
   uiScale: 0.8,
   fov: 60,
   musicVolume: 0.3,
-  sfxVolume: 1.0
+  sfxVolume: 1.0,
+  debugMode: false
 };
 
 export const GAME_VERSION = '1.0.6';

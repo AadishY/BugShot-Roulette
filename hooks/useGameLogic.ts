@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+  import { useState, useEffect, useRef } from 'react';
 import { GameState, PlayerState, ShellType, ItemType, LogEntry, TurnOwner, CameraView, AimTarget, AnimationState, RoomSettings } from '../types';
 import { MAX_HP, MAX_ITEMS, ITEMS } from '../constants';
 import { randomInt, wait } from '../utils/gameUtils';
@@ -43,6 +43,22 @@ export const useGameLogic = () => {
     isHandcuffed: false,
     isSawedActive: false,
   });
+
+  const gameStateRef = useRef(gameState);
+  const playerRef = useRef(player);
+  const dealerRef = useRef(dealer);
+
+  useEffect(() => {
+    gameStateRef.current = gameState;
+  }, [gameState]);
+
+  useEffect(() => {
+    playerRef.current = player;
+  }, [player]);
+
+  useEffect(() => {
+    dealerRef.current = dealer;
+  }, [dealer]);
 
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [knownShell, setKnownShell] = useState<ShellType | null>(null);
@@ -274,8 +290,8 @@ export const useGameLogic = () => {
   ) => {
     // Resolve Hard Mode State
     // Prioritize override, then current state
-    const isHM = hardModeOverride !== undefined ? hardModeOverride : gameState.isHardMode;
-    const hmState = hardModeStateOverride !== undefined ? hardModeStateOverride : gameState.hardModeState;
+    const isHM = hardModeOverride !== undefined ? hardModeOverride : gameStateRef.current.isHardMode;
+    const hmState = hardModeStateOverride !== undefined ? hardModeStateOverride : gameStateRef.current.hardModeState;
 
     let chamber: ShellType[];
     let lives: number;
@@ -315,7 +331,7 @@ export const useGameLogic = () => {
     }));
 
     if (!resetItems && !isHM) {
-      matchStatsRef.current.roundsSurvived = (gameState.roundCount || 0) + 1;
+      matchStatsRef.current.roundsSurvived = (gameStateRef.current.roundCount || 0) + 1;
     } else {
       if (!isHM) matchStatsRef.current.roundsSurvived = 1;
       // In HM, roundsSurvived could track match rounds
@@ -323,7 +339,7 @@ export const useGameLogic = () => {
 
     setKnownShell(null);
     setAnim({ dealerDropping: false, playerHit: false });
-    setCameraView('TABLE');
+    setCameraView(turnOwnerOverride || 'PLAYER');
 
     // Hard Mode HP Setup
     let startingHp = hpOverride || MAX_HP;
@@ -347,11 +363,11 @@ export const useGameLogic = () => {
     setIsProcessing(true);
 
     // 1. Show ROUND X announcement
-    let displayRound = gameState.roundCount + 1;
+    let displayRound = gameStateRef.current.roundCount + 1;
     if (isHM) {
       displayRound = hmState?.round || 1;
-    } else if (gameState.isMultiplayer) {
-      const wins = multiWinsOverride || gameState.multiModeState;
+    } else if (gameStateRef.current.isMultiplayer) {
+      const wins = multiWinsOverride || gameStateRef.current.multiModeState;
       displayRound = (wins?.playerWins || 0) + (wins?.opponentWins || 0) + 1;
     }
 
@@ -381,15 +397,15 @@ export const useGameLogic = () => {
 
     // Construct effective state for distribution
     const effectiveState = {
-      ...gameState,
+      ...gameStateRef.current,
       isHardMode: isHM,
       hardModeState: hmState,
-      roundCount: resetItems ? 1 : gameState.roundCount + 1
+      roundCount: resetItems ? 1 : gameStateRef.current.roundCount + 1
     };
 
     await distributeItemsAction(
       resetItems, effectiveState, setPlayer, setDealer, setGameState,
-      setReceivedItems, setShowLootOverlay, dealer.hp,
+      setReceivedItems, setShowLootOverlay, dealerRef.current.hp,
       pItemsOverride, dItemsOverride
     );
 
@@ -410,7 +426,7 @@ export const useGameLogic = () => {
   const handleHardModeRoundEnd = async (winner: TurnOwner) => {
     setIsProcessing(true);
 
-    const currentState = gameState.hardModeState || { round: 1, playerWins: 0, dealerWins: 0 };
+    const currentState = gameStateRef.current.hardModeState || { round: 1, playerWins: 0, dealerWins: 0 };
     const currentRound = currentState.round;
 
     let nextState = { ...currentState };
@@ -473,12 +489,12 @@ export const useGameLogic = () => {
   const handleMPRoundEnd = async (winner: TurnOwner) => {
     setIsProcessing(true);
 
-    const mSettings = gameState.roomSettings || { rounds: 1, hp: 4 };
+    const mSettings = gameStateRef.current.roomSettings || { rounds: 1, hp: 4 };
     const winsNeeded = Math.ceil(mSettings.rounds / 2) || 1;
 
     // Increment wins locally first
-    let pWin = (gameState.multiModeState?.playerWins || 0) + (winner === 'PLAYER' ? 1 : 0);
-    let oWin = (gameState.multiModeState?.opponentWins || 0) + (winner === 'PLAYER' ? 0 : 1);
+    let pWin = (gameStateRef.current.multiModeState?.playerWins || 0) + (winner === 'PLAYER' ? 1 : 0);
+    let oWin = (gameStateRef.current.multiModeState?.opponentWins || 0) + (winner === 'PLAYER' ? 0 : 1);
 
     setGameState(prev => ({
       ...prev,
@@ -518,14 +534,14 @@ export const useGameLogic = () => {
 
   const distributeItems = async (forceClear: boolean = false) => {
     await distributeItemsAction(
-      forceClear, gameState, setPlayer, setDealer, setGameState,
-      setReceivedItems, setShowLootOverlay, dealer.hp
+      forceClear, gameStateRef.current, setPlayer, setDealer, setGameState,
+      setReceivedItems, setShowLootOverlay, dealerRef.current.hp
     );
   };
 
   const pickupGun = () => {
     if (isProcessing) return;
-    if (gameState.turnOwner !== 'PLAYER') {
+    if (gameStateRef.current.turnOwner !== 'PLAYER') {
       addLog("NOT YOUR TURN TO PICK UP THE GUN", 'info');
       return;
     }
@@ -542,15 +558,15 @@ export const useGameLogic = () => {
 
   const fireShot = async (shooter: TurnOwner, target: TurnOwner) => {
     // Basic phase check
-    if (gameState.phase !== 'PLAYER_TURN' && gameState.phase !== 'DEALER_TURN' && gameState.phase !== 'RESOLVING') return;
+    if (gameStateRef.current.phase !== 'PLAYER_TURN' && gameStateRef.current.phase !== 'DEALER_TURN' && gameStateRef.current.phase !== 'RESOLVING') return;
 
     // Strict turn check for local player
-    if (shooter === 'PLAYER' && gameState.turnOwner !== 'PLAYER') {
+    if (shooter === 'PLAYER' && gameStateRef.current.turnOwner !== 'PLAYER') {
       console.warn("Attempted to fire out of turn.");
       return;
     }
 
-    if (isProcessing) return;
+    if (shooter === 'PLAYER' && isProcessing) return;
     // setIsProcessing(true); // Lock input immediately to prevent mobile touch interference - moved below
 
     // Trigger Gun Animation for BOTH Player and Dealer
@@ -586,7 +602,7 @@ export const useGameLogic = () => {
     if (target === shooter) matchStatsRef.current.selfShots++;
 
     await performShot(shooter, target, {
-      gameState, setGameState, player, setPlayer, dealer, setDealer,
+      gameState: gameStateRef.current, setGameState, player: playerRef.current, setPlayer, dealer: dealerRef.current, setDealer,
       setAnim, setKnownShell, setAimTarget, setCameraView, setOverlayText,
       setOverlayColor, setShowFlash, setShowBlood, addLog, playerName,
       startRound, setIsProcessing,
@@ -601,9 +617,9 @@ export const useGameLogic = () => {
 
   const processItemEffect = async (user: TurnOwner, item: ItemType): Promise<boolean> => {
     if (item === 'CUFFS') {
-      const opponent = user === 'PLAYER' ? dealer : player;
+      const opponent = user === 'PLAYER' ? dealerRef.current : playerRef.current;
       // Check if opponent is already cuffed OR if we just skipped their turn via cuffs
-      if (opponent.isHandcuffed || gameState.lastTurnWasSkipped) {
+      if (opponent.isHandcuffed || gameStateRef.current.lastTurnWasSkipped) {
         addLog(`${user === 'PLAYER' ? getOpponentName().toUpperCase() : 'YOU'} CAN'T BE CUFFED AGAIN!`, 'info');
         if (user === 'PLAYER') {
           setPlayer(p => ({ ...p, items: [...p.items, 'CUFFS'] }));
@@ -630,7 +646,7 @@ export const useGameLogic = () => {
       case 'BEER':
         audioManager.playSound('blankshell');
         roundEnded = await ItemActions.handleBeer(
-          gameState, setGameState,
+          gameStateRef.current, setGameState,
           (v) => setAnim(p => ({ ...p, triggerRack: typeof v === 'function' ? v(p.triggerRack) : v })),
           (v) => setAnim(p => ({ ...p, ejectedShellColor: typeof v === 'function' ? v(p.ejectedShellColor) : v })),
           (v) => setAnim(p => ({ ...p, triggerDrink: typeof v === 'function' ? v(p.triggerDrink) : v })),
@@ -659,14 +675,14 @@ export const useGameLogic = () => {
         break;
 
       case 'GLASS':
-        await ItemActions.handleGlass(user, gameState, setKnownShell,
+        await ItemActions.handleGlass(user, gameStateRef.current, setKnownShell,
           (v) => setAnim(p => ({ ...p, triggerGlass: typeof v === 'function' ? v(p.triggerGlass) : v })),
           addLog
         );
         break;
 
       case 'PHONE':
-        await ItemActions.handlePhone(user, gameState,
+        await ItemActions.handlePhone(user, gameStateRef.current,
           (v) => setAnim(p => ({ ...p, triggerPhone: typeof v === 'function' ? v(p.triggerPhone) : v })),
           addLog,
           setOverlayText
@@ -674,7 +690,7 @@ export const useGameLogic = () => {
         break;
 
       case 'INVERTER':
-        await ItemActions.handleInverter(user, gameState, setGameState,
+        await ItemActions.handleInverter(user, gameStateRef.current, setGameState,
           (v) => setAnim(p => ({ ...p, triggerInverter: typeof v === 'function' ? v(p.triggerInverter) : v })),
           addLog,
           setOverlayText
@@ -682,7 +698,7 @@ export const useGameLogic = () => {
         break;
 
       case 'BIG_INVERTER':
-        await ItemActions.handleBigInverter(user, gameState, setGameState,
+        await ItemActions.handleBigInverter(user, gameStateRef.current, setGameState,
           (v) => setAnim(p => ({ ...p, triggerBigInverter: typeof v === 'function' ? v(p.triggerBigInverter) : v })),
           addLog,
           setOverlayText
@@ -706,7 +722,7 @@ export const useGameLogic = () => {
         break;
 
       case 'REMOTE':
-        await ItemActions.handleRemote(user, gameState, setGameState,
+        await ItemActions.handleRemote(user, gameStateRef.current, setGameState,
           (v) => setAnim(p => ({ ...p, triggerRemote: typeof v === 'function' ? v(p.triggerRemote) : v })),
           addLog,
           setOverlayText
@@ -729,8 +745,8 @@ export const useGameLogic = () => {
   };
 
   const usePlayerItem = async (index: number) => {
-    if (gameState.phase !== 'PLAYER_TURN') return;
-    if (gameState.turnOwner !== 'PLAYER') return; // Strict turn check
+    if (gameStateRef.current.phase !== 'PLAYER_TURN') return;
+    if (gameStateRef.current.turnOwner !== 'PLAYER') return; // Strict turn check
     if (isProcessing) return;
 
     // Check if gun is held - blocking all item usage
@@ -740,12 +756,12 @@ export const useGameLogic = () => {
       return;
     }
 
-    const item = player.items[index];
+    const item = playerRef.current.items[index];
     if (!item) return;
 
     // Logic for ADRENALINE (Must have something to steal)
     if (item === 'ADRENALINE') {
-      const stealableItems = dealer.items.filter(i => i !== 'ADRENALINE' && i !== null);
+      const stealableItems = dealerRef.current.items.filter(i => i !== 'ADRENALINE' && i !== null);
       if (stealableItems.length === 0) {
         addLog("NOTHING TO STEAL", 'info');
         return;
@@ -754,7 +770,7 @@ export const useGameLogic = () => {
 
     setIsProcessing(true);
 
-    const newItems = [...player.items];
+    const newItems = [...playerRef.current.items];
     newItems.splice(index, 1);
     setPlayer(p => ({ ...p, items: newItems }));
 
@@ -772,8 +788,8 @@ export const useGameLogic = () => {
     // Prevent actions during steal
     if (isProcessing) return;
 
-    const target = stealer === 'PLAYER' ? dealer : player;
-    const user = stealer === 'PLAYER' ? player : dealer;
+    const target = stealer === 'PLAYER' ? dealerRef.current : playerRef.current;
+    const user = stealer === 'PLAYER' ? playerRef.current : dealerRef.current;
     const setUser = stealer === 'PLAYER' ? setPlayer : setDealer;
     const setTarget = stealer === 'PLAYER' ? setDealer : setPlayer;
 
@@ -796,7 +812,7 @@ export const useGameLogic = () => {
     newTargetItems.splice(index, 1);
     setTarget(prev => ({ ...prev, items: newTargetItems }));
 
-    const stealerName = stealer === 'PLAYER' ? (playerName || 'PLAYER') : (gameState.opponentName || 'OPPONENT');
+    const stealerName = stealer === 'PLAYER' ? (playerName || 'PLAYER') : (gameStateRef.current.opponentName || 'OPPONENT');
     addLog(`${stealerName.toUpperCase()} STOLE ${itemToSteal}`, 'info');
     setOverlayText(`🎯 ${stealerName.toUpperCase()} STOLE ${itemToSteal}!`);
     await wait(800);
@@ -842,15 +858,16 @@ export const useGameLogic = () => {
     setCameraView,
     setDealer,
     setPlayer,
+    setGameState,
     processItemEffect,
     resetGame,
     setPlayerName,
     pickupGun: (picker: TurnOwner = 'PLAYER') => {
-      if (gameState.phase !== 'PLAYER_TURN' && gameState.phase !== 'DEALER_TURN' && gameState.phase !== 'RESOLVING') return;
+      if (gameStateRef.current.phase !== 'PLAYER_TURN' && gameStateRef.current.phase !== 'DEALER_TURN' && gameStateRef.current.phase !== 'RESOLVING') return;
 
       // Strict turn check
-      if (picker === 'PLAYER' && gameState.turnOwner !== 'PLAYER') return;
-      if (picker === 'DEALER' && gameState.turnOwner !== 'DEALER') return;
+      if (picker === 'PLAYER' && gameStateRef.current.turnOwner !== 'PLAYER') return;
+      if (picker === 'DEALER' && gameStateRef.current.turnOwner !== 'DEALER') return;
 
       if (picker === 'PLAYER') {
         setCameraView('GUN');

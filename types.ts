@@ -29,6 +29,7 @@ export interface GameState {
     playerWins: number;
     opponentWins: number;
   };
+  isDebugUsed?: boolean; // Added
 }
 
 export interface MultiplayerGameState {
@@ -110,6 +111,7 @@ export interface GameSettings {
   fov: number;
   musicVolume: number;
   sfxVolume: number;
+  debugMode?: boolean;
 }
 
 export interface SceneContext {

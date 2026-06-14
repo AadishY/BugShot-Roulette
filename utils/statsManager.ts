@@ -60,12 +60,12 @@ export const getStoredStats = (): GameStats => {
 };
 
 export const calculateMatchScore = (stats: MatchStats): number => {
-    if (stats.result === 'LOSS') return 0;
-
     let score = 0;
 
     // Base Score
-    score += 1000;
+    if (stats.result === 'WIN') {
+        score += 1000;
+    }
     score += stats.roundsSurvived * 100;
 
     // Performance
@@ -89,6 +89,8 @@ export const calculateMatchScore = (stats: MatchStats): number => {
 
     return score;
 };
+
+import { saveUserStatsToRedis } from './redisService';
 
 export const saveGameStats = (matchStats: MatchStats) => {
     const current = getStoredStats();
@@ -125,5 +127,21 @@ export const saveGameStats = (matchStats: MatchStats) => {
     if (current.matchHistory.length > 20) current.matchHistory.pop();
 
     localStorage.setItem(STORAGE_KEY, JSON.stringify(current));
+
+    // Async sync to Upstash Redis if user session is active
+    const loggedInUser = localStorage.getItem('aadish_roulette_logged_in_user');
+    if (loggedInUser) {
+        try {
+            const userObj = JSON.parse(loggedInUser);
+            if (userObj && userObj.username) {
+                saveUserStatsToRedis(userObj.username, current).catch(err => {
+                    console.error("Failed to sync stats to Redis:", err);
+                });
+            }
+        } catch (e) {
+            console.error("Error parsing logged-in user for Redis sync:", e);
+        }
+    }
+
     return current;
 };
