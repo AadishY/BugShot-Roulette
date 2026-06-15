@@ -147,7 +147,7 @@ export const useGameLogic = () => {
     };
   };
 
-  const resetGame = (toMenu: boolean = false) => {
+  const resetGame = (toMenu: boolean = false, startRoundAfterReset: boolean = true) => {
     if (resetTimeoutRef.current) {
       clearTimeout(resetTimeoutRef.current);
       resetTimeoutRef.current = null;
@@ -184,7 +184,7 @@ export const useGameLogic = () => {
     setShowBlood(false);
     setIsProcessing(false);
 
-    if (!toMenu) {
+    if (!toMenu && startRoundAfterReset) {
       resetTimeoutRef.current = setTimeout(() => {
         startRound(true);
         resetTimeoutRef.current = null;

@@ -112,6 +112,7 @@ export interface GameSettings {
   musicVolume: number;
   sfxVolume: number;
   debugMode?: boolean;
+  ultraPerformance?: boolean;
 }
 
 export interface SceneContext {

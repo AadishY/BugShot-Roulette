@@ -33,7 +33,8 @@ const getInitialSettings = (): GameSettings => {
       fov: 60,
       musicVolume: 0.5,
       sfxVolume: 0.5,
-      debugMode: false
+      debugMode: false,
+      ultraPerformance: false
     };
   } else {
     // PC
@@ -44,7 +45,8 @@ const getInitialSettings = (): GameSettings => {
       fov: 60,
       musicVolume: 0.5,
       sfxVolume: 1.0,
-      debugMode: false
+      debugMode: false,
+      ultraPerformance: false
     };
   }
 };

@@ -197,6 +197,20 @@ export const SettingsMenu: React.FC<SettingsMenuProps> = ({ settings, onUpdateSe
                             </div>
 
                         </div>
+
+                        {/* Ultra Performance Toggle */}
+                        <div className="flex items-center justify-between p-4 bg-amber-950/15 border border-amber-900/35 rounded-xl mt-3">
+                            <div>
+                                <span className="text-stone-300 font-bold tracking-widest text-[10px] uppercase block">Ultra Performance Mode</span>
+                                <span className="text-[9px] text-stone-500 font-bold uppercase tracking-wider block mt-1">Disables heavy shaders, scanlines, glows, particles, and details for ultra 60FPS on low-end devices.</span>
+                            </div>
+                            <button
+                                onClick={() => handleChange('ultraPerformance', !settings.ultraPerformance)}
+                                className={`px-4 py-2 text-[10px] font-black tracking-widest uppercase transition-all rounded-lg border active:scale-95 ${settings.ultraPerformance ? 'bg-amber-600 hover:bg-amber-500 text-white border-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.3)]' : 'bg-transparent hover:bg-stone-900 text-stone-400 border-stone-850'}`}
+                            >
+                                {settings.ultraPerformance ? 'Active' : 'Inactive'}
+                            </button>
+                        </div>
                     </div>
 
                     {/* Audio Group */}

@@ -64,8 +64,8 @@ export const BootScreen: React.FC<BootScreenProps> = ({ onContinue }) => {
             </div>
             <div className="flex-1 flex flex-col justify-center max-w-lg mx-auto w-full gap-3 sm:gap-4 my-auto">
                 <div className="text-green-500 text-[11px] sm:text-sm space-y-1 h-[30vh] max-h-[10rem] sm:max-h-[12rem] overflow-hidden flex flex-col justify-end">
-                    {bootLines.map((line, i) => <div key={i} className="typewriter truncate">{`> ${line}`}</div>)}
-                    <div className="text-green-500 animate-pulse">_</div>
+                    {bootLines.map((line, i) => <div key={i} className="typewriter truncate text-green-400 drop-shadow-[0_0_6px_rgba(74,222,128,0.5)]">{`> ${line}`}</div>)}
+                    <div className="text-green-400 animate-pulse drop-shadow-[0_0_6px_rgba(74,222,128,0.5)]">_</div>
                 </div>
                 <div className="w-full h-3 sm:h-4 bg-stone-900 border border-stone-850 p-0.5 relative rounded-sm overflow-hidden shadow-inner">
                     <div 

@@ -69,8 +69,8 @@ const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, 
                 <div className="flex items-center gap-2 md:gap-4 mt-2 md:mt-4">
                     <div className="h-[1px] w-4 md:w-16 bg-gradient-to-r from-transparent via-stone-800 to-stone-800" />
                     <div className="flex items-center gap-1 md:gap-2 bg-stone-900/40 px-2 md:px-4 py-1 rounded-lg border border-white/5">
-                        <Icons.Saw size={12} className="text-stone-500 md:hidden" />
-                        <Icons.Saw size={16} className="text-stone-500 hidden md:block" />
+                        <Icons.Shell size={12} className="text-stone-400 md:hidden" />
+                        <Icons.Shell size={16} className="text-stone-400 hidden md:block" />
                         <span className="text-stone-100 font-black text-[10px] md:text-xl tracking-[0.2em] tabular-nums leading-none">
                             {gameState.liveCount + gameState.blankCount}
                         </span>

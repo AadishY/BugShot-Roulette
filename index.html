@@ -739,6 +739,24 @@
         background-color: #000;
       }
     }
+
+    /* Ultra Performance Overrides */
+    .ultra-perf, .ultra-perf * {
+      box-shadow: none !important;
+      text-shadow: none !important;
+      filter: none !important;
+      backdrop-filter: none !important;
+      -webkit-backdrop-filter: none !important;
+      animation: none !important;
+      transition: none !important;
+    }
+    .ultra-perf .crt-overlay,
+    .ultra-perf .vhs-static,
+    .ultra-perf .scan-line,
+    .ultra-perf .blood-overlay {
+      display: none !important;
+      opacity: 0 !important;
+    }
   </style>
 
   <script type="importmap">

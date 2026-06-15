@@ -428,17 +428,21 @@ export default function App() {
 
   const handleRestartSP = () => {
     setAppState('LOADING_SP');
-    spGame.resetGame(false);
+    spGame.resetGame(false, false);
   };
 
   return (
     <div
-      className={`relative w-full h-screen bg-black overflow-hidden select-none crt text-stone-200 cursor-crosshair animate-in fade-in duration-1000 ${spGame.gameState.isHardMode ? 'hardmode-scanline' : ''}`}
+      className={`relative w-full h-screen bg-black overflow-hidden select-none crt text-stone-200 cursor-crosshair animate-in fade-in duration-1000 ${spGame.gameState.isHardMode ? 'hardmode-scanline' : ''} ${settings.ultraPerformance ? 'ultra-perf' : ''}`}
       onClick={() => audioManager.initialize()}
       onKeyDown={() => audioManager.initialize()}
     >
-      <div className="crt-overlay opacity-[0.15] pointer-events-none" />
-      <div className="vhs-static" />
+      {!settings.ultraPerformance && (
+        <>
+          <div className="crt-overlay opacity-[0.15] pointer-events-none" />
+          <div className="vhs-static" />
+        </>
+      )}
 
       {spGame.gameState.isHardMode && (
         <div className="absolute inset-0 z-[60] pointer-events-none bg-red-900/[0.02] mix-blend-color-burn animate-pulse" />
@@ -507,7 +511,7 @@ export default function App() {
           } else {
             // @ts-ignore
             setAppState('LOADING_SP');
-            spGame.resetGame(false);
+            spGame.resetGame(false, false);
           }
         }}
         onFireShot={handleFireShot}

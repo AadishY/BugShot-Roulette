@@ -90,7 +90,7 @@ export const initThreeScene = (container: HTMLElement, props: any): SceneContext
     const pixelRatio = window.devicePixelRatio || 1;
 
     // Aggressive Low-End Check
-    const isLowEndDevice = isMobile && (isAndroid || width < 600 || pixelRatio < 2 || navigator.hardwareConcurrency < 6);
+    const isLowEndDevice = (isMobile && (isAndroid || width < 600 || pixelRatio < 2 || navigator.hardwareConcurrency < 6)) || !!props.settings.ultraPerformance;
 
     const renderer = new THREE.WebGLRenderer({
         antialias: false,
@@ -98,29 +98,29 @@ export const initThreeScene = (container: HTMLElement, props: any): SceneContext
         alpha: false,
         stencil: false,
         depth: true, // Keep depth
-        precision: isMobile ? 'lowp' : 'mediump' // Standardize across devices for consistency
+        precision: (isMobile || props.settings.ultraPerformance) ? 'lowp' : 'mediump' // Standardize across devices for consistency
     });
 
     // Mobile Optimization: Aggressive resolution scaling
     let mobilePixelScale = 2; // Default mobile
     if (isMobile) {
-        mobilePixelScale = isLowEndDevice ? 4.5 : 3.5;
+        mobilePixelScale = props.settings.ultraPerformance ? 5.5 : (isLowEndDevice ? 4.5 : 3.5);
     } else if (isTablet) {
-        mobilePixelScale = 2.2;
+        mobilePixelScale = props.settings.ultraPerformance ? 4.0 : 2.2;
     }
 
     // Desktop: default to 3 or user setting. Mobile: strictly optimized.
-    const pixelScale = (isMobile || isTablet) ? mobilePixelScale : (props.settings.pixelScale || 3);
+    const pixelScale = (isMobile || isTablet) ? mobilePixelScale : (props.settings.ultraPerformance ? 5.0 : (props.settings.pixelScale || 3));
 
-    const maxPixelRatio = isMobile ? 1.0 : (isTablet ? 1.2 : Math.min(window.devicePixelRatio, 2)); // Cap at 2x for desktop
+    const maxPixelRatio = (isMobile || props.settings.ultraPerformance) ? 1.0 : (isTablet ? 1.2 : Math.min(window.devicePixelRatio, 2)); // Cap at 2x for desktop
     renderer.setPixelRatio(maxPixelRatio);
     renderer.setSize(width / pixelScale, height / pixelScale, false);
     renderer.domElement.style.width = '100%';
     renderer.domElement.style.height = '100%';
     renderer.domElement.style.imageRendering = 'pixelated'; // Essential for the look
 
-    // Disable shadows completely on ALL mobile/tablet devices for max FPS
-    renderer.shadowMap.enabled = (device === 'pc');
+    // Disable shadows completely on ALL mobile/tablet devices or when ultraPerformance is active
+    renderer.shadowMap.enabled = (device === 'pc') && !props.settings.ultraPerformance;
     renderer.shadowMap.type = (device === 'pc') ? THREE.PCFSoftShadowMap : THREE.BasicShadowMap;
 
     // Tone mapping
@@ -136,7 +136,7 @@ export const initThreeScene = (container: HTMLElement, props: any): SceneContext
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
 
-    const lights = setupLighting(scene);
+    const lights = setupLighting(scene, props.settings);
     // ... lights setup array ...
     const baseLights = [
         { light: lights.bulbLight, baseIntensity: lights.bulbLight?.intensity },
@@ -150,9 +150,9 @@ export const initThreeScene = (container: HTMLElement, props: any): SceneContext
         { light: lights.underLight, baseIntensity: lights.underLight?.intensity }
     ].filter(bl => bl.light) as { light: THREE.Light, baseIntensity: number }[];
 
-    createEnvironment(scene, isMobile);
-    const dustParticles = createDust(scene, isMobile);
-    createTable(scene);
+    createEnvironment(scene, isMobile, props.settings.ultraPerformance);
+    const dustParticles = createDust(scene, isMobile, props.settings.ultraPerformance);
+    createTable(scene, props.settings.ultraPerformance);
 
     const { gunGroup, barrelMesh, shortBarrelMesh, sawCut, muzzleFlash, pump, magTube, shortMagTube, chokeMesh, sight, sSight } = createGunModel(scene);
 
@@ -203,9 +203,8 @@ export const initThreeScene = (container: HTMLElement, props: any): SceneContext
         c.userData.type = 'GUN';
     });
 
-    // Particles - HEAVILY REDUCED for Mobile
-    // Mobile: 20 particles max. Low-end: 10. PC: 100
-    const particleCount = isLowEndDevice ? 10 : (isMobile ? 25 : 100);
+    // Particles - HEAVILY REDUCED for Mobile / Ultra Performance
+    const particleCount = props.settings.ultraPerformance ? 2 : (isLowEndDevice ? 10 : (isMobile ? 25 : 100));
     const particles = new THREE.BufferGeometry();
     const pPositions = new Float32Array(particleCount * 3);
     const pVelocities = new Float32Array(particleCount * 3);
@@ -240,7 +239,7 @@ export const initThreeScene = (container: HTMLElement, props: any): SceneContext
     bloodParticles.frustumCulled = false;
     scene.add(bloodParticles);
 
-    const sparkCount = isLowEndDevice ? 8 : (isMobile ? 20 : 80);
+    const sparkCount = props.settings.ultraPerformance ? 2 : (isLowEndDevice ? 8 : (isMobile ? 20 : 80));
     const sparkGeo = new THREE.BufferGeometry();
     const sPos = new Float32Array(sparkCount * 3);
     const sVel = new Float32Array(sparkCount * 3);

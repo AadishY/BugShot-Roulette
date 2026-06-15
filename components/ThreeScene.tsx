@@ -22,6 +22,34 @@ interface ThreeSceneProps {
     gameState: GameState;
 }
 
+const calculatePixelScale = (settings: GameSettings, width: number) => {
+    const ua = navigator.userAgent.toLowerCase();
+    const isMobileUA = /android|webos|iphone|ipod|blackberry|iemobile|opera mini/i.test(ua);
+    const isTabletUA = /ipad|tablet|playbook|silk/i.test(ua) || (ua.includes('macintosh') && 'ontouchend' in document);
+    const pixelRatio = window.devicePixelRatio || 1;
+    const isAndroid = ua.includes('android');
+
+    let isMob = false;
+    let isTab = false;
+
+    if (isTabletUA || (width >= 768 && width <= 1024 && ('ontouchstart' in window || navigator.maxTouchPoints > 0))) {
+        isTab = true;
+    } else if (isMobileUA || (width < 768 && ('ontouchstart' in window || navigator.maxTouchPoints > 0))) {
+        isMob = true;
+    }
+
+    const isLowEndDevice = (isMob && (isAndroid || pixelRatio < 2 || navigator.hardwareConcurrency < 6)) || !!settings.ultraPerformance;
+
+    let mobilePixelScale = 2;
+    if (isMob) {
+        mobilePixelScale = settings.ultraPerformance ? 5.5 : (isLowEndDevice ? 4.5 : 3.5);
+    } else if (isTab) {
+        mobilePixelScale = settings.ultraPerformance ? 4.0 : 2.2;
+    }
+
+    return (isMob || isTab) ? mobilePixelScale : (settings.ultraPerformance ? 5.0 : (settings.pixelScale || 3));
+};
+
 export const ThreeScene: React.FC<ThreeSceneProps> = ({
     isSawed,
     isChokeActive,
@@ -83,6 +111,33 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
             if (context) {
                 sceneRef.current = context;
                 updateCameraResponsive();
+
+                // Warm up all shaders dynamically to prevent freezes when items/gun/effects first appear
+                try {
+                    const renderer = context.renderer;
+                    const scene = context.scene;
+                    const camera = context.camera;
+
+                    const invisibleObjects: THREE.Object3D[] = [];
+                    scene.traverse((obj) => {
+                        if (obj instanceof THREE.Mesh || obj instanceof THREE.Points || obj instanceof THREE.Group) {
+                            if (!obj.visible) {
+                                obj.visible = true;
+                                invisibleObjects.push(obj);
+                            }
+                        }
+                    });
+
+                    // Force compilation of all WebGL programs in the scene graph
+                    renderer.compile(scene, camera);
+
+                    // Restore initial visibility state
+                    invisibleObjects.forEach((obj) => {
+                        obj.visible = false;
+                    });
+                } catch (e) {
+                    console.error("WebGL Warmup Error:", e);
+                }
             }
         };
 
@@ -142,16 +197,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
             const height = containerRef.current.clientHeight;
             if (width === 0 || height === 0) return;
 
-            // Device-aware scaling - SHARPER for better visibility
-            const isMob = window.innerWidth < 900;
-            const isAnd = navigator.userAgent.toLowerCase().includes('android');
-            const pixelRatio = window.devicePixelRatio || 1;
-
-            // Re-calc scale logic - more aggressive pixelation ONLY if explicitly requested, otherwise keep it crisp but retro
-            let mobilePixelScale = pixelRatio > 1 ? 1.5 : 1.0;
-            if (isMob && width < 500) mobilePixelScale = 2.0;
-
-            const pxScale = isMob ? mobilePixelScale : (propsRef.current.settings.pixelScale || 2.5);
+            const pxScale = calculatePixelScale(propsRef.current.settings, width);
 
             sceneRef.current.renderer.setSize(width / pxScale, height / pxScale, false);
             sceneRef.current.renderer.domElement.style.imageRendering = 'pixelated';
@@ -246,7 +292,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
             }
             if (containerRef.current) containerRef.current.innerHTML = '';
         };
-    }, [gameState.isMultiplayer]); // Added isMultiplayer to rebuild scene when switching between SP/MP
+    }, [gameState.isMultiplayer, settings.ultraPerformance]); // Rebuild scene when switching SP/MP or toggling Ultra Performance
 
     // Separate effect for Pixel Scale / Resolution updates (No Rebuild)
     useEffect(() => {
@@ -257,10 +303,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
             const height = containerRef.current!.clientHeight;
             if (width === 0 || height === 0) return;
 
-            const isMob = window.innerWidth < 900;
-            const isAnd = navigator.userAgent.toLowerCase().includes('android');
-            const mobScale = isAnd ? 3 : 2;
-            const pxScale = isMob ? mobScale : (propsRef.current.settings.pixelScale || 4);
+            const pxScale = calculatePixelScale(settings, width);
 
             sceneRef.current!.renderer.setSize(width / pxScale, height / pxScale, false);
 
@@ -270,7 +313,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
         };
 
         updateRes();
-    }, [settings.pixelScale]);
+    }, [settings.pixelScale, settings.ultraPerformance]);
 
     // --- SYNC EFFECTS ---
     useEffect(() => {

@@ -4,6 +4,20 @@ import { audioManager } from '../../utils/audioManager';
 import { loginUser, registerUser, getLeaderboard } from '../../utils/redisService';
 import { GAME_VERSION } from '../../constants';
 
+const AUTH_QUOTES = [
+    "The odds are equal, the consequences are not.",
+    "A deal signed in shadow binds the soul.",
+    "The cylinder spins, but destiny has already chosen.",
+    "In the game of fate, there are no spectators.",
+    "Your luck is a borrowed resource; the dealer is calling in the debt.",
+    "Fear the blank, respect the live.",
+    "Every chamber is a question. What is your answer?",
+    "A loaded chamber has no room for regret.",
+    "The shotgun is a neutral judge; the dealer is not.",
+    "Bargain with flesh, pay in blood.",
+    "The dealer knows your name. The machine knows your future."
+];
+
 interface IntroScreenProps {
     playerName: string;
     inputName: string;
@@ -71,6 +85,16 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
     const [deferredPrompt, setDeferredPrompt] = React.useState<any>(null);
     const [isInstallable, setIsInstallable] = React.useState(false);
 
+    // Login Quote Randomizer State
+    const [loginQuote, setLoginQuote] = React.useState(AUTH_QUOTES[0]);
+
+    useEffect(() => {
+        if (showLoginModal) {
+            const randomQuote = AUTH_QUOTES[Math.floor(Math.random() * AUTH_QUOTES.length)];
+            setLoginQuote(randomQuote);
+        }
+    }, [showLoginModal]);
+
     const [isIOS, setIsIOS] = React.useState(false);
     const [isMobile, setIsMobile] = React.useState(false);
     const [isStandalone, setIsStandalone] = React.useState(false);
@@ -118,12 +142,23 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
             const hScale = Math.min(1, (window.innerHeight - 10) / 650);
             const wScale = Math.min(1, (window.innerWidth - 10) / 450);
             let newScale = Math.min(hScale, wScale);
+            
+            const isDesktop = window.innerWidth >= 1024;
+            
             if (window.innerWidth < 500) {
                 newScale = Math.max(0.7, Math.min(0.95, window.innerWidth / 450));
+            } else if (isDesktop) {
+                // Scale to a clean, balanced size (approx 1.0x - 1.20x on PC/Desktop monitors)
+                newScale = Math.max(1.0, Math.min(1.22, window.innerHeight / 900));
             } else {
-                newScale = Math.max(newScale, 0.6);
+                newScale = Math.max(newScale, 0.65);
             }
-            if (newScale > 1.1) newScale = 1.1;
+            
+            if (isDesktop) {
+                if (newScale > 1.22) newScale = 1.22;
+            } else {
+                if (newScale > 1.1) newScale = 1.1;
+            }
             setScale(newScale);
         };
 
@@ -436,7 +471,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                             </div>
                             <h3 className="text-2xl sm:text-3xl font-black text-stone-100 tracking-wider uppercase mb-3.5">AGENT AUTHENTICATION</h3>
                             <p className="text-red-500/80 italic text-xs sm:text-sm tracking-wider max-w-sm mx-auto animate-pulse font-medium">
-                                "The odds are equal, the consequences are not."
+                                "{loginQuote}"
                             </p>
                         </div>
 
@@ -937,7 +972,10 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                 <div className="flex flex-col gap-3.5 max-w-sm mx-auto w-full">
                     {/* Identity Section */}
                     <div className="text-center mb-1.5">
-                        <p className="text-[9px] text-red-900/50 font-black tracking-[0.4em] uppercase mb-1.5 animate-pulse">Click to bind soul</p>
+                        <p className="text-[8.5px] sm:text-[9.5px] text-red-700/60 font-black tracking-[0.45em] uppercase mb-1.5 animate-pulse flex items-center justify-center gap-1.5">
+                            <span className="w-1.5 h-1.5 bg-red-650 rounded-full animate-ping shrink-0" />
+                            <span>BINDING_SOUL_PROTOCOL</span>
+                        </p>
                         <div className="relative group max-w-[260px] mx-auto w-full">
                             <input
                                 ref={nameInputRef}

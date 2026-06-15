@@ -1,13 +1,14 @@
 import * as THREE from 'three';
 import { getDeviceType } from '../gameUtils';
+import { GameSettings } from '../../types';
 
-export const setupLighting = (scene: THREE.Scene) => {
+export const setupLighting = (scene: THREE.Scene, settings?: GameSettings) => {
     // ═══════════════════════════════════════════════════════════════
     // BUCKSHOT ROULETTE STYLE LIGHTING - Dark Industrial Bunker
     // ═══════════════════════════════════════════════════════════════
 
     const device = getDeviceType();
-    const isMobile = device === 'mobile';
+    const isMobile = device === 'mobile' || !!settings?.ultraPerformance;
     const isTablet = device === 'tablet';
 
     // Slight fog for depth - bit thicker for atmosphere
@@ -30,8 +31,8 @@ export const setupLighting = (scene: THREE.Scene) => {
     
     // Shadows: Only on PC and optionally Tablet
     mainSpotlight.castShadow = !isMobile;
-    mainSpotlight.shadow.mapSize.width = isTablet ? 512 : 1024;
-    mainSpotlight.shadow.mapSize.height = isTablet ? 512 : 1024;
+    mainSpotlight.shadow.mapSize.width = (device === 'pc') ? 2048 : (isTablet ? 512 : 1024);
+    mainSpotlight.shadow.mapSize.height = (device === 'pc') ? 2048 : (isTablet ? 512 : 1024);
     mainSpotlight.shadow.bias = -0.0004;
     mainSpotlight.shadow.radius = isTablet ? 1.5 : 2.5;
 
@@ -44,10 +45,10 @@ export const setupLighting = (scene: THREE.Scene) => {
     gunSpot.target.position.set(0, 0, 2);
     gunSpot.angle = 0.45;
     gunSpot.penumbra = 0.6;
-    gunSpot.castShadow = (device === 'pc');
-    if (device === 'pc') {
-        gunSpot.shadow.mapSize.width = 512;
-        gunSpot.shadow.mapSize.height = 512;
+    gunSpot.castShadow = (device === 'pc') && !settings?.ultraPerformance;
+    if (device === 'pc' && !settings?.ultraPerformance) {
+        gunSpot.shadow.mapSize.width = 1024;
+        gunSpot.shadow.mapSize.height = 1024;
     }
     scene.add(gunSpot);
     scene.add(gunSpot.target);
@@ -55,10 +56,10 @@ export const setupLighting = (scene: THREE.Scene) => {
     // Bulb - High Intensity Point
     const bulbLight = new THREE.PointLight(0xffaa44, isMobile ? 30.0 : 45.0, 50);
     bulbLight.position.set(0, 8, 0);
-    bulbLight.castShadow = (device === 'pc');
-    if (device === 'pc') {
-        bulbLight.shadow.mapSize.width = 512;
-        bulbLight.shadow.mapSize.height = 512;
+    bulbLight.castShadow = (device === 'pc') && !settings?.ultraPerformance;
+    if (device === 'pc' && !settings?.ultraPerformance) {
+        bulbLight.shadow.mapSize.width = 1024;
+        bulbLight.shadow.mapSize.height = 1024;
         bulbLight.shadow.bias = -0.0001;
         bulbLight.shadow.radius = 6;
     }
@@ -83,7 +84,7 @@ export const setupLighting = (scene: THREE.Scene) => {
 
     const underLight = new THREE.PointLight(0xff1111, isMobile ? 3.0 : 6.0, 20);
     underLight.position.set(0, -2, -10);
-    // Add only on PC/Tablet
+    // Add on PC/Tablet always, or on Mobile if ultraPerformance is active
     if (device !== 'mobile') {
         scene.add(underLight);
     }
@@ -95,84 +96,89 @@ export const setupLighting = (scene: THREE.Scene) => {
     }
 
     // --- OPTIONAL LIGHTS ---
-    // Rims (More colorful)
-    const bgRim = new THREE.SpotLight(0xff2200, 80);
-    bgRim.position.set(20, 10, -25);
-    bgRim.target.position.set(0, 2, -10);
-    bgRim.angle = 1.0;
-    bgRim.penumbra = 0.8;
-    if (device === 'pc') {
-        scene.add(bgRim);
-        scene.add(bgRim.target);
-    }
+    let playerFill = null;
+    let bgRim = null;
+    let rimLight = null;
+    if (!settings?.ultraPerformance) {
+        // Rims (More colorful)
+        bgRim = new THREE.SpotLight(0xff2200, 80);
+        bgRim.position.set(20, 10, -25);
+        bgRim.target.position.set(0, 2, -10);
+        bgRim.angle = 1.0;
+        bgRim.penumbra = 0.8;
+        if (device === 'pc') {
+            scene.add(bgRim);
+            scene.add(bgRim.target);
+        }
 
-    const coldRim = new THREE.SpotLight(0x0044ff, 40); // Boosted cold rim
-    coldRim.position.set(-20, 10, -25);
-    coldRim.target.position.set(0, 2, -10);
-    coldRim.angle = 1.0;
-    coldRim.penumbra = 0.8;
-    if (device !== 'mobile') {
-        scene.add(coldRim);
-        scene.add(coldRim.target);
-    }
+        const coldRim = new THREE.SpotLight(0x0044ff, 40); // Boosted cold rim
+        coldRim.position.set(-20, 10, -25);
+        coldRim.target.position.set(0, 2, -10);
+        coldRim.angle = 1.0;
+        coldRim.penumbra = 0.8;
+        if (device !== 'mobile') {
+            scene.add(coldRim);
+            scene.add(coldRim.target);
+        }
 
-    // Fills
-    const playerFill = new THREE.DirectionalLight(0x1a2233, 0.25);
-    playerFill.position.set(-5, 4, 15);
-    if (device === 'pc') {
-        scene.add(playerFill);
-    }
+        // Fills
+        playerFill = new THREE.DirectionalLight(0x1a2233, 0.25);
+        playerFill.position.set(-5, 4, 15);
+        if (device === 'pc') {
+            scene.add(playerFill);
+        }
 
-    const sideFill = new THREE.PointLight(0x332222, 5, 40);
-    sideFill.position.set(18, 2, 8);
-    if (device === 'pc') {
-        scene.add(sideFill);
-    }
+        const sideFill = new THREE.PointLight(0x332222, 5, 40);
+        sideFill.position.set(18, 2, 8);
+        if (device === 'pc') {
+            scene.add(sideFill);
+        }
 
-    const rimLight = new THREE.SpotLight(0x442222, 10);
-    rimLight.position.set(0, 12, -30);
-    rimLight.lookAt(0, 5, -14);
-    if (device === 'pc') {
-        scene.add(rimLight);
-    }
+        rimLight = new THREE.SpotLight(0x442222, 10);
+        rimLight.position.set(0, 12, -30);
+        rimLight.lookAt(0, 5, -14);
+        if (device === 'pc') {
+            scene.add(rimLight);
+        }
 
-    // Environment Background Lights
-    const hemiLight = new THREE.HemisphereLight(0x332222, 0x0a0a0a, 0.4);
-    if (device !== 'mobile') {
-        scene.add(hemiLight);
-    }
+        // Environment Background Lights
+        const hemiLight = new THREE.HemisphereLight(0x332222, 0x0a0a0a, 0.4);
+        if (device !== 'mobile') {
+            scene.add(hemiLight);
+        }
 
-    const deepBgLight = new THREE.PointLight(0x334455, 90, 120);
-    deepBgLight.position.set(0, 12, -20);
-    if (device !== 'mobile') {
-        scene.add(deepBgLight);
-    }
+        const deepBgLight = new THREE.PointLight(0x334455, 90, 120);
+        deepBgLight.position.set(0, 12, -20);
+        if (device !== 'mobile') {
+            scene.add(deepBgLight);
+        }
 
-    const leftPropLight = new THREE.PointLight(0xaa6644, 25.0, 30);
-    leftPropLight.position.set(-15, 2, 10);
-    if (device === 'pc') {
-        scene.add(leftPropLight);
-    }
+        const leftPropLight = new THREE.PointLight(0xaa6644, 25.0, 30);
+        leftPropLight.position.set(-15, 2, 10);
+        if (device === 'pc') {
+            scene.add(leftPropLight);
+        }
 
-    const rightPropLight = new THREE.PointLight(0x4466aa, 25.0, 30);
-    rightPropLight.position.set(15, 2, 10);
-    if (device === 'pc') {
-        scene.add(rightPropLight);
-    }
+        const rightPropLight = new THREE.PointLight(0x4466aa, 25.0, 30);
+        rightPropLight.position.set(15, 2, 10);
+        if (device === 'pc') {
+            scene.add(rightPropLight);
+        }
 
-    // Warm dramatic wall wash spotlight
-    const playerWallWash = new THREE.SpotLight(0x775544, 40);
-    playerWallWash.position.set(0, 18, -2);
-    playerWallWash.target.position.set(0, 5, 18);
-    playerWallWash.angle = 1.0;
-    playerWallWash.penumbra = 0.5;
-    if (device === 'pc') {
-        scene.add(playerWallWash);
-        scene.add(playerWallWash.target);
+        // Warm dramatic wall wash spotlight
+        const playerWallWash = new THREE.SpotLight(0x775544, 40);
+        playerWallWash.position.set(0, 18, -2);
+        playerWallWash.target.position.set(0, 5, 18);
+        playerWallWash.angle = 1.0;
+        playerWallWash.penumbra = 0.5;
+        if (device === 'pc') {
+            scene.add(playerWallWash);
+            scene.add(playerWallWash.target);
+        }
     }
 
     // --- HEAVY LIGHTS (Desktop Only) ---
-    if (device === 'pc') {
+    if (device === 'pc' && !settings?.ultraPerformance) {
         // Table Accents
         const tableAccent1 = new THREE.PointLight(0x44ff44, 1.5, 8);
         tableAccent1.position.set(-10, -0.5, 0);

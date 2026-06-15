@@ -113,7 +113,7 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = ({
                 <div className="absolute bottom-4 left-4 w-3 h-3 border-b-2 border-l-2 border-green-700/40" />
                 <div className="absolute bottom-4 right-4 w-3 h-3 border-b-2 border-r-2 border-green-700/40" />
 
-                <div className="text-lg sm:text-3xl font-black tracking-[0.2em] mb-6 sm:mb-8 text-center uppercase text-green-400 drop-shadow-[0_0_12px_rgba(74,222,128,0.3)]">
+                <div className="text-lg sm:text-3xl font-black tracking-[0.25em] mb-6 sm:mb-8 text-center uppercase text-green-400 drop-shadow-[0_0_15px_rgba(74,222,128,0.5)]">
                     {initialText}
                 </div>
 

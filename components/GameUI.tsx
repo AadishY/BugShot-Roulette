@@ -8,6 +8,7 @@ import { Controls } from './ui/Controls';
 import { BootScreen } from './ui/BootScreen';
 import { IntroScreen } from './ui/IntroScreen';
 import ShellBackground from './ui/ShellBackground';
+
 import { GameOverScreen } from './ui/GameOverScreen';
 import { LootOverlay } from './ui/LootOverlay';
 import { Icons } from './ui/Icons';
@@ -174,7 +175,7 @@ export const GameUI: React.FC<GameUIProps> = ({
         <>
             {/* Falling Shells Background - Rendered only when active to free WebGL context and improve memory/performance */}
             <div className={`absolute inset-0 bg-black transition-opacity ${gameState.phase === 'BOOT' || gameState.phase === 'INTRO' ? 'opacity-100 duration-1000' : 'opacity-0 duration-0 pointer-events-none'}`}>
-                {gameState.phase === 'INTRO' && (
+                {gameState.phase === 'INTRO' && !settings.ultraPerformance && (
                     <ShellBackground active={true} />
                 )}
             </div>
@@ -200,6 +201,20 @@ export const GameUI: React.FC<GameUIProps> = ({
                 <div className="absolute inset-0 pointer-events-none z-40 blood-overlay blood-active">
                     <div className="absolute inset-0 opacity-40 bg-[url('https://www.transparenttextures.com/patterns/black-linen-2.png')] mix-blend-multiply" />
                 </div>
+            )}
+
+            {/* Intro Screen - Kept outside of scaled HUD so HUD scale setting does not affect main menu */}
+            {gameState.phase === 'INTRO' && (
+                <IntroScreen
+                    playerName={playerName}
+                    inputName={inputName}
+                    setInputName={setInputName}
+                    onStartGame={handleStartGame}
+                    onOpenSettings={onOpenSettings}
+                    onOpenGuide={onOpenGuide}
+                    onOpenScoreboard={onOpenScoreboard}
+                    onStartMultiplayer={onStartMultiplayer}
+                />
             )}
 
             {/* Scaled UI */}
@@ -256,27 +271,56 @@ export const GameUI: React.FC<GameUIProps> = ({
                                         </div>
                                     </div>
                                 ) : (
-                                    <div className="flex flex-col items-center gap-4 bg-gradient-to-b from-stone-900/40 to-black/90 backdrop-blur-3xl px-16 py-10 rounded-[2.5rem] border border-white/10 shadow-[0_0_80px_rgba(0,0,0,0.8)] animate-in zoom-in-95 duration-1000">
-                                        <div className="flex items-center gap-16">
+                                    <div className="flex flex-col items-center gap-5 bg-gradient-to-b from-stone-950/92 to-black/98 backdrop-blur-3xl px-12 sm:px-20 py-8 sm:py-12 rounded-[2.5rem] border border-stone-850 shadow-[0_0_100px_rgba(0,0,0,0.95)] ring-1 ring-white/5 animate-in zoom-in-95 duration-1000">
+                                        <div className="flex items-center gap-10 sm:gap-20">
                                             <div className="flex flex-col items-center group">
-                                                <div className="relative">
-                                                    <div className="absolute inset-0 blur-2xl bg-red-600/20 group-hover:bg-red-600/40 transition-colors" />
-                                                    <span className="relative text-red-500 text-5xl lg:text-8xl font-black drop-shadow-[0_0_20px_rgba(239,68,68,0.5)] italic tracking-tighter transition-transform group-hover:scale-110">{overlayText.split('|')[0].trim().split(' ')[0]}</span>
+                                                <div className="flex items-center gap-3 sm:gap-5">
+                                                    {/* Red Shell SVG */}
+                                                    <svg className="w-8 h-12 text-red-500 drop-shadow-[0_0_15px_rgba(239,68,68,0.8)] animate-pulse" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                                        <path d="M8 17h8v3a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-3z" fill="currentColor" fillOpacity="0.45" />
+                                                        <rect x="8" y="3" width="8" height="14" rx="1" fill="currentColor" fillOpacity="0.15" />
+                                                        <line x1="10" y1="7" x2="14" y2="7" />
+                                                        <line x1="10" y1="11" x2="14" y2="11" />
+                                                        <line x1="8" y1="17" x2="16" y2="17" />
+                                                    </svg>
+                                                    <div className="relative">
+                                                        <div className="absolute inset-0 blur-3xl bg-red-600/30 group-hover:bg-red-600/50 transition-colors" />
+                                                        <span className="relative text-red-500 text-6xl sm:text-8xl font-black drop-shadow-[0_0_25px_rgba(239,68,68,0.75)] italic tracking-tighter transition-transform group-hover:scale-110 leading-none">
+                                                            {overlayText.split('|')[0].trim().split(' ')[0]}
+                                                        </span>
+                                                    </div>
                                                 </div>
-                                                <span className="text-[10px] lg:text-xs font-black tracking-[0.4em] text-red-900/80 uppercase mt-2">Live Shells</span>
+                                                <span className="text-[10px] sm:text-xs font-black tracking-[0.45em] text-red-400/90 uppercase mt-4">Live Shells</span>
                                             </div>
-                                            <div className="w-[1px] h-20 bg-gradient-to-b from-transparent via-white/10 to-transparent" />
+                                            
+                                            <div className="w-[1px] h-24 bg-gradient-to-b from-transparent via-stone-800 to-transparent" />
+                                            
                                             <div className="flex flex-col items-center group">
-                                                <div className="relative">
-                                                    <div className="absolute inset-0 blur-2xl bg-cyan-600/10 group-hover:bg-cyan-600/30 transition-colors" />
-                                                    <span className="relative text-stone-300 text-5xl lg:text-8xl font-black italic tracking-tighter transition-transform group-hover:scale-110">{overlayText.split('|')[1].trim().split(' ')[0]}</span>
+                                                <div className="flex items-center gap-3 sm:gap-5">
+                                                    {/* Blue Shell SVG */}
+                                                    <svg className="w-8 h-12 text-cyan-400 drop-shadow-[0_0_15px_rgba(34,211,238,0.8)] animate-pulse" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                                        <path d="M8 17h8v3a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-3z" fill="currentColor" fillOpacity="0.45" />
+                                                        <rect x="8" y="3" width="8" height="14" rx="1" fill="currentColor" fillOpacity="0.15" />
+                                                        <line x1="10" y1="7" x2="14" y2="7" />
+                                                        <line x1="10" y1="11" x2="14" y2="11" />
+                                                        <line x1="8" y1="17" x2="16" y2="17" />
+                                                    </svg>
+                                                    <div className="relative">
+                                                        <div className="absolute inset-0 blur-3xl bg-cyan-600/20 group-hover:bg-cyan-600/40 transition-colors" />
+                                                        <span className="relative text-cyan-400 text-6xl sm:text-8xl font-black drop-shadow-[0_0_25px_rgba(34,211,238,0.75)] italic tracking-tighter transition-transform group-hover:scale-110 leading-none">
+                                                            {overlayText.split('|')[1].trim().split(' ')[0]}
+                                                        </span>
+                                                    </div>
                                                 </div>
-                                                <span className="text-[10px] lg:text-xs font-black tracking-[0.4em] text-stone-600 uppercase mt-2">Blanks</span>
+                                                <span className="text-[10px] sm:text-xs font-black tracking-[0.45em] text-cyan-400/80 uppercase mt-4">Blanks</span>
                                             </div>
                                         </div>
-                                        <div className="mt-4 flex flex-col items-center gap-4">
-                                            <div className="h-[1px] w-48 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-                                            <span className="text-[10px] font-bold tracking-[0.8em] text-white/20 uppercase">Chamber Synchronized</span>
+                                        <div className="mt-2 flex flex-col items-center gap-4 w-full">
+                                            <div className="h-[1px] w-64 bg-gradient-to-r from-transparent via-stone-800 to-transparent" />
+                                            <span className="text-[9.5px] font-black tracking-[0.8em] text-stone-400 uppercase flex items-center justify-center gap-2 mt-1 select-none">
+                                                <span className="w-1.5 h-1.5 bg-red-650 rounded-full animate-ping shrink-0" />
+                                                <span>CHAMBER_SYNCHRONIZED</span>
+                                            </span>
                                         </div>
                                     </div>
                                 )}
@@ -404,19 +448,7 @@ export const GameUI: React.FC<GameUIProps> = ({
 
                 {/* Loot Overlay will be moved outside scaled div below */}
 
-                {/* Intro Screen */}
-                {gameState.phase === 'INTRO' && (
-                    <IntroScreen
-                        playerName={playerName}
-                        inputName={inputName}
-                        setInputName={setInputName}
-                        onStartGame={handleStartGame}
-                        onOpenSettings={onOpenSettings}
-                        onOpenGuide={onOpenGuide}
-                        onOpenScoreboard={onOpenScoreboard}
-                        onStartMultiplayer={onStartMultiplayer}
-                    />
-                )}
+
 
                 {/* Game Over - Singleplayer only */}
                 {gameState.phase === 'GAME_OVER' && (
