@@ -61,6 +61,22 @@ class AudioManager {
         }
     }
 
+    public getAudioLoadingProgress(): number {
+        if (typeof window === 'undefined') return 100;
+        const allAudio = [
+            ...Object.values(this.sounds),
+            ...Object.values(this.music)
+        ];
+        if (allAudio.length === 0) return 100;
+        let loadedCount = 0;
+        allAudio.forEach(audio => {
+            if (audio.readyState >= 2 || audio.error) {
+                loadedCount++;
+            }
+        });
+        return Math.round((loadedCount / allAudio.length) * 100);
+    }
+
     // Call this on the first user interaction (e.g., clicking "ENTER" or anywhere on splash screen)
     public async initialize() {
         if (this.initialized) return;

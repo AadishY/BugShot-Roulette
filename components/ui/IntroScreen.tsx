@@ -438,8 +438,11 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                     <div className="absolute inset-0 bg-gradient-to-r from-transparent via-red-500/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" />
                                 </button>
                                 <button
-                                    onClick={() => setShowHardModeWarning(false)}
-                                    className="w-full py-2 bg-transparent text-stone-600 font-bold hover:text-stone-400 transition-colors tracking-[0.4em] text-[10px] sm:text-xs uppercase cursor-pointer"
+                                    onClick={() => {
+                                        audioManager.playSound('click');
+                                        setShowHardModeWarning(false);
+                                    }}
+                                    className="w-full py-2.5 sm:py-3 bg-stone-900/40 hover:bg-stone-900 border border-stone-800 hover:border-stone-650 text-stone-400 hover:text-white transition-all tracking-[0.4em] text-[10px] sm:text-xs uppercase cursor-pointer rounded-xl active:scale-98 shadow-sm"
                                 >
                                     — ABORT MISSION —
                                 </button>

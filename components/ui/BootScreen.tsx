@@ -17,40 +17,68 @@ export const BootScreen: React.FC<BootScreenProps> = ({ onContinue }) => {
     useEffect(() => {
         setBootLines([]);
         setLoadingProgress(0);
-        const mult = isMobileOrTablet ? 0.35 : 1.0;
-        const sequence = [
-            { text: "BIOS CHECK...", delay: 50 * mult },
-            { text: "CPU: QUANTUM CORE... OK", delay: 100 * mult },
-            { text: "MEMORY: 64TB... OK", delay: 150 * mult },
-            { text: "LOADING KERNEL...", delay: 200 * mult },
-            { text: "MOUNTING VOLUMES...", delay: 250 * mult },
-            { text: "INITIALIZING AI DEALER...", delay: 300 * mult },
-            { text: "SYSTEM READY.", delay: 350 * mult }
+        
+        const startTime = Date.now();
+        const MAX_LOADING_TIME = 6000; // 6 seconds safety timeout
+        const tickRate = isMobileOrTablet ? 30 : 60;
+        
+        const systemPrints = [
+            { pct: 0, text: "INIT BIOS CORE PROTOCOL... OK" },
+            { pct: 10, text: `DETECTING CLIENT DEVICE... ${isMobileOrTablet ? 'PORTABLE HANDHELD' : 'STANDARD WORKSTATION'} OK` },
+            { pct: 20, text: "MOUNTING AUDIO ENGINE... OK" },
+            { pct: 35, text: "CACHING SYSTEM AUDIO RESOURCES..." },
+            { pct: 75, text: "COMPILING 3D RENDER SCHEMAS... OK" },
+            { pct: 90, text: "SECURING PIPELINE THREADS... BUFFER WAIT" },
+            { pct: 100, text: "SYSTEM SYNCHRONIZED. SOUL LINK SECURED." }
         ];
-        let timeouts: ReturnType<typeof setTimeout>[] = [];
-        sequence.forEach(({ text, delay }) => {
-            timeouts.push(setTimeout(() => {
-                setBootLines(prev => [...prev, text]);
-            }, delay));
-        });
+        
+        const printedLines = new Set<string>();
 
-        // Mark loading as complete after progress bar fills
-        const tickRate = isMobileOrTablet ? 25 : 50;
         const interval = setInterval(() => {
+            const timeElapsed = Date.now() - startTime;
+            const audioProgress = audioManager.getAudioLoadingProgress();
+            
             setLoadingProgress(p => {
-                if (p >= 100) {
+                let nextP = p;
+                
+                if (p < 90) {
+                    nextP = p + (isMobileOrTablet ? 4 : 2);
+                    if (nextP > 90) nextP = 90;
+                } else if (p >= 90 && p < 100) {
+                    if (audioProgress === 100 || timeElapsed >= MAX_LOADING_TIME) {
+                        nextP = p + 2;
+                        if (nextP > 100) nextP = 100;
+                    }
+                }
+                
+                systemPrints.forEach(item => {
+                    if (nextP >= item.pct && !printedLines.has(item.text)) {
+                        printedLines.add(item.text);
+                        setBootLines(prev => [...prev, item.text]);
+                    }
+                });
+                
+                if (nextP >= 35 && nextP < 75) {
+                    const audioMsg = `BUFFERING AUDIO RESOURCE BLOCK: ${audioProgress}%`;
+                    setBootLines(prev => {
+                        const filtered = prev.filter(l => !l.startsWith("BUFFERING AUDIO RESOURCE"));
+                        return [...filtered, audioMsg];
+                    });
+                }
+                
+                if (nextP >= 100) {
                     clearInterval(interval);
                     setTimeout(() => {
                         if (onContinue) onContinue();
                     }, isMobileOrTablet ? 150 : 300);
                     return 100;
                 }
-                return p + 10;
+                
+                return nextP;
             });
         }, tickRate);
 
         return () => {
-            timeouts.forEach(clearTimeout);
             clearInterval(interval);
         };
     }, [isMobileOrTablet]);
