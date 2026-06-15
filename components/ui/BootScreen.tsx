@@ -24,11 +24,33 @@ export const BootScreen: React.FC<BootScreenProps> = ({ onContinue }) => {
         
         const systemPrints = [
             { pct: 0, text: "INIT BIOS CORE PROTOCOL... OK" },
+            { pct: 2, text: "LOADING OS KERNEL v1.1.3... SUCCESS" },
+            { pct: 4, text: "VERIFYING CRYPTOGRAPHIC HANDSHAKE... OK" },
+            { pct: 7, text: "VERIFYING SYSTEM MEMORY INTEGRITY... 65536KB SYSTEM RAM OK" },
             { pct: 10, text: `DETECTING CLIENT DEVICE... ${isMobileOrTablet ? 'PORTABLE HANDHELD' : 'STANDARD WORKSTATION'} OK` },
+            { pct: 13, text: "MOUNTING SECTOR A-12 FILE SYSTEM... READ-ONLY" },
+            { pct: 16, text: "ALLOCATING REGMENT SPACE... SUCCESS" },
             { pct: 20, text: "MOUNTING AUDIO ENGINE... OK" },
-            { pct: 35, text: "CACHING SYSTEM AUDIO RESOURCES..." },
-            { pct: 75, text: "COMPILING 3D RENDER SCHEMAS... OK" },
-            { pct: 90, text: "SECURING PIPELINE THREADS... BUFFER WAIT" },
+            { pct: 24, text: "INITIALIZING GRAPHICS PIPELINE ENGINE... OK" },
+            { pct: 28, text: "ESTABLISHING SOULS CONTRACT DIRECTIVES... SECURE" },
+            { pct: 32, text: "CACHING SYSTEM AUDIO RESOURCES..." },
+            { pct: 36, text: "DETECTING WEBGL 2.0 DEVICE CONTEXT... COMPATIBLE" },
+            { pct: 40, text: "COMPILING DEPTH PASS FRAGMENT SHADERS... SUCCESS" },
+            { pct: 44, text: "PARSING MODEL MESH CONSTRAINTS... OK" },
+            { pct: 48, text: "DESERIALIZING SHOTGUN CHAMBER GEOMETRIES... OK" },
+            { pct: 52, text: "CACHING HIGH-RESOLUTION TEXTURE ATLAS... LOADED" },
+            { pct: 56, text: "LOAD ADRENALINE EXTRACTION SYSTEMS... OK" },
+            { pct: 60, text: "INJECTING DEALER AI BEHAVIOR PATTERNS... GOD MODE ACTIVE" },
+            { pct: 64, text: "ESTABLISHING NEURAL LINK... SECURED" },
+            { pct: 68, text: "LOADING COMPRESSED SFX BUFFERS... OK" },
+            { pct: 72, text: "COMPILING 3D RENDER SCHEMAS... OK" },
+            { pct: 76, text: "OPTIMIZING SHADER CACHE STRATEGY... OK" },
+            { pct: 80, text: "WARMING UP WEBGL CONTEXT BUFFER... OK" },
+            { pct: 84, text: "WARMING UP GPU INSTANCED DRAW BUFFERS... OK" },
+            { pct: 88, text: "SECURING PIPELINE THREADS... BUFFER WAIT" },
+            { pct: 92, text: "VALIDATING SECURE WEBSOCKET HANDSHAKE... SECURED" },
+            { pct: 96, text: "FINALIZING LOBBY STAGING HANDSHAKE... OK" },
+            { pct: 99, text: "COMMENCING SOUL EXTRACTION PIPELINE... READY" },
             { pct: 100, text: "SYSTEM SYNCHRONIZED. SOUL LINK SECURED." }
         ];
         
@@ -91,7 +113,7 @@ export const BootScreen: React.FC<BootScreenProps> = ({ onContinue }) => {
                 <span>MEM: 65536KB OK</span>
             </div>
             <div className="flex-1 flex flex-col justify-center max-w-lg mx-auto w-full gap-2 sm:gap-4 my-auto">
-                <div className="text-green-500 text-[9px] sm:text-xs md:text-sm space-y-1.5 h-[35vh] max-h-[10rem] sm:max-h-[12rem] overflow-hidden flex flex-col justify-end">
+                <div className="text-green-500 text-[9px] sm:text-xs md:text-sm space-y-1 h-[50vh] max-h-[18rem] sm:max-h-[26rem] md:max-h-[32rem] overflow-hidden flex flex-col justify-end">
                     {bootLines.map((line, i) => (
                         <div key={i} className="typewriter truncate text-green-400 drop-shadow-[0_0_4px_rgba(74,222,128,0.4)] shrink-0 leading-normal tracking-wider">
                             {`> ${line}`}

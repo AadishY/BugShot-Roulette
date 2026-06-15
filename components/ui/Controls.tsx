@@ -1,5 +1,5 @@
 import React from 'react';
-import { AimTarget, TurnOwner } from '../../types';
+import { AimTarget, TurnOwner, GameSettings } from '../../types';
 import { Hand, Target, User } from 'lucide-react';
 import { audioManager } from '../../utils/audioManager';
 
@@ -27,6 +27,7 @@ interface ControlsProps {
     mpGameState?: GameStateData | null;
     mpMyPlayerId?: string | null;
     onMpShoot?: (targetId: string) => void;
+    settings?: GameSettings;
 }
 
 const ControlsComponent: React.FC<ControlsProps> = ({
@@ -40,8 +41,12 @@ const ControlsComponent: React.FC<ControlsProps> = ({
     isMultiplayer = false,
     mpGameState,
     mpMyPlayerId,
-    onMpShoot
+    onMpShoot,
+    settings
 }) => {
+    const isBalanced = !!settings?.balancedPerformance || !!settings?.ultraPerformance;
+    const isPotato = !!settings?.ultraPerformance;
+
     const mpOpponents = isMultiplayer && mpGameState && mpMyPlayerId
         ? Object.values(mpGameState.players).filter(p => p.id !== mpMyPlayerId && p.isAlive !== false)
         : [];
@@ -69,10 +74,13 @@ const ControlsComponent: React.FC<ControlsProps> = ({
                             }
                         }}
                         disabled={isProcessing || isRecovering}
-                        className={`bg-black/90 border px-6 py-4 lg:px-10 lg:py-6 font-black text-xs lg:text-xl transition-all active:scale-95 shadow-lg tracking-wider flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed translate-y-4 sm:translate-y-0 ${isRecovering
-                            ? 'border-red-800 text-red-500 disabled:animate-none'
-                            : 'border-stone-500 text-stone-200 hover:bg-stone-800 hover:text-white hover:border-white animate-pulse'
-                            }`}
+                        className={isPotato
+                            ? `bg-neutral-900 border ${isRecovering ? 'border-red-800 text-red-500' : 'border-stone-700 text-stone-300 hover:bg-neutral-800'} px-6 py-4 lg:px-10 lg:py-6 font-black text-xs lg:text-xl tracking-wider flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed translate-y-4 sm:translate-y-0`
+                            : `bg-black/90 border px-6 py-4 lg:px-10 lg:py-6 font-black text-xs lg:text-xl transition-all active:scale-95 tracking-wider flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed translate-y-4 sm:translate-y-0 ${isRecovering
+                                ? 'border-red-800 text-red-500 disabled:animate-none'
+                                : `border-stone-500 text-stone-200 hover:bg-stone-800 hover:text-white hover:border-white ${isBalanced ? '' : 'animate-pulse shadow-lg'}`
+                            }`
+                        }
                     >
                         <Hand size={18} className="lg:w-6 lg:h-6" />
                         {isRecovering ? (
@@ -87,22 +95,30 @@ const ControlsComponent: React.FC<ControlsProps> = ({
                 {isGunHeld && (
                     <>
                         {isMultiplayer && mpOpponents.length > 0 ? (
-                            mpOpponents.map((opp) => (
-                                <button
-                                    key={opp.id}
-                                    onClick={() => {
-                                        audioManager.playSound('click');
-                                        handleShootOpponent(opp.id);
-                                    }}
-                                    disabled={isProcessing}
-                                    onMouseEnter={() => window.matchMedia('(hover: hover)').matches && !isProcessing && onHoverTarget('OPPONENT')}
-                                    onMouseLeave={() => window.matchMedia('(hover: hover)').matches && !isProcessing && onHoverTarget('CHOOSING')}
-                                    className="bg-black/90 border border-red-800 px-5 py-3 lg:px-6 lg:py-4 text-red-500 font-black text-xs lg:text-lg hover:bg-red-900 hover:text-white transition-all active:scale-95 shadow-lg tracking-wide flex items-center gap-1 lg:gap-2 disabled:opacity-50"
-                                >
-                                    <Target size={18} className="lg:w-5 lg:h-5" />
-                                    {opp.name}
-                                </button>
-                            ))
+                            mpOpponents.map((opp) => {
+                                let oppBtnClass = "";
+                                if (isPotato) {
+                                    oppBtnClass = "bg-neutral-900 border border-red-800 px-5 py-3 lg:px-6 lg:py-4 text-red-500 font-black text-xs lg:text-lg hover:bg-neutral-850 hover:text-white tracking-wide flex items-center gap-1 lg:gap-2 disabled:opacity-50";
+                                } else {
+                                    oppBtnClass = `bg-black/90 border border-red-800 px-5 py-3 lg:px-6 lg:py-4 text-red-500 font-black text-xs lg:text-lg hover:bg-red-900 hover:text-white transition-all active:scale-95 tracking-wide flex items-center gap-1 lg:gap-2 disabled:opacity-50 ${isBalanced ? '' : 'shadow-lg'}`;
+                                }
+                                return (
+                                    <button
+                                        key={opp.id}
+                                        onClick={() => {
+                                            audioManager.playSound('click');
+                                            handleShootOpponent(opp.id);
+                                        }}
+                                        disabled={isProcessing}
+                                        onMouseEnter={() => window.matchMedia('(hover: hover)').matches && !isProcessing && onHoverTarget('OPPONENT')}
+                                        onMouseLeave={() => window.matchMedia('(hover: hover)').matches && !isProcessing && onHoverTarget('CHOOSING')}
+                                        className={oppBtnClass}
+                                    >
+                                        <Target size={18} className="lg:w-5 lg:h-5" />
+                                        {opp.name}
+                                    </button>
+                                );
+                            })
                         ) : (
                             <button
                                 onClick={() => {
@@ -112,7 +128,10 @@ const ControlsComponent: React.FC<ControlsProps> = ({
                                 disabled={isProcessing}
                                 onMouseEnter={() => window.matchMedia('(hover: hover)').matches && !isProcessing && onHoverTarget('OPPONENT')}
                                 onMouseLeave={() => window.matchMedia('(hover: hover)').matches && !isProcessing && onHoverTarget('CHOOSING')}
-                                className="bg-black/90 border border-red-800 px-5 py-3 lg:px-8 lg:py-5 text-red-500 font-black text-xs lg:text-xl hover:bg-red-900 hover:text-white transition-all active:scale-95 shadow-lg tracking-wide flex items-center gap-2 disabled:opacity-50"
+                                className={isPotato
+                                    ? "bg-neutral-900 border border-red-800 px-5 py-3 lg:px-8 lg:py-5 text-red-500 font-black text-xs lg:text-xl hover:bg-neutral-850 hover:text-white tracking-wide flex items-center gap-2 disabled:opacity-50"
+                                    : `bg-black/90 border border-red-800 px-5 py-3 lg:px-8 lg:py-5 text-red-500 font-black text-xs lg:text-xl hover:bg-red-900 hover:text-white transition-all active:scale-95 tracking-wide flex items-center gap-2 disabled:opacity-50 ${isBalanced ? '' : 'shadow-lg'}`
+                                }
                             >
                                 <Target size={18} className="lg:w-6 lg:h-6" />
                                 SHOOT DEALER
@@ -128,7 +147,10 @@ const ControlsComponent: React.FC<ControlsProps> = ({
                             // Prevent hover events on touch devices to avoid ghost inputs (auto-aiming at self)
                             onMouseEnter={() => window.matchMedia('(hover: hover)').matches && !isProcessing && onHoverTarget('SELF')}
                             onMouseLeave={() => window.matchMedia('(hover: hover)').matches && !isProcessing && onHoverTarget('CHOOSING')}
-                            className="bg-black/90 border border-stone-700 px-5 py-3 lg:px-8 lg:py-5 text-stone-400 font-black text-xs lg:text-xl hover:bg-stone-800 hover:text-white transition-all active:scale-95 shadow-lg tracking-wide flex items-center gap-2 disabled:opacity-50"
+                            className={isPotato
+                                ? "bg-neutral-900 border border-stone-850 px-5 py-3 lg:px-8 lg:py-5 text-stone-400 font-black text-xs lg:text-xl hover:bg-neutral-850 hover:text-white tracking-wide flex items-center gap-2 disabled:opacity-50"
+                                : `bg-black/90 border border-stone-700 px-5 py-3 lg:px-8 lg:py-5 text-stone-400 font-black text-xs lg:text-xl hover:bg-stone-800 hover:text-white transition-all active:scale-95 tracking-wide flex items-center gap-2 disabled:opacity-50 ${isBalanced ? '' : 'shadow-lg'}`
+                            }
                         >
                             <User size={18} className="lg:w-6 lg:h-6" />
                             SHOOT SELF

@@ -664,19 +664,19 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                 <ul className="list-none space-y-2 pl-0.5">
                                     <li className="flex items-start gap-2.5">
                                         <span className="px-1.5 py-0.5 bg-green-950/50 border border-green-800/40 text-green-400 text-[8px] font-black rounded-md uppercase tracking-widest shrink-0 select-none">ADDED</span>
-                                        <span className="leading-relaxed">Thematic operation codenames for match history — normal ops (OP. VIPER, OP. WRAITH...) and hard mode directives (DIR. IRON FANG, DIR. HELLFIRE...) with ELITE tags.</span>
+                                        <span className="leading-relaxed">Debug Mode with cheat options (ignores stats/leaderboard).</span>
                                     </li>
                                     <li className="flex items-start gap-2.5">
                                         <span className="px-1.5 py-0.5 bg-red-950/50 border border-red-800/40 text-red-400 text-[8px] font-black rounded-md uppercase tracking-widest shrink-0 select-none">FIXED</span>
-                                        <span className="leading-relaxed">Comprehensive mobile responsive overhaul: login, changelog, leaderboard, career, and guide modals now fit properly on all phone screens with correct padding and scroll.</span>
+                                        <span className="leading-relaxed">Responsive mobile layout scaling for career & login views.</span>
                                     </li>
                                     <li className="flex items-start gap-2.5">
                                         <span className="px-1.5 py-0.5 bg-red-950/50 border border-red-800/40 text-red-400 text-[8px] font-black rounded-md uppercase tracking-widest shrink-0 select-none">FIXED</span>
-                                        <span className="leading-relaxed">Title screen "AADISH ROULETTE" no longer clips on small phone viewports. Guide page uses natural layout on mobile instead of scale-shrinking.</span>
+                                        <span className="leading-relaxed">Menu clipping fixes and manual guide scroll tuning on mobile.</span>
                                     </li>
                                     <li className="flex items-start gap-2.5">
                                         <span className="px-1.5 py-0.5 bg-amber-950/50 border border-amber-800/40 text-amber-400 text-[8px] font-black rounded-md uppercase tracking-widest shrink-0 select-none">OPTIMIZED</span>
-                                        <span className="leading-relaxed">Career detail view now displays actual match dates from timestamps instead of hardcoded values.</span>
+                                        <span className="leading-relaxed">Career matches now display accurate historical local dates.</span>
                                     </li>
                                 </ul>
                             </div>
@@ -685,23 +685,23 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                 <ul className="list-none space-y-2 pl-0.5">
                                     <li className="flex items-start gap-2.5">
                                         <span className="px-1.5 py-0.5 bg-green-950/50 border border-green-800/40 text-green-400 text-[8px] font-black rounded-md uppercase tracking-widest shrink-0 select-none">ADDED</span>
-                                        <span className="leading-relaxed">Ultra Performance Mode toggle in config: bypasses background props and stage lights, disables shadow maps, and caps particle buffers.</span>
+                                        <span className="leading-relaxed">Ultra Performance mode profile (no shadows, flat UI, 60FPS).</span>
                                     </li>
                                     <li className="flex items-start gap-2.5">
                                         <span className="px-1.5 py-0.5 bg-green-950/50 border border-green-800/40 text-green-400 text-[8px] font-black rounded-md uppercase tracking-widest shrink-0 select-none">ADDED</span>
-                                        <span className="leading-relaxed">Premium Live/Blank starting overlay design with high-opacity glassmorphism, glowing red/cyan numbers, and custom SVG shell symbols.</span>
+                                        <span className="leading-relaxed">Redesigned glassmorphic Live/Blank count start panels.</span>
                                     </li>
                                     <li className="flex items-start gap-2.5">
                                         <span className="px-1.5 py-0.5 bg-green-950/50 border border-green-800/40 text-green-400 text-[8px] font-black rounded-md uppercase tracking-widest shrink-0 select-none">ADDED</span>
-                                        <span className="leading-relaxed">Custom high-fidelity Shotgun Shell SVG icon in the HUD remaining ammo display (swapping out the old saw icon).</span>
+                                        <span className="leading-relaxed">Dynamic High-fidelity shell icons in main HUD indicators.</span>
                                     </li>
                                     <li className="flex items-start gap-2.5">
                                         <span className="px-1.5 py-0.5 bg-red-950/50 border border-red-800/40 text-red-400 text-[8px] font-black rounded-md uppercase tracking-widest shrink-0 select-none">FIXED</span>
-                                        <span className="leading-relaxed">Eliminated CPU stutters and freezes on starting/restarting rounds by resolving parallel setup loops.</span>
+                                        <span className="leading-relaxed">Eliminated stutters by cleaning up setups at round starts.</span>
                                     </li>
                                     <li className="flex items-start gap-2.5">
                                         <span className="px-1.5 py-0.5 bg-amber-950/50 border border-amber-800/40 text-amber-400 text-[8px] font-black rounded-md uppercase tracking-widest shrink-0 select-none">OPTIMIZED</span>
-                                        <span className="leading-relaxed">Balanced lighting in Ultra Performance (illuminated but shadowless) and adjusted desktop menu scaling for standard PC screens.</span>
+                                        <span className="leading-relaxed">Lighting performance adjustments and menu box scalability.</span>
                                     </li>
                                 </ul>
                             </div>
@@ -710,23 +710,23 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                 <ul className="list-none space-y-2 pl-0.5">
                                     <li className="flex items-start gap-2.5">
                                         <span className="px-1.5 py-0.5 bg-green-950/50 border border-green-800/40 text-green-400 text-[8px] font-black rounded-md uppercase tracking-widest shrink-0 select-none">ADDED</span>
-                                        <span className="leading-relaxed">Redesigned credentials portal: scaled single-pane interface, clean cyber typography, and philosophical fate quote banner.</span>
+                                        <span className="leading-relaxed">Redesigned cyber-themed login console & quote header.</span>
                                     </li>
                                     <li className="flex items-start gap-2.5">
                                         <span className="px-1.5 py-0.5 bg-green-950/50 border border-green-800/40 text-green-400 text-[8px] font-black rounded-md uppercase tracking-widest shrink-0 select-none">ADDED</span>
-                                        <span className="leading-relaxed">Dynamically calibrated default configs on startup/reset (PC resolution 3.0, mobile HUD size 0.60, specific music levels).</span>
+                                        <span className="leading-relaxed">Smart default presets mapped out for PC versus Mobile.</span>
                                     </li>
                                     <li className="flex items-start gap-2.5">
                                         <span className="px-1.5 py-0.5 bg-green-950/50 border border-green-800/40 text-green-400 text-[8px] font-black rounded-md uppercase tracking-widest shrink-0 select-none">ADDED</span>
-                                        <span className="leading-relaxed">Responsive vertical viewport scroll wrappers preventing item cutoff on mobile portrait and landscape viewports.</span>
+                                        <span className="leading-relaxed">Fixed items overflow grids on mobile landscape layouts.</span>
                                     </li>
                                     <li className="flex items-start gap-2.5">
                                         <span className="px-1.5 py-0.5 bg-amber-950/50 border border-amber-800/40 text-amber-400 text-[8px] font-black rounded-md uppercase tracking-widest shrink-0 select-none">OPTIMIZED</span>
-                                        <span className="leading-relaxed">Expanded Global Leaderboard into detailed grid layouts featuring agent ranks, operational statistics, and podium finishers.</span>
+                                        <span className="leading-relaxed">Detailed player rank indicators on podium leaderboard.</span>
                                     </li>
                                     <li className="flex items-start gap-2.5">
                                         <span className="px-1.5 py-0.5 bg-amber-950/50 border border-amber-800/40 text-amber-400 text-[8px] font-black rounded-md uppercase tracking-widest shrink-0 select-none">OPTIMIZED</span>
-                                        <span className="leading-relaxed">Re-engineered menu buttons: sleek neon glowing borders, smooth hover animations, and modern clean aesthetics.</span>
+                                        <span className="leading-relaxed">Neon hover borders and smooth button click transitions.</span>
                                     </li>
                                 </ul>
                             </div>
@@ -735,15 +735,15 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                 <ul className="list-none space-y-2 pl-0.5">
                                     <li className="flex items-start gap-2.5">
                                         <span className="px-1.5 py-0.5 bg-green-950/50 border border-green-800/40 text-green-400 text-[8px] font-black rounded-md uppercase tracking-widest shrink-0 select-none">ADDED</span>
-                                        <span className="leading-relaxed">Implemented device-aware graphics profiles (Mobile, Tablet, PC)</span>
+                                        <span className="leading-relaxed">Implemented device-aware graphics profiles (Mobile, Tablet, PC).</span>
                                     </li>
                                     <li className="flex items-start gap-2.5">
                                         <span className="px-1.5 py-0.5 bg-red-950/50 border border-red-800/40 text-red-400 text-[8px] font-black rounded-md uppercase tracking-widest shrink-0 select-none">FIXED</span>
-                                        <span className="leading-relaxed">Disabled shadows and heavy lighting routines on Mobile and Tablet to secure smooth 60FPS</span>
+                                        <span className="leading-relaxed">Disabled shadows on mobile/tablet to secure stable 60FPS.</span>
                                     </li>
                                     <li className="flex items-start gap-2.5">
                                         <span className="px-1.5 py-0.5 bg-blue-950/50 border border-blue-800/40 text-blue-400 text-[8px] font-black rounded-md uppercase tracking-widest shrink-0 select-none">SYSTEM</span>
-                                        <span className="leading-relaxed">Implemented duplicate item drop reroll penalty (80% chance to reroll)</span>
+                                        <span className="leading-relaxed">Added reroll penalty for duplicate item drops.</span>
                                     </li>
                                 </ul>
                             </div>
@@ -860,7 +860,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                                     <span className="text-green-500">{entry.wins}W</span>
                                                     <span className="text-red-500">{entry.losses}L</span>
                                                     {entry.hardModeWins > 0 && (
-                                                        <span className="text-amber-400 flex items-center gap-0.5 shrink-0" title="Elite Hard Mode Wins">
+                                                        <span className="text-amber-400 flex items-center gap-0.5 shrink-0" title="Hard Mode Wins">
                                                             <Skull size={10} className="text-red-500 animate-pulse animate-duration-1000 sm:w-[13px] sm:h-[13px]" />{entry.hardModeWins}
                                                         </span>
                                                     )}
@@ -994,12 +994,12 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                                 </div>
                                                 <div>
                                                     <div className="text-xs font-black text-stone-300 uppercase tracking-wider flex items-center gap-1.5">
-                                                        {match.isHardMode ? `DIR. ${getMatchCodename(mIdx, true)}` : `OP. ${getMatchCodename(mIdx, false)}`} #{selectedCareerUser.stats.matchHistory.length - mIdx}
+                                                        MATCH #{selectedCareerUser.stats.matchHistory.length - mIdx}
                                                         {match.isHardMode && (
-                                                            <span className="px-1.5 py-0.5 bg-red-950/60 border border-red-900/40 text-red-500 text-[6px] font-black tracking-widest rounded uppercase">ELITE</span>
+                                                            <span className="px-1.5 py-0.5 bg-red-950/60 border border-red-900/40 text-red-500 text-[6px] font-black tracking-widest rounded uppercase">HardMode</span>
                                                         )}
                                                     </div>
-                                                    <div className="text-[8px] text-stone-600 font-bold mt-0.5">{match.timestamp ? new Date(match.timestamp).toLocaleDateString() : 'Unknown'}</div>
+                                                    <div className="text-[8px] text-stone-600 font-bold mt-0.5">{match.timestamp ? new Date(match.timestamp).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : 'Unknown'}</div>
                                                 </div>
                                             </div>
                                             <div className="flex gap-4 text-right">

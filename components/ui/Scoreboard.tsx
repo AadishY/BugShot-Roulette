@@ -145,14 +145,14 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ onClose }) => {
                                             <div className="flex flex-col">
                                                 <div className="flex items-center gap-2">
                                                     <span className="text-xs font-black text-stone-300 tracking-wider">
-                                                        {match.isHardMode ? `DIR. ${getMatchCodename(i, true)}` : `OP. ${getMatchCodename(i, false)}`} #{i + 1}
+                                                        MATCH #{i + 1}
                                                     </span>
                                                     {match.isHardMode && (
-                                                        <span className="text-[7px] bg-red-950/50 text-red-500 border border-red-900/30 px-1.5 py-0.5 rounded font-black tracking-widest uppercase">Elite</span>
+                                                        <span className="text-[7px] bg-red-950/50 text-red-500 border border-red-900/30 px-1.5 py-0.5 rounded font-black tracking-widest uppercase">HardMode</span>
                                                     )}
                                                 </div>
                                                 <span className="text-[9px] text-stone-600 font-mono tracking-tighter uppercase">
-                                                    {match.timestamp ? new Date(match.timestamp).toLocaleDateString() : 'Unknown Date'}
+                                                    {match.timestamp ? new Date(match.timestamp).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : 'Unknown Date'}
                                                 </span>
                                             </div>
                                         </div>

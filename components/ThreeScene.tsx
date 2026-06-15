@@ -50,6 +50,33 @@ const calculatePixelScale = (settings: GameSettings, width: number) => {
     return (isMob || isTab) ? mobilePixelScale : (settings.ultraPerformance ? 5.0 : (settings.balancedPerformance ? 4.0 : (settings.pixelScale || 3)));
 };
 
+const syncResolution = (container: HTMLDivElement, sceneContext: SceneContext, settings: GameSettings) => {
+    const width = container.clientWidth;
+    const height = container.clientHeight;
+    if (width === 0 || height === 0) return;
+
+    const scene = sceneContext.scene;
+    const renderer = sceneContext.renderer;
+    const camera = sceneContext.camera;
+
+    // Save settings back to scene userData so they are readable in updates
+    scene.userData.settings = settings;
+
+    const ua = navigator.userAgent.toLowerCase();
+    const isMobile = /android|webos|iphone|ipod|blackberry|iemobile|opera mini/i.test(ua) || width < 900;
+    const isTablet = /ipad|tablet|playbook|silk/i.test(ua) || (ua.includes('macintosh') && 'ontouchend' in document);
+
+    const pxScale = calculatePixelScale(settings, width);
+    const maxPixelRatio = (isMobile || settings.ultraPerformance) ? 1.0 : (isTablet ? 1.2 : Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(maxPixelRatio);
+    renderer.setSize(width / pxScale, height / pxScale, false);
+    renderer.domElement.style.imageRendering = 'pixelated';
+
+    const aspect = width / height;
+    camera.aspect = aspect;
+    camera.updateProjectionMatrix();
+};
+
 export const ThreeScene: React.FC<ThreeSceneProps> = ({
     isSawed,
     isChokeActive,
@@ -193,18 +220,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
 
         const updateCameraResponsive = () => {
             if (!containerRef.current || !sceneRef.current) return;
-            const width = containerRef.current.clientWidth;
-            const height = containerRef.current.clientHeight;
-            if (width === 0 || height === 0) return;
-
-            const pxScale = calculatePixelScale(propsRef.current.settings, width);
-
-            sceneRef.current.renderer.setSize(width / pxScale, height / pxScale, false);
-            sceneRef.current.renderer.domElement.style.imageRendering = 'pixelated';
-
-            const aspect = width / height;
-            sceneRef.current.camera.aspect = aspect;
-            sceneRef.current.camera.updateProjectionMatrix();
+            syncResolution(containerRef.current, sceneRef.current, propsRef.current.settings);
         };
 
         // Initialize immediately if possible to avoid flash
@@ -297,22 +313,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
     // Separate effect for Pixel Scale / Resolution updates (No Rebuild)
     useEffect(() => {
         if (!containerRef.current || !sceneRef.current) return;
-
-        const updateRes = () => {
-            const width = containerRef.current!.clientWidth;
-            const height = containerRef.current!.clientHeight;
-            if (width === 0 || height === 0) return;
-
-            const pxScale = calculatePixelScale(settings, width);
-
-            sceneRef.current!.renderer.setSize(width / pxScale, height / pxScale, false);
-
-            const aspect = width / height;
-            sceneRef.current!.camera.aspect = aspect;
-            sceneRef.current!.camera.updateProjectionMatrix();
-        };
-
-        updateRes();
+        syncResolution(containerRef.current, sceneRef.current, settings);
     }, [settings.pixelScale, settings.ultraPerformance, settings.balancedPerformance]);
 
     // --- SYNC EFFECTS ---

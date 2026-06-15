@@ -157,6 +157,10 @@ export const useDealerAI = ({
                             if (dealerRef.current.items.includes('SAW') && !dealerRef.current.isSawedActive) itemToUse = 'SAW';
                             else if (dealerRef.current.items.includes('CUFFS') && !playerRef.current.isHandcuffed && totalRemaining > 1) itemToUse = 'CUFFS';
                         }
+                        // Use Cuffs even if shell type is unknown but live probability is decent (>= 50%)
+                        else if (!itemToUse && !currentKnown && unknownLiveProb >= 0.5 && dealerRef.current.items.includes('CUFFS') && !playerRef.current.isHandcuffed && totalRemaining > 1) {
+                            itemToUse = 'CUFFS';
+                        }
 
                         // 4. CONVERSION (Priority 4)
                         else if (currentKnown === 'BLANK' && dealerRef.current.items.includes('INVERTER') && !itemToUse) {
@@ -315,22 +319,22 @@ export const useDealerAI = ({
                                     }
                                     await wait(1000);
 
-                                    if (stolen !== 'ADRENALINE') {
-                                        if (stolen === 'CONTRACT' && dealerRef.current.hp <= 1) {
-                                            // Safety check: Stash stolen CONTRACT instead of using it and self-eliminating
-                                            setDealer(d => ({ ...d, items: [...d.items, 'CONTRACT'] }));
-                                            if (setOverlayText) {
-                                                setOverlayText("DEALER STOLE CONTRACT (STASHED)");
-                                                setTimeout(() => setOverlayText?.(null), 1500);
-                                            }
-                                        } else {
-                                            if (stolen === 'GLASS') aiMemory.current.set(currentIdx, chamber[currentIdx]);
-                                            if (stolen === 'INVERTER') {
-                                                const actual = chamber[currentIdx];
-                                                aiMemory.current.set(currentIdx, actual === 'LIVE' ? 'BLANK' : 'LIVE');
-                                            }
-                                            await processItemEffectRef.current('DEALER', stolen);
+                                    if (stolen === 'ADRENALINE') {
+                                        setDealer(d => ({ ...d, items: [...d.items, 'ADRENALINE'] }));
+                                    } else if (stolen === 'CONTRACT' && dealerRef.current.hp <= 1) {
+                                        // Safety check: Stash stolen CONTRACT instead of using it and self-eliminating
+                                        setDealer(d => ({ ...d, items: [...d.items, 'CONTRACT'] }));
+                                        if (setOverlayText) {
+                                            setOverlayText("DEALER STOLE CONTRACT (STASHED)");
+                                            setTimeout(() => setOverlayText?.(null), 1500);
                                         }
+                                    } else {
+                                        if (stolen === 'GLASS') aiMemory.current.set(currentIdx, chamber[currentIdx]);
+                                        if (stolen === 'INVERTER') {
+                                            const actual = chamber[currentIdx];
+                                            aiMemory.current.set(currentIdx, actual === 'LIVE' ? 'BLANK' : 'LIVE');
+                                        }
+                                        await processItemEffectRef.current('DEALER', stolen);
                                     }
                                 } else {
                                     if (setOverlayText) {

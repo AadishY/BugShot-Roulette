@@ -83,7 +83,7 @@ const CustomSlider: React.FC<{
 };
 
 export const SettingsMenu: React.FC<SettingsMenuProps> = ({ settings, onUpdateSettings, onClose, onResetDefaults, onExitToMenu, showExitToMenu }) => {
-    const handleChange = (key: keyof GameSettings, value: number | boolean) => {
+    const handleChange = <K extends keyof GameSettings>(key: K, value: GameSettings[K]) => {
         onUpdateSettings({ ...settings, [key]: value });
     };
 
@@ -227,6 +227,8 @@ export const SettingsMenu: React.FC<SettingsMenuProps> = ({ settings, onUpdateSe
                                 {(settings.ultraPerformance) && "• Potato (Ultra): Low-poly unshaded flat materials, disabled post-processing, low resolution. Built for 60FPS on low-end hardware."}
                             </p>
                         </div>
+
+
                     </div>
 
                     {/* Audio Group */}

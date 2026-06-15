@@ -12,6 +12,7 @@ import ShellBackground from './ui/ShellBackground';
 import { GameOverScreen } from './ui/GameOverScreen';
 import { LootOverlay } from './ui/LootOverlay';
 import { Icons } from './ui/Icons';
+import { ITEM_DESCRIPTIONS } from '../constants';
 
 interface GameUIProps {
     gameState: GameState;
@@ -415,6 +416,9 @@ export const GameUI: React.FC<GameUIProps> = ({
                                                         <span className="text-[10px] md:text-sm font-black text-stone-200 tracking-[0.2em] uppercase group-hover:text-white transition-colors">
                                                             {item.replace('_', ' ')}
                                                         </span>
+                                                        <span className="text-[7.5px] md:text-[9.5px] text-stone-400 font-bold uppercase tracking-widest text-center mt-1 px-2 group-hover:text-white/85 transition-colors leading-tight select-none">
+                                                            {ITEM_DESCRIPTIONS[item]}
+                                                        </span>
                                                     </div>
                                                 )}
 
@@ -466,7 +470,7 @@ export const GameUI: React.FC<GameUIProps> = ({
 
                         {/* Top Bar */}
                         <div className="flex justify-between items-start gap-2">
-                            <StatusDisplay player={player} dealer={dealer} playerName={playerName} gameState={gameState} />
+                            <StatusDisplay player={player} dealer={dealer} playerName={playerName} gameState={gameState} settings={settings} />
                             <button onClick={() => {
                                 audioManager.playSound('click');
                                 onOpenSettings();
@@ -489,6 +493,7 @@ export const GameUI: React.FC<GameUIProps> = ({
                                         onHoverTarget={onHoverTarget}
                                         currentAimTarget={aimTarget}
                                         isMultiplayer={isMultiplayer}
+                                        settings={settings}
                                     />
                                 </div>
                             )}
@@ -507,6 +512,7 @@ export const GameUI: React.FC<GameUIProps> = ({
                                             if (onStealItem) onStealItem(idx);
                                         }}
                                         disabled={false}
+                                        settings={settings}
                                     />
                                 ) : (
                                     <Inventory
@@ -521,6 +527,7 @@ export const GameUI: React.FC<GameUIProps> = ({
                                         }}
                                         disabled={false}
                                         isGunHeld={isGunHeld}
+                                        settings={settings}
                                     />
                                 )}
                             </div>

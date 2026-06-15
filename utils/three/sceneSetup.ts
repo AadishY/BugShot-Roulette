@@ -5,6 +5,7 @@ import { setupLighting, createTable, createGunModel, createDealerModel, createPl
 
 
 export const cleanScene = (scene: THREE.Scene) => {
+
     scene.traverse((object) => {
         if (object instanceof THREE.Mesh) {
             if (object.geometry) object.geometry.dispose();
@@ -101,6 +102,8 @@ export const initThreeScene = (container: HTMLElement, props: any): SceneContext
         precision: (isMobile || props.settings.ultraPerformance) ? 'lowp' : 'mediump' // Standardize across devices for consistency
     });
 
+
+
     // Mobile Optimization: Aggressive resolution scaling
     let mobilePixelScale = 2; // Default mobile
     if (isMobile) {
@@ -115,13 +118,16 @@ export const initThreeScene = (container: HTMLElement, props: any): SceneContext
     const maxPixelRatio = (isMobile || props.settings.ultraPerformance) ? 1.0 : (isTablet ? 1.2 : Math.min(window.devicePixelRatio, 2)); // Cap at 2x for desktop
     renderer.setPixelRatio(maxPixelRatio);
     renderer.setSize(width / pixelScale, height / pixelScale, false);
+
     renderer.domElement.style.width = '100%';
     renderer.domElement.style.height = '100%';
-    renderer.domElement.style.imageRendering = 'pixelated'; // Essential for the look
+    renderer.domElement.style.imageRendering = 'pixelated';
 
     // Disable shadows completely on ALL mobile/tablet devices or when ultraPerformance/balancedPerformance is active
     renderer.shadowMap.enabled = (device === 'pc') && !props.settings.ultraPerformance && !props.settings.balancedPerformance;
     renderer.shadowMap.type = (device === 'pc') ? THREE.PCFSoftShadowMap : THREE.BasicShadowMap;
+
+
 
     // Tone mapping
     renderer.toneMapping = THREE.ACESFilmicToneMapping;

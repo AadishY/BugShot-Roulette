@@ -1,5 +1,5 @@
 import React from 'react';
-import { PlayerState, GameState } from '../../types';
+import { PlayerState, GameState, GameSettings } from '../../types';
 import { Icons } from './Icons';
 
 interface StatusDisplayProps {
@@ -7,9 +7,13 @@ interface StatusDisplayProps {
     dealer: PlayerState;
     playerName: string;
     gameState: GameState;
+    settings?: GameSettings;
 }
 
-const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, playerName, gameState }) => {
+const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, playerName, gameState, settings }) => {
+    const isBalanced = !!settings?.balancedPerformance || !!settings?.ultraPerformance;
+    const isPotato = !!settings?.ultraPerformance;
+
     return (
         <div className="flex justify-between items-start w-full pointer-events-none px-1 md:px-2 py-2 md:py-4">
             {/* Player Side */}
@@ -22,14 +26,28 @@ const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, 
                         {[...Array(player.maxHp)].map((_, i) => {
                             const isActive = i < player.hp;
                             const isLowHp = player.hp <= 1;
+                            
+                            let hpClass = '';
+                            if (isActive) {
+                                if (isPotato) {
+                                    hpClass = 'bg-green-600 border-green-700';
+                                } else {
+                                    hpClass = `bg-gradient-to-t from-green-950 via-green-600/40 to-green-400/20 border-green-500/50 ${isBalanced ? '' : 'shadow-[0_0_20px_rgba(34,197,94,0.2)]'} ${isLowHp && !isBalanced ? 'animate-pulse' : ''}`;
+                                }
+                            } else {
+                                if (isPotato) {
+                                    hpClass = 'bg-neutral-900 border-neutral-850 opacity-20';
+                                } else {
+                                    hpClass = 'bg-stone-950 border-stone-800/40 opacity-10';
+                                }
+                            }
+
                             return (
-                                <div key={i} className={`relative group w-2 h-6 md:w-6 md:h-20 border rounded-sm transition-all duration-1000 ${isActive
-                                    ? `bg-gradient-to-t from-green-950 via-green-600/40 to-green-400/20 border-green-500/50 shadow-[0_0_20px_rgba(34,197,94,0.2)] ${isLowHp ? 'animate-pulse' : ''}`
-                                    : 'bg-stone-950 border-stone-800/40 opacity-10'}`}>
-                                    {isActive && (
+                                <div key={i} className={`relative group w-2 h-6 md:w-6 md:h-20 border rounded-sm transition-all duration-1000 ${hpClass}`}>
+                                    {isActive && !isPotato && (
                                         <>
                                             <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_0%,rgba(255,255,255,0.05)_50%,transparent_100%)] animate-[scanline_3s_linear_infinite]" />
-                                            {isLowHp && <div className="absolute inset-0 bg-red-600/20 blur-sm animate-pulse" />}
+                                            {isLowHp && !isBalanced && <div className="absolute inset-0 bg-red-600/20 blur-sm animate-pulse" />}
                                         </>
                                     )}
                                 </div>
@@ -55,13 +73,15 @@ const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, 
                     : 'bg-red-950/10 border-red-500/20'
                     }`}>
                     {/* Pulsing light behind turn indicator */}
-                    <div className={`absolute inset-0 blur-2xl opacity-20 -z-10 animate-pulse ${gameState.turnOwner === 'PLAYER' ? 'bg-green-500' : 'bg-red-600'
-                        }`} />
+                    {!isBalanced && (
+                        <div className={`absolute inset-0 blur-2xl opacity-20 -z-10 animate-pulse ${gameState.turnOwner === 'PLAYER' ? 'bg-green-500' : 'bg-red-600'
+                            }`} />
+                    )}
 
                     <div className={`text-[9px] md:text-3xl font-black tracking-[0.1em] md:tracking-[0.4em] transition-all duration-500 whitespace-nowrap uppercase italic ${gameState.turnOwner === 'PLAYER'
-                        ? 'text-green-500 drop-shadow-[0_0_15px_rgba(34,197,94,0.5)]'
-                        : 'text-red-600 drop-shadow-[0_0_15px_rgba(220,38,38,0.5)]'
-                        } ${gameState.isHardMode && gameState.turnOwner === 'DEALER' ? 'animate-[chromatic_0.2s_infinite]' : ''}`}>
+                        ? `text-green-500 ${isBalanced ? '' : 'drop-shadow-[0_0_15px_rgba(34,197,94,0.5)]'}`
+                        : `text-red-600 ${isBalanced ? '' : 'drop-shadow-[0_0_15px_rgba(220,38,38,0.5)]'}`
+                        } ${gameState.isHardMode && gameState.turnOwner === 'DEALER' && !isPotato ? 'animate-[chromatic_0.2s_infinite]' : ''}`}>
                         {gameState.turnOwner === 'PLAYER' ? 'YOUR TURN' : (gameState.opponentName?.toUpperCase() || "DEALER") + "'S TURN"}
                     </div>
                 </div>
@@ -86,15 +106,32 @@ const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, 
                         {gameState.isMultiplayer ? (gameState.opponentName || 'OPPONENT') : 'DEALER'}
                     </span>
                     <div className="flex gap-1 md:gap-2">
-                        {[...Array(dealer.maxHp)].map((_, i) => (
-                            <div key={i} className={`relative group w-2 h-6 md:w-6 md:h-20 border rounded-sm transition-all duration-1000 ${i < dealer.hp
-                                ? 'bg-gradient-to-t from-red-950/80 via-red-600/60 to-red-500/40 border-red-500/50 shadow-[0_0_25px_rgba(239,68,68,0.3)]'
-                                : 'bg-stone-950 border-stone-800/40 opacity-10'}`}>
-                                {i < dealer.hp && (
-                                    <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_0%,rgba(255,255,255,0.1)_50%,transparent_100%)] animate-[scanline_3s_linear_infinite]" />
-                                )}
-                            </div>
-                        ))}
+                        {[...Array(dealer.maxHp)].map((_, i) => {
+                            const isActive = i < dealer.hp;
+                            
+                            let hpClass = '';
+                            if (isActive) {
+                                if (isPotato) {
+                                    hpClass = 'bg-red-650 border-red-750';
+                                } else {
+                                    hpClass = `bg-gradient-to-t from-red-950/80 via-red-600/60 to-red-500/40 border-red-500/50 ${isBalanced ? '' : 'shadow-[0_0_25px_rgba(239,68,68,0.3)]'}`;
+                                }
+                            } else {
+                                if (isPotato) {
+                                    hpClass = 'bg-neutral-900 border-neutral-850 opacity-20';
+                                } else {
+                                    hpClass = 'bg-stone-950 border-stone-800/40 opacity-10';
+                                }
+                            }
+
+                            return (
+                                <div key={i} className={`relative group w-2 h-6 md:w-6 md:h-20 border rounded-sm transition-all duration-1000 ${hpClass}`}>
+                                    {isActive && !isPotato && (
+                                        <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_0%,rgba(255,255,255,0.1)_50%,transparent_100%)] animate-[scanline_3s_linear_infinite]" />
+                                    )}
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
 
@@ -122,5 +159,4 @@ const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, 
         </div>
     );
 };
-
 export const StatusDisplay = React.memo(StatusDisplayComponent);

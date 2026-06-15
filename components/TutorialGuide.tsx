@@ -283,7 +283,168 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
             )
         },
 
-        // Page 4: Settings Menu
+        // Page 4: Probability Matrix
+        {
+            title: "PROBABILITY MATRIX",
+            icon: <Crosshair size={20} className="text-amber-500" />,
+            content: (
+                <div className="space-y-4">
+                    <p className="text-stone-400 text-center text-xs md:text-sm mb-3">
+                        📊 Item load probabilities per shipment slot for Player and Dealer.
+                    </p>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        {/* Player Probabilities */}
+                        <div className="space-y-2">
+                            <h4 className="text-[10px] md:text-xs font-black text-red-500 tracking-wider uppercase border-b border-red-950/30 pb-1">
+                                Player Drop Rates
+                            </h4>
+                            <div className="overflow-x-auto border border-stone-850 rounded-lg bg-stone-900/20">
+                                <table className="w-full text-left border-collapse text-[9px] md:text-[10px]">
+                                    <thead>
+                                        <tr className="border-b border-stone-850 bg-stone-950/85 text-stone-400 uppercase font-black text-[8px] md:text-[9px]">
+                                            <th className="p-1.5 pl-2">Item Type</th>
+                                            <th className="p-1.5 text-center">Normal Mode</th>
+                                            <th className="p-1.5 text-center">Hard Mode</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-stone-850 text-stone-300 font-mono">
+                                        <tr>
+                                            <td className="p-1.5 pl-2 font-sans">Cigarettes (Heal)</td>
+                                            <td className="p-1.5 text-center">13.0%</td>
+                                            <td className="p-1.5 text-center text-red-400">5.0%</td>
+                                        </tr>
+                                        <tr>
+                                            <td className="p-1.5 pl-2 font-sans">Beer (Rack Shell)</td>
+                                            <td className="p-1.5 text-center">15.0%</td>
+                                            <td className="p-1.5 text-center text-green-450">18.0%</td>
+                                        </tr>
+                                        <tr>
+                                            <td className="p-1.5 pl-2 font-sans">Handcuffs (Skip Turn)</td>
+                                            <td className="p-1.5 text-center">10.0%</td>
+                                            <td className="p-1.5 text-center">10.0%</td>
+                                        </tr>
+                                        <tr>
+                                            <td className="p-1.5 pl-2 font-sans">Hand Saw (2x DMG)</td>
+                                            <td className="p-1.5 text-center">10.0%</td>
+                                            <td className="p-1.5 text-center">10.0%</td>
+                                        </tr>
+                                        <tr>
+                                            <td className="p-1.5 pl-2 font-sans">Magnifying Glass (Reveal)</td>
+                                            <td className="p-1.5 text-center">10.0%</td>
+                                            <td className="p-1.5 text-center">10.0%</td>
+                                        </tr>
+                                        <tr>
+                                            <td className="p-1.5 pl-2 font-sans">Burner Phone (Future peek)</td>
+                                            <td className="p-1.5 text-center">12.0%</td>
+                                            <td className="p-1.5 text-center text-green-450">16.0%</td>
+                                        </tr>
+                                        <tr>
+                                            <td className="p-1.5 pl-2 font-sans">Polarity Inverter (Swap)</td>
+                                            <td className="p-1.5 text-center">10.0%</td>
+                                            <td className="p-1.5 text-center">9.0%</td>
+                                        </tr>
+                                        <tr>
+                                            <td className="p-1.5 pl-2 font-sans">Adrenaline (Steal)</td>
+                                            <td className="p-1.5 text-center">8.0%</td>
+                                            <td className="p-1.5 text-center">9.0%</td>
+                                        </tr>
+                                        <tr>
+                                            <td className="p-1.5 pl-2 font-sans">Choke Mod (Double shot)</td>
+                                            <td className="p-1.5 text-center">6.0%</td>
+                                            <td className="p-1.5 text-center text-red-400">4.0%</td>
+                                        </tr>
+                                        <tr>
+                                            <td className="p-1.5 pl-2 font-sans">Big Inverter (All invert)</td>
+                                            <td className="p-1.5 text-center">6.0%</td>
+                                            <td className="p-1.5 text-center text-red-400">4.0%</td>
+                                        </tr>
+                                        <tr>
+                                            <td className="p-1.5 pl-2 font-sans">Blood Contract (Loot)</td>
+                                            <td className="p-1.5 text-center">10.0%</td>
+                                            <td className="p-1.5 text-center text-red-400">7.0%</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        {/* Dealer Probabilities */}
+                        <div className="space-y-2">
+                            <h4 className="text-[10px] md:text-xs font-black text-purple-400 tracking-wider uppercase border-b border-purple-950/30 pb-1">
+                                Dealer Drop Rates
+                            </h4>
+                            <div className="overflow-x-auto border border-stone-850 rounded-lg bg-stone-900/20 p-2 space-y-2.5">
+                                <div className="p-1.5 bg-stone-950 border border-stone-900 text-[8.5px] md:text-[9.5px] leading-relaxed rounded-md">
+                                    <span className="font-black text-white block uppercase mb-1">Normal Mode</span>
+                                    Follows Player probabilities exactly, except **Blood Contract** is disabled (0%), redistributing its weight to standard items.
+                                </div>
+                                <div className="p-1.5 bg-stone-950 border border-purple-900/30 text-[8.5px] md:text-[9.5px] leading-relaxed rounded-md">
+                                    <span className="font-black text-purple-400 block uppercase mb-1">Hard Mode (Cheating AI)</span>
+                                    Item slots are actively manipulated by the Dealer depending on his current health:
+                                    <div className="mt-1.5 space-y-1.5 border-t border-stone-850 pt-1.5">
+                                        <div>
+                                            <span className="font-bold text-red-400 text-[9px] md:text-[10px]">AGGRESSIVE (HP &gt; 2):</span>
+                                            <br />• Hand Saw / Choke Mod: **25.0%** each
+                                            <br />• Magnifying Glass: **15.0%**
+                                            <br />• Adrenaline / Cuffs / Inverter: **10.0%** each
+                                            <br />• Big Inverter: **5.0%**
+                                        </div>
+                                        <div>
+                                            <span className="font-bold text-green-400 text-[9px] md:text-[10px]">PANIC/SURVIVAL (HP &le; 2):</span>
+                                            <br />• Cigarettes (Heal): **40.0%**
+                                            <br />• Beer: **20.0%**
+                                            <br />• Adrenaline / Cuffs / Saw / Choke: **10.0%** each
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )
+        },
+
+        // Page 5: Dealer Protocol (Hard Mode)
+        {
+            title: "DEALER PROTOCOL",
+            icon: <Shield size={20} className="text-purple-400" />,
+            content: (
+                <div className="space-y-4">
+                    <div className="text-center mb-4">
+                        <div className="w-14 h-14 md:w-16 md:h-16 mx-auto mb-3 bg-gradient-to-br from-purple-700 to-purple-900 rounded-full flex items-center justify-center border border-purple-500/30">
+                            <Shield size={24} className="text-white" />
+                        </div>
+                        <p className="text-sm md:text-base text-stone-300">Hard Mode AI Specifications</p>
+                        <p className="text-xs md:text-sm text-stone-500 mt-1">Classified Dealer cheating behavior files</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <InfoCard icon={<Eye size={16} />} title="SUPERNATURAL INTUITION" color="border-purple-500">
+                            The Dealer has a **60% chance** at the start of every turn to immediately sense the gunpowder and peek at the current shell, without using any items.
+                        </InfoCard>
+
+                        <InfoCard icon={<Target size={16} />} title="TACTICAL HANDCUFFS" color="border-purple-500">
+                            Unlike normal mode, if the Dealer calculates that the remaining live shell probability is **50% or higher**, he will restrain you with **Handcuffs** even if he hasn't peeked at the shell.
+                        </InfoCard>
+
+                        <InfoCard icon={<Zap size={16} />} title="SMART ADRENALINE STEALS" color="border-purple-500">
+                            The Dealer dynamically targets high-threat items in your inventory:
+                            <br />• Restores health using your **Cigarettes** if low on HP.
+                            <br />• Steals **Saws**, **Inverters**, **Chokes**, and **Remotes** to execute high-damage chains.
+                        </InfoCard>
+
+                        <InfoCard icon={<Heart size={16} />} title="SELF-PRESERVATION MATRIX" color="border-purple-500">
+                            At **1 HP**, the Dealer:
+                            <br />• Will NEVER fire at himself (unless 100% sure it is a blank).
+                            <br />• If he steals your **Blood Contract**, he will **stash** it in his inventory instead of using it, avoiding self-destruction.
+                        </InfoCard>
+                    </div>
+                </div>
+            )
+        },
+
+        // Page 6: Settings Menu
         {
             title: "SETTINGS",
             icon: <Settings size={20} className="text-stone-400" />,
@@ -297,48 +458,79 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <div className="bg-stone-900/60 border border-stone-700 p-3 md:p-4 rounded-sm flex gap-3 items-start">
+                        <div className="bg-stone-900/60 border border-stone-700 p-2 md:p-3 rounded-sm flex gap-3 items-start">
                             <Monitor size={20} className="text-stone-400 shrink-0 mt-0.5" />
                             <div>
-                                <h3 className="font-black text-stone-200 text-sm md:text-base mb-1">RENDER RESOLUTION</h3>
-                                <p className="text-stone-400 text-xs md:text-sm">
-                                    Adjust 3D rendering quality. Lower = better performance on weak devices.
+                                <h3 className="font-black text-stone-200 text-[10px] md:text-xs mb-1 uppercase">Graphics Profile</h3>
+                                <p className="text-stone-400 text-[9px] md:text-[10px] leading-tight">
+                                    Choose **High Quality** (PBR rendering), **Balanced** (reduced shaders), or **Potato** (flat unshaded UI) to match device capabilities.
                                 </p>
                             </div>
                         </div>
 
-                        <div className="bg-stone-900/60 border border-stone-700 p-3 md:p-4 rounded-sm flex gap-3 items-start">
+                        <div className="bg-stone-900/60 border border-stone-700 p-2 md:p-3 rounded-sm flex gap-3 items-start">
+                            <Monitor size={20} className="text-stone-400 shrink-0 mt-0.5" />
+                            <div>
+                                <h3 className="font-black text-stone-200 text-[10px] md:text-xs mb-1 uppercase">RENDER RESOLUTION</h3>
+                                <p className="text-stone-400 text-[9px] md:text-[10px] leading-tight">
+                                    Adjust 3D rendering canvas scale. Lower values reduce pixel density to optimize performance on mobile GPUs.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="bg-stone-900/60 border border-stone-700 p-2 md:p-3 rounded-sm flex gap-3 items-start">
                             <Maximize size={20} className="text-stone-400 shrink-0 mt-0.5" />
                             <div>
-                                <h3 className="font-black text-stone-200 text-sm md:text-base mb-1">HUD SCALE</h3>
-                                <p className="text-stone-400 text-xs md:text-sm">
-                                    Scale UI elements. Increase for small screens, decrease for immersion.
+                                <h3 className="font-black text-stone-200 text-[10px] md:text-xs mb-1 uppercase">HUD SCALE</h3>
+                                <p className="text-stone-400 text-[9px] md:text-[10px] leading-tight">
+                                    Rescale items grids, HP gauges, and control triggers to fit landscape/portrait screens.
                                 </p>
                             </div>
                         </div>
 
-                        <div className="bg-stone-900/60 border border-stone-700 p-3 md:p-4 rounded-sm flex gap-3 items-start">
+                        <div className="bg-stone-900/60 border border-stone-700 p-2 md:p-3 rounded-sm flex gap-3 items-start">
                             <Eye size={20} className="text-stone-400 shrink-0 mt-0.5" />
                             <div>
-                                <h3 className="font-black text-stone-200 text-sm md:text-base mb-1">FIELD OF VIEW (FOV)</h3>
-                                <p className="text-stone-400 text-xs md:text-sm">
-                                    Wide/narrow view angle. Higher = more visible area, may stretch edges.
+                                <h3 className="font-black text-stone-200 text-[10px] md:text-xs mb-1 uppercase">FIELD OF VIEW (FOV)</h3>
+                                <p className="text-stone-400 text-[9px] md:text-[10px] leading-tight">
+                                    Scale visual view camera field from narrow 60° up to wide-angle 110°.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="bg-stone-900/60 border border-stone-700 p-2 md:p-3 rounded-sm flex gap-3 items-start">
+                            <Volume2 size={20} className="text-stone-400 shrink-0 mt-0.5" />
+                            <div>
+                                <h3 className="font-black text-stone-200 text-[10px] md:text-xs mb-1 uppercase">INDEPENDENT AUDIO</h3>
+                                <p className="text-stone-400 text-[9px] md:text-[10px] leading-tight">
+                                    Separately balance the synthesizer background music loop and game sound effects.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="bg-stone-900/60 border border-red-900/40 p-2 md:p-3 rounded-sm flex gap-3 items-start bg-red-950/5">
+                            <Code size={20} className="text-red-500 shrink-0 mt-0.5" />
+                            <div>
+                                <h3 className="font-black text-red-400 text-[10px] md:text-xs mb-1 uppercase">DEVELOPER CONSOLE</h3>
+                                <p className="text-stone-400 text-[9px] md:text-[10px] leading-tight">
+                                    Toggle Developer overlay overlay cheats. Ignores statistics and scoreboards if active.
                                 </p>
                             </div>
                         </div>
                     </div>
 
-                    <div className="bg-gradient-to-r from-amber-950/30 to-transparent border border-amber-900/30 p-3 md:p-4 rounded-sm">
-                        <p className="text-amber-400 text-xs md:text-sm font-bold flex items-center gap-2">
-                            <Smartphone size={16} /> TIP: Play in FULLSCREEN + LANDSCAPE for best experience!
+                    <div className="bg-gradient-to-r from-amber-950/30 to-transparent border border-amber-900/30 p-2.5 md:p-3.5 rounded-sm mt-3">
+                        <p className="text-amber-400 text-[10px] md:text-xs font-bold flex items-center gap-2">
+                            <Smartphone size={15} /> TIP: Play in FULLSCREEN + LANDSCAPE mode for best immersion!
                         </p>
                     </div>
                 </div>
             )
         },
-        // Page 5: System Profiles & Probabilities
+
+        // Page 7: System Logistics
         {
-            title: "SYSTEM & PROBABILITIES",
+            title: "SYSTEM LOGISTICS",
             icon: <Shield size={20} className="text-amber-500" />,
             content: (
                 <div className="space-y-4">
@@ -357,17 +549,15 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
                             • **Storage cap**: Maximum of 2 of any single item type total in your inventory. This prevents hoarding and forces tactical adaptivity.
                         </InfoCard>
 
-                        <InfoCard icon={<Zap size={16} />} title="NORMAL MODE PROBABILITIES" color="border-green-500">
-                            • Cigarette: 13% | Beer: 15% | Cuffs: 10% | Saw: 10%<br />
-                            • Glass: 10% | Phone: 12% | Inverter: 10% | Adrenaline: 8%<br />
-                            • Choke Mod: 6% | Big Inverter: 6% | Contract: 10% *(Player Only)*
+                        <InfoCard icon={<Zap size={16} />} title="HEALTH & SHOTGUN DMG" color="border-green-500">
+                            • **Starting HP**: Varies from 2 to 4 depending on match tier settings.<br />
+                            • **Standard Discharge**: Deals 1 damage to player or opponent if LIVE shell.<br />
+                            • **Sawed-off Discharge**: Hand Saw doubles standard discharge damage to 2 HP.
                         </InfoCard>
 
-                        <InfoCard icon={<Shield size={16} />} title="HARD MODE PROBABILITIES" color="border-purple-500">
-                            • Cigarette: 5% | Beer: 18% | Cuffs: 10% | Saw: 10%<br />
-                            • Glass: 10% | Phone: 16% | Inverter: 9% | Adrenaline: 9%<br />
-                            • Choke Mod: 4% | Big Inverter: 4% | Contract: 7% *(Player Only)*<br />
-                            • *Note: Dealer operates cheating and survival item algorithms.*
+                        <InfoCard icon={<Heart size={16} />} title="MATCH PROGRESSION" color="border-purple-500">
+                            • **Normal Mode**: Standard progression with ascending item count shipment slots per round.<br />
+                            • **Hard Mode**: Multi-round progression series (Best of 3 matches) against cheating Dealer AI.
                         </InfoCard>
 
                         <div className="md:col-span-2">
