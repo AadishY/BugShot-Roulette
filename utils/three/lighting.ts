@@ -66,7 +66,7 @@ export const setupLighting = (scene: THREE.Scene, settings?: GameSettings) => {
     scene.add(bulbLight);
 
     // Dealer Rim - Essential for look (Stronger)
-    const dealerRim = new THREE.SpotLight(0xff7700, isMobile ? 35 : 60);
+    const dealerRim = new THREE.SpotLight(0xff7700, isMobile ? 16 : 28);
     dealerRim.position.set(0, 14, -35);
     dealerRim.target.position.set(0, 4, -14);
     dealerRim.angle = 0.6;
@@ -147,7 +147,7 @@ export const setupLighting = (scene: THREE.Scene, settings?: GameSettings) => {
             scene.add(hemiLight);
         }
 
-        const deepBgLight = new THREE.PointLight(0x334455, 90, 120);
+        const deepBgLight = new THREE.PointLight(0x334455, 40, 120);
         deepBgLight.position.set(0, 12, -20);
         if (device !== 'mobile') {
             scene.add(deepBgLight);

@@ -510,7 +510,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                 <div className="flex justify-between items-center mb-2 px-1">
                                     <span className="text-[10px] text-stone-550 font-bold tracking-widest uppercase flex items-center gap-1.5">
                                         <User size={12} className="text-red-650" />
-                                        CODENAME_INPUT
+                                        Username
                                     </span>
                                     <span className="text-[8px] text-stone-600 font-mono tracking-widest uppercase">REQ: 1-12 CHARS</span>
                                 </div>
@@ -534,7 +534,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                 <div className="flex justify-between items-center mb-2 px-1">
                                     <span className="text-[10px] text-stone-550 font-bold tracking-widest uppercase flex items-center gap-1.5">
                                         <Lock size={12} className="text-red-650" />
-                                        ENCRYPTED_KEY_PASS
+                                        Password
                                     </span>
                                     <span className="text-[8px] text-stone-600 font-mono tracking-widest uppercase">SECURE VAULT</span>
                                 </div>
@@ -633,8 +633,33 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                         </div>
                         
                         <div className="space-y-4.5 text-left max-h-96 overflow-y-auto pr-1.5 select-text scrollbar-thin text-xs sm:text-sm text-stone-400 custom-scrollbar">
-                            <div className="space-y-3 bg-stone-950 border border-stone-900/60 p-5 rounded-xl">
-                                <span className="text-stone-200 font-black block border-b border-stone-900 pb-1.5 text-xs sm:text-sm tracking-wider">[June 15, 2026 - System Calibration & Redesign (v1.1.0)]</span>
+                            <div className="space-y-3 bg-stone-950 border border-stone-900/60 p-5 rounded-xl animate-pulse-slow">
+                                <span className="text-stone-200 font-black block border-b border-stone-900 pb-1.5 text-xs sm:text-sm tracking-wider">[June 15, 2026 - Calibration & Polish (v1.1.1)]</span>
+                                <ul className="list-none space-y-3 pl-0.5">
+                                    <li className="flex items-start gap-2.5">
+                                        <span className="px-1.5 py-0.5 bg-green-950/50 border border-green-800/40 text-green-400 text-[8px] font-black rounded-md uppercase tracking-widest shrink-0 select-none">ADDED</span>
+                                        <span className="leading-relaxed">Ultra Performance Mode toggle in config: bypasses background props and stage lights, disables shadow maps, and caps particle buffers.</span>
+                                    </li>
+                                    <li className="flex items-start gap-2.5">
+                                        <span className="px-1.5 py-0.5 bg-green-950/50 border border-green-800/40 text-green-400 text-[8px] font-black rounded-md uppercase tracking-widest shrink-0 select-none">ADDED</span>
+                                        <span className="leading-relaxed">Premium Live/Blank starting overlay design with high-opacity glassmorphism, glowing red/cyan numbers, and custom SVG shell symbols.</span>
+                                    </li>
+                                    <li className="flex items-start gap-2.5">
+                                        <span className="px-1.5 py-0.5 bg-green-950/50 border border-green-800/40 text-green-400 text-[8px] font-black rounded-md uppercase tracking-widest shrink-0 select-none">ADDED</span>
+                                        <span className="leading-relaxed">Custom high-fidelity Shotgun Shell SVG icon in the HUD remaining ammo display (swapping out the old saw icon).</span>
+                                    </li>
+                                    <li className="flex items-start gap-2.5">
+                                        <span className="px-1.5 py-0.5 bg-red-950/50 border border-red-800/40 text-red-400 text-[8px] font-black rounded-md uppercase tracking-widest shrink-0 select-none">FIXED</span>
+                                        <span className="leading-relaxed">Eliminated CPU stutters and freezes on starting/restarting rounds by resolving parallel setup loops.</span>
+                                    </li>
+                                    <li className="flex items-start gap-2.5">
+                                        <span className="px-1.5 py-0.5 bg-amber-950/50 border border-amber-800/40 text-amber-400 text-[8px] font-black rounded-md uppercase tracking-widest shrink-0 select-none">OPTIMIZED</span>
+                                        <span className="leading-relaxed">Balanced lighting in Ultra Performance (illuminated but shadowless) and adjusted desktop menu scaling for standard PC screens.</span>
+                                    </li>
+                                </ul>
+                            </div>
+                            <div className="space-y-3 bg-stone-950 border border-stone-900/60 p-5 rounded-xl opacity-80 hover:opacity-100 transition-opacity">
+                                <span className="text-stone-300 font-black block border-b border-stone-900 pb-1.5 text-xs sm:text-sm tracking-wider">[June 14, 2026 - System Calibration & Redesign (v1.1.0)]</span>
                                 <ul className="list-none space-y-3 pl-0.5">
                                     <li className="flex items-start gap-2.5">
                                         <span className="px-1.5 py-0.5 bg-green-950/50 border border-green-800/40 text-green-400 text-[8px] font-black rounded-md uppercase tracking-widest shrink-0 select-none">ADDED</span>

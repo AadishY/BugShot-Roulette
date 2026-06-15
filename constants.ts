@@ -53,5 +53,5 @@ const getInitialSettings = (): GameSettings => {
 
 export const DEFAULT_SETTINGS: GameSettings = getInitialSettings();
 
-export const GAME_VERSION = '1.1.0';
+export const GAME_VERSION = '1.1.1';
 
