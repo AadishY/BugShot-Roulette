@@ -235,7 +235,11 @@ const InventoryComponent: React.FC<InventoryProps> = ({ player, dealer, gameStat
                     let activeStyle = {};
                     if (isHovered || isSelected) {
                         if (isPotato) {
-                            activeStyle = {};
+                            activeStyle = {
+                                transform: 'translateY(-8px)',
+                                borderColor: '#f59e0b',
+                                backgroundColor: '#292524'
+                            };
                         } else if (isBalanced) {
                             activeStyle = {
                                 transform: 'translateY(-16px) scale(1.04) rotate(1.5deg)',
@@ -252,13 +256,17 @@ const InventoryComponent: React.FC<InventoryProps> = ({ player, dealer, gameStat
 
                     let btnClass = "";
                     if (isPotato) {
-                        btnClass = `w-14 h-18 md:w-22 md:h-30 bg-neutral-900 border ${isCuffDisabled ? 'border-red-900 bg-red-950/30' : 'border-stone-850'} flex flex-col items-center justify-center hover:bg-neutral-850 disabled:opacity-25 disabled:cursor-not-allowed relative overflow-hidden rounded-md`;
+                        btnClass = `w-14 h-18 md:w-22 md:h-30 bg-neutral-900 border ${isCuffDisabled ? 'border-red-900 bg-red-950/30' : 'border-stone-850'} flex flex-col items-center justify-center hover:bg-neutral-850 disabled:opacity-25 disabled:cursor-not-allowed relative overflow-hidden rounded-md transition-all duration-150`;
                     } else {
                         btnClass = `w-14 h-18 md:w-24 md:h-32 bg-zinc-950/60 border-2 ${isCuffDisabled ? 'border-red-900/50 bg-red-950/10' : BORDER_COLORS[item]} flex flex-col items-center justify-center hover:bg-stone-900/40 disabled:opacity-20 disabled:cursor-not-allowed transition-all duration-300 relative overflow-hidden rounded-xl ${isBalanced ? '' : 'shadow-[0_10px_30px_rgba(0,0,0,0.5)]'}`;
                     }
 
-                    if (isSelected && !isPotato) {
-                        btnClass += " ring-2 ring-purple-500/90 border-purple-400 animate-[pulse_1.5s_infinite]";
+                    if (isSelected) {
+                        if (isPotato) {
+                            btnClass += " border-amber-500 bg-amber-950/40";
+                        } else {
+                            btnClass += " ring-2 ring-purple-500/90 border-purple-400 animate-[pulse_1.5s_infinite]";
+                        }
                     }
 
                     return (

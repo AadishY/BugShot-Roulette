@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.3] - 2026-06-20
+
+### Added
+- **Dealer AI Jackpot Immunity Counter-Tactics**: Hard Mode Dealer now checks player Jackpot immunity; avoids wasting double-damage (`SAW`) effects (90% chance) and prioritizes using `INVERTER` (85% chance) on known live shells to flip them to blank and retain turn control.
+- **Normal Mode AI Polishing**: Added a 70% chance for the Casual Dealer to avoid wasting a `SAW` on a jackpot-immune player.
+- **Tarot Selection Probabilities & Utility Tuning**: Increased Hard Mode Dealer card-select peeking chance from 50% to 90%, and fine-tuned scoring evaluation for `The Hanged Man`, `Judgment`, `Wheel of Fortune`, and `The Hermit` card selections.
+- **Tactile Potato Mode Inventory Outlines**: Configured Potato Mode active items to shift up by `-8px` on hover/select and outline slots with a distinct solid amber border.
+- **Changelog Tactical Page**: Integrated a detailed Version History page directly inside the in-game manual guide screen.
+
+### Changed
+- **Dynamic Quality Profile Syncing**: Added performance profile state tracking to the main ThreeJS rendering hooks to automatically re-compile WebGL shaders and apply/disable dynamic shadow maps mid-game.
+- **FPS Warning Adjustments**: Optimized performance alerts to check current settings; if the user is already running Balanced Mode, the text suggests switching to Potato Mode and disables redundant configuration buttons.
+
 ## [2.1.2] - 2026-06-20
 
 ### Changed

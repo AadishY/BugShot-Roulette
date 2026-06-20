@@ -660,6 +660,27 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                         
                         <div className="space-y-3.5 sm:space-y-4.5 text-left flex-1 min-h-0 overflow-y-auto pr-1.5 select-text scrollbar-thin text-[10px] sm:text-xs md:text-sm text-stone-400 custom-scrollbar">
                             <div className="space-y-2.5 bg-stone-950 border border-stone-900/60 p-3.5 sm:p-5 rounded-lg animate-pulse-slow">
+                                <span className="text-stone-200 font-black block border-b border-stone-900 pb-1 text-[11px] sm:text-xs md:text-sm tracking-wider">[June 20, 2026 - Calibration & Smart AI Update (v1.2.1)]</span>
+                                <ul className="list-none space-y-2 pl-0.5">
+                                    <li className="flex items-start gap-2.5">
+                                        <span className="px-1.5 py-0.5 bg-green-950/50 border border-green-800/40 text-green-400 text-[8px] font-black rounded-md uppercase tracking-widest shrink-0 select-none">ADDED</span>
+                                        <span className="leading-relaxed">Smart Dealer AI Jackpot counters: Hard Mode Dealer avoids wasting Saw (90% chance) and uses Inverter (85% chance) on known live shells to flip them to blank and keep turn. Normal Mode has 70% chance to avoid wasting Saw.</span>
+                                    </li>
+                                    <li className="flex items-start gap-2.5">
+                                        <span className="px-1.5 py-0.5 bg-green-950/50 border border-green-800/40 text-green-400 text-[8px] font-black rounded-md uppercase tracking-widest shrink-0 select-none">ADDED</span>
+                                        <span className="leading-relaxed">Tactile Potato Mode inventory: slots slide up by -8px on hover/select and show distinct solid amber border outlines.</span>
+                                    </li>
+                                    <li className="flex items-start gap-2.5">
+                                        <span className="px-1.5 py-0.5 bg-amber-950/50 border border-amber-800/40 text-amber-400 text-[8px] font-black rounded-md uppercase tracking-widest shrink-0 select-none">UPDATED</span>
+                                        <span className="leading-relaxed">Increased Hard Mode Dealer peeking rates to 70% supernatural intuition and 90% optimal Tarot card selection.</span>
+                                    </li>
+                                    <li className="flex items-start gap-2.5">
+                                        <span className="px-1.5 py-0.5 bg-amber-950/50 border border-amber-800/40 text-amber-400 text-[8px] font-black rounded-md uppercase tracking-widest shrink-0 select-none">OPTIMIZED</span>
+                                        <span className="leading-relaxed">Dynamic Quality Profile Syncing: quality changes automatically re-compile WebGL materials and update shadow maps.</span>
+                                    </li>
+                                </ul>
+                            </div>
+                            <div className="space-y-2.5 bg-stone-950 border border-stone-900/60 p-3.5 sm:p-5 rounded-lg opacity-90 hover:opacity-100 transition-opacity">
                                 <span className="text-stone-200 font-black block border-b border-stone-900 pb-1 text-[11px] sm:text-xs md:text-sm tracking-wider">[June 20, 2026 - Tarot Deck & Items Update (v1.2.0)]</span>
                                 <ul className="list-none space-y-2 pl-0.5">
                                     <li className="flex items-start gap-2.5">

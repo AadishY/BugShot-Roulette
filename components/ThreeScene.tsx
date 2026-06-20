@@ -419,7 +419,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
             }
             if (containerRef.current) containerRef.current.innerHTML = '';
         };
-    }, [gameState.isMultiplayer, settings.ultraPerformance]); // Rebuild scene when switching SP/MP or toggling Ultra Performance
+    }, [gameState.isMultiplayer, settings.ultraPerformance, settings.balancedPerformance]); // Rebuild scene when switching SP/MP or toggling performance profiles
 
     // Separate effect for Pixel Scale / Resolution updates (No Rebuild)
     useEffect(() => {

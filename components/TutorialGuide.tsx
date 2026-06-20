@@ -618,7 +618,7 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
 
                         {/* Hard Mode Section */}
                         <InfoCard icon={<Eye size={16} />} title="SUPERNATURAL INTUITION" color="border-purple-500">
-                            The Dealer has a <span className="text-red-400 font-bold">60% chance</span> at the start of every turn to secretly sense the current shell type WITHOUT using any items. This also extends to the next shell for Choke Mod planning.
+                            The Dealer has a <span className="text-red-400 font-bold">70% chance</span> at the start of every turn to secretly sense the current shell type WITHOUT using any items. This also extends to the next shell for Choke Mod planning.
                         </InfoCard>
 
                         <InfoCard icon={<Target size={16} />} title="TACTICAL HANDCUFFS" color="border-purple-500">
@@ -626,7 +626,7 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
                         </InfoCard>
 
                         <InfoCard icon={<Icons.DeckCard size={16} />} title="SMART TAROT SELECTION" color="border-purple-500">
-                            In Hard Mode, the Dealer has a <span className="text-red-400 font-bold">50% chance</span> to peek at all 6 fanned Tarot cards and select the highest-scoring one using a utility function. Scores are based on current HP, opponent HP, inventory state, and chamber info. In Normal Mode, always random.
+                            In Hard Mode, the Dealer has a <span className="text-red-400 font-bold">90% chance</span> to peek at all 6 fanned Tarot cards and select the highest-scoring one using an optimized utility function. Scores adapt to HP states and deck configurations.
                         </InfoCard>
 
                         <InfoCard icon={<Zap size={16} />} title="SMART ADRENALINE STEALS" color="border-purple-500">
@@ -636,11 +636,9 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
                             <br />• Will NOT steal Totem or Adrenaline.
                         </InfoCard>
 
-                        <InfoCard icon={<Heart size={16} />} title="SELF-PRESERVATION MATRIX" color="border-purple-500">
-                            At <span className="text-red-400 font-bold">1 HP</span>, the Dealer:
-                            <br />• Will NEVER fire at himself (unless 100% certain it's blank).
-                            <br />• Stashes stolen <span className="text-red-400 font-bold">Blood Contract</span> instead of using it to avoid suicide.
-                            <br />• Prioritizes healing items above all else.
+                        <InfoCard icon={<Heart size={16} />} title="SELF-PRESERVATION & JACKPOT MATRIX" color="border-purple-500">
+                            • **At 1 HP**: The Dealer will NEVER fire at himself (unless 100% certain it's blank), stashes stolen Blood Contract, and prioritizes healing items above all else.
+                            <br />• **Jackpot Counters**: Under active player Jackpot immunity, the Dealer avoids wasting double-damage (`SAW`) effects (90% Hard / 70% Normal) and prefers using `INVERTER` (85% chance) on known live shells to convert them to blank and keep turn ownership.
                         </InfoCard>
 
                         <InfoCard icon={<Scale size={16} />} title="CHEATING ITEM DISTRIBUTION" color="border-purple-500">
@@ -786,7 +784,7 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
             )
         },
 
-        // Page 6: Developer Info
+        // Page 8: Developer Info
         {
             title: "DEVELOPER",
             icon: <Code size={20} className="text-red-500" />,

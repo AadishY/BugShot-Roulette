@@ -8,7 +8,8 @@ const evaluateCardForDealer = (
     cardName: TarotCard['name'],
     dealer: PlayerState,
     player: PlayerState,
-    gameState: GameState
+    gameState: GameState,
+    currentKnown: ShellType | null
 ): number => {
     const dealerHp = dealer.hp;
     const dealerMaxHp = dealer.maxHp;
@@ -21,14 +22,14 @@ const evaluateCardForDealer = (
             return dealer.items.length < MAX_ITEMS ? 6 : 1;
 
         case 'The Hanged Man':
-            // Lose 1 HP — very bad at low HP, mildly bad otherwise
-            if (dealerHp <= 1) return -10;
-            if (dealerHp <= 2) return 0;
-            return 2;
+            // Lose 1 HP — very bad at low HP, bad otherwise
+            if (dealerHp <= 2) return -12;
+            return -5;
 
         case 'The Hermit':
-            // Transfers turn to player — bad for dealer (loses control)
-            return -3;
+            // Transfers turn to player — bad for dealer (loses control), worse if player is immune
+            const playerImmune = player.jackpotImmunityShots !== undefined && player.jackpotImmunityShots > 0;
+            return playerImmune ? -6 : -3;
 
         case 'The Moon':
             // Steal a random item from opponent — great if player has good items
@@ -37,11 +38,13 @@ const evaluateCardForDealer = (
             return highValueItems.length > 0 ? 9 : 5;
 
         case 'Judgment':
-            // 50% chance to convert blank to live — useful for dealer's next shot on player
-            return 5;
+            // 50% chance to convert blank to live — useful if there are blank shells left
+            return (gameState.blankCount ?? 0) === 0 ? 0 : 5;
 
         case 'Wheel of Fortune':
-            // Reshuffles chamber — useful if current shell position is bad
+            // Reshuffles chamber — useful if current shell is blank, bad if we have a guaranteed live hit
+            if (currentKnown === 'LIVE') return -5;
+            if (currentKnown === 'BLANK') return 6;
             return 3;
 
         case 'The Sun':
@@ -204,8 +207,10 @@ export const useDealerAI = ({
                             const cards = gameStateRef.current.deckCards;
                             let chosenIdx = Math.floor(Math.random() * 6);
 
-                            // Hard Mode: 50% chance to peek and choose best card
-                            if (gameStateRef.current.isHardMode && cards && cards.length > 0 && Math.random() < 0.50) {
+                            // Hard Mode: 90% chance to peek and choose best card
+                            if (gameStateRef.current.isHardMode && cards && cards.length > 0 && Math.random() < 0.90) {
+                                const currentIdx = gameStateRef.current.currentShellIndex;
+                                const currentKnown = aiMemory.current.get(currentIdx) || null;
                                 let bestScore = -Infinity;
                                 let bestIdx = 0;
                                 for (let ci = 0; ci < cards.length; ci++) {
@@ -213,7 +218,8 @@ export const useDealerAI = ({
                                         cards[ci].name,
                                         dealerRef.current,
                                         playerRef.current,
-                                        gameStateRef.current
+                                        gameStateRef.current,
+                                        currentKnown
                                     );
                                     if (score > bestScore) {
                                         bestScore = score;
@@ -279,13 +285,14 @@ export const useDealerAI = ({
                         } else if (gameStateRef.current.isHardMode) {
                             // --- HARD MODE LOGIC (GOD TIER) ---
                             // 0. SUPERNATURAL INTUITION (The Dealer can smell the gunpowder)
-                            if (!currentKnown && Math.random() < 0.60) {
+                            if (!currentKnown && Math.random() < 0.70) {
                                 const actual = chamber[currentIdx];
                                 aiMemory.current.set(currentIdx, actual);
                                 currentKnown = actual;
                             }
 
                             const playerHasActiveTotem = playerRef.current.items.includes('TOTEM') && !playerRef.current.isFlashbanged;
+                            const playerImmune = playerRef.current.jackpotImmunityShots !== undefined && playerRef.current.jackpotImmunityShots > 0;
 
                             // 1. SURVIVAL HEAL (Highest Priority)
                             if (dealerRef.current.hp < dealerRef.current.maxHp && dealerRef.current.items.includes('CIGS')) {
@@ -304,6 +311,10 @@ export const useDealerAI = ({
                             else if (playerRef.current.isHandcuffed && dealerRef.current.items.includes('INVERTER') && currentKnown === 'BLANK') {
                                 itemToUse = 'INVERTER';
                             }
+                            // 4.5 INVERTER OVERRIDE FOR JACKPOT IMMUNITY (85% chance to flip live to blank and shoot self to keep turn)
+                            else if (currentKnown === 'LIVE' && playerImmune && dealerRef.current.items.includes('INVERTER') && Math.random() < 0.45) {
+                                itemToUse = 'INVERTER';
+                            }
                             // 5. LIVE SHELL + PLAYER TOTEM -> FLASHBANG/CRUSHER
                             else if (currentKnown === 'LIVE' && playerHasActiveTotem && dealerRef.current.items.includes('FLASHBANG')) {
                                 itemToUse = 'FLASHBANG';
@@ -313,7 +324,8 @@ export const useDealerAI = ({
                             }
                             // 6. KILL CONFIRMATION / BOOSTED DAMAGE
                             else if (currentKnown === 'LIVE') {
-                                if (dealerRef.current.items.includes('SAW') && !dealerRef.current.isSawedActive) itemToUse = 'SAW';
+                                const shouldAvoidSaw = playerImmune && Math.random() < 0.40;
+                                if (dealerRef.current.items.includes('SAW') && !dealerRef.current.isSawedActive && !shouldAvoidSaw) itemToUse = 'SAW';
                                 else if (dealerRef.current.items.includes('CUFFS') && !playerRef.current.isHandcuffed && totalRemaining > 1) itemToUse = 'CUFFS';
                             }
                             // Use Cuffs even if shell type is unknown but live probability is decent (>= 50%)
@@ -345,7 +357,7 @@ export const useDealerAI = ({
 
                                 // Supernatural peek for second shell
                                 let shell2 = nextKnown;
-                                if (!shell2 && Math.random() < 0.60) {
+                                if (!shell2 && Math.random() < 0.70) {
                                       shell2 = actualNext;
                                       aiMemory.current.set(currentIdx + 1, actualNext);
                                 }
@@ -441,7 +453,12 @@ export const useDealerAI = ({
                                 itemToUse = 'BIG_INVERTER';
                             }
                             else if (dealerRef.current.items.includes('SAW') && !dealerRef.current.isSawedActive && currentKnown === 'LIVE' && playerRef.current.hp > 1) {
-                                itemToUse = 'SAW';
+                                // 70% chance in Normal Mode to correctly avoid wasting SAW on an immune player
+                                const playerImmune = playerRef.current.jackpotImmunityShots !== undefined && playerRef.current.jackpotImmunityShots > 0;
+                                const shouldAvoidSaw = playerImmune && Math.random() < 0.70;
+                                if (!shouldAvoidSaw) {
+                                    itemToUse = 'SAW';
+                                }
                             }
                             else if (dealerRef.current.items.includes('CUFFS') && !playerRef.current.isHandcuffed && totalRemaining > 1) {
                                 itemToUse = 'CUFFS';
