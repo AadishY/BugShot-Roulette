@@ -21,6 +21,7 @@ interface ThreeSceneProps {
     dealer: PlayerState;
     gameState: GameState;
     onCardClick?: (index: number) => void;
+    onLowPerformance?: (fps: number) => void;
 }
 
 const calculatePixelScale = (settings: GameSettings, width: number) => {
@@ -93,7 +94,8 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
     player,
     dealer,
     gameState,
-    onCardClick
+    onCardClick,
+    onLowPerformance
 }) => {
     const containerRef = useRef<HTMLDivElement>(null);
 
@@ -112,7 +114,8 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
         dealer,
         gameState,
         onCardClick,
-        onGunClick
+        onGunClick,
+        onLowPerformance
     });
 
     useEffect(() => {
@@ -131,9 +134,10 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
             dealer,
             gameState,
             onCardClick,
-            onGunClick
+            onGunClick,
+            onLowPerformance
         };
-    }, [isSawed, isChokeActive, isPlayerCuffed, aimTarget, cameraView, animState, turnOwner, settings, knownShell, isHardMode, player, dealer, gameState, onCardClick, onGunClick]);
+    }, [isSawed, isChokeActive, isPlayerCuffed, aimTarget, cameraView, animState, turnOwner, settings, knownShell, isHardMode, player, dealer, gameState, onCardClick, onGunClick, onLowPerformance]);
 
     const sceneRef = useRef<SceneContext | null>(null);
 
@@ -201,6 +205,11 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
         let lastFrameTime = performance.now();
         let isTabVisible = true;
 
+        let frameCount = 0;
+        let fpsTimeStart = performance.now();
+        let fpsAverages: number[] = [];
+        let hasShownPerfWarning = false;
+
         const handleVisibilityChange = () => {
             if (document.hidden) {
                 isTabVisible = false;
@@ -226,6 +235,32 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
                 lastFrameTime = currentTime - (elapsed % frameInterval);
             } else {
                 lastFrameTime = currentTime;
+            }
+
+            // FPS Detection Logic for Performance Warning
+            frameCount++;
+            const fpsElapsed = currentTime - fpsTimeStart;
+            if (fpsElapsed >= 2000) {
+                const currentFps = (frameCount * 1000) / fpsElapsed;
+                frameCount = 0;
+                fpsTimeStart = currentTime;
+
+                fpsAverages.push(currentFps);
+                if (fpsAverages.length > 3) {
+                    fpsAverages.shift();
+                }
+
+                if (fpsAverages.length === 3) {
+                    const avgFps = fpsAverages.reduce((a, b) => a + b, 0) / 3;
+                    const currentSettings = propsRef.current.settings;
+                    
+                    if (avgFps < 30 && !currentSettings.ultraPerformance && !hasShownPerfWarning) {
+                        hasShownPerfWarning = true;
+                        if (propsRef.current.onLowPerformance) {
+                            propsRef.current.onLowPerformance(avgFps);
+                        }
+                    }
+                }
             }
 
             const rawDelta = (currentTime - lastTime) / 1000;

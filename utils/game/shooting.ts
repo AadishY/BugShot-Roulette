@@ -280,14 +280,7 @@ export const performShot = async (
     // Handle Damage & Win Check
     let gameOver = false;
 
-    // Decrement player jackpot immunity if target of the shot is PLAYER and it was a BLANK shot (damage === 0)
-    if (damage === 0 && target === 'PLAYER' && player.jackpotImmunityShots !== undefined && player.jackpotImmunityShots > 0) {
-        const nextImmunity = Math.max(0, player.jackpotImmunityShots - processedShells);
-        setPlayer(p => ({ ...p, jackpotImmunityShots: nextImmunity }));
-        if (nextImmunity <= 0) {
-            audioManager.stopJackpotMusic();
-        }
-    }
+
 
     if (damage > 0) {
         if (target === 'PLAYER') {

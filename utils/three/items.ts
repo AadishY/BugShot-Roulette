@@ -1146,70 +1146,274 @@ export const createTarotCard = (name: string): THREE.Group => {
 export const createJackpotMachine = (): THREE.Group => {
     const group = new THREE.Group();
 
-    // Cabinet body (red metal)
-    const cabMat = new THREE.MeshStandardMaterial({ color: 0xcc1111, metalness: 0.6, roughness: 0.2 });
-    const cab = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.45, 0.26), cabMat);
-    cab.castShadow = true;
-    cab.receiveShadow = true;
-    group.add(cab);
+    // 1. Casing materials (designed to be bright and clear in dark settings)
+    const goldMat = new THREE.MeshStandardMaterial({
+        color: 0xffd700,
+        metalness: 0.35,
+        roughness: 0.25,
+        emissive: 0xd4af37,
+        emissiveIntensity: 0.15
+    });
+    const redMat = new THREE.MeshStandardMaterial({
+        color: 0xe61c1c,
+        metalness: 0.2,
+        roughness: 0.3,
+        emissive: 0x990505,
+        emissiveIntensity: 0.1
+    });
+    const darkMat = new THREE.MeshStandardMaterial({
+        color: 0x2a2a2a,
+        metalness: 0.1,
+        roughness: 0.5
+    });
 
-    // Gold chrome trim
-    const trimMat = new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.9, roughness: 0.1 });
-    const topTrim = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.05, 0.28), trimMat);
-    topTrim.position.y = 0.23;
-    group.add(topTrim);
+    // Add local point light inside group to illuminate details and gold frame (with balanced intensity to avoid glare hotspots)
+    const localLight = new THREE.PointLight(0xfff6e6, 1.5, 3.0, 1.5);
+    localLight.position.set(0, 0.2, 0.35);
+    localLight.castShadow = false; // disable shadow casting for point light to save GPU frames
+    group.add(localLight);
 
-    // Screen plane for reels
-    const canvas = document.createElement('canvas');
-    canvas.width = 256;
-    canvas.height = 128;
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-        ctx.fillStyle = '#0a0a0a';
-        ctx.fillRect(0, 0, 256, 128);
-        ctx.strokeStyle = '#d4af37';
-        ctx.lineWidth = 4;
-        ctx.strokeRect(2, 2, 252, 124);
-        ctx.beginPath();
-        ctx.moveTo(85, 0); ctx.lineTo(85, 128);
-        ctx.moveTo(170, 0); ctx.lineTo(170, 128);
-        ctx.stroke();
-        ctx.fillStyle = '#fff';
-        ctx.font = '42px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('🍎', 42, 64);
-        ctx.fillText('💎', 128, 64);
-        ctx.fillText('🍒', 213, 64);
+    // Casing panels (hollow in front to reveal reels and backing)
+    const backPlate = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.54, 0.02), redMat);
+    backPlate.position.set(0, 0, -0.15);
+    backPlate.castShadow = true;
+    backPlate.receiveShadow = true;
+    group.add(backPlate);
+
+    const leftPlate = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.54, 0.30), redMat);
+    leftPlate.position.set(-0.21, 0, 0.01);
+    leftPlate.castShadow = true;
+    leftPlate.receiveShadow = true;
+    group.add(leftPlate);
+
+    const rightPlate = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.54, 0.30), redMat);
+    rightPlate.position.set(0.21, 0, 0.01);
+    rightPlate.castShadow = true;
+    rightPlate.receiveShadow = true;
+    group.add(rightPlate);
+
+    const topPlateCasing = new THREE.Mesh(new THREE.BoxGeometry(0.40, 0.12, 0.30), redMat);
+    topPlateCasing.position.set(0, 0.21, 0.01);
+    topPlateCasing.castShadow = true;
+    topPlateCasing.receiveShadow = true;
+    group.add(topPlateCasing);
+
+    const bottomPlateCasing = new THREE.Mesh(new THREE.BoxGeometry(0.40, 0.16, 0.30), redMat);
+    bottomPlateCasing.position.set(0, -0.19, 0.01);
+    bottomPlateCasing.castShadow = true;
+    bottomPlateCasing.receiveShadow = true;
+    group.add(bottomPlateCasing);
+
+    // Side plates / wings (classic slot machine profile)
+    const leftWing = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.56, 0.34), goldMat);
+    leftWing.position.set(-0.2325, 0, 0);
+    leftWing.castShadow = true;
+    group.add(leftWing);
+
+    const rightWing = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.56, 0.34), goldMat);
+    rightWing.position.set(0.2325, 0, 0);
+    rightWing.castShadow = true;
+    group.add(rightWing);
+
+    // Marquee header box
+    const marquee = new THREE.Mesh(new THREE.BoxGeometry(0.41, 0.11, 0.30), goldMat);
+    marquee.position.set(0, 0.29, 0.01);
+    marquee.castShadow = true;
+    group.add(marquee);
+
+    // Sign plate
+    const signCanvas = document.createElement('canvas');
+    signCanvas.width = 256;
+    signCanvas.height = 64;
+    const sCtx = signCanvas.getContext('2d');
+    if (sCtx) {
+        sCtx.fillStyle = '#0f0f0f';
+        sCtx.fillRect(0, 0, 256, 64);
+        sCtx.strokeStyle = '#d4af37';
+        sCtx.lineWidth = 4;
+        sCtx.strokeRect(2, 2, 252, 60);
+        
+        sCtx.fillStyle = '#fff';
+        sCtx.font = 'bold 24px monospace';
+        sCtx.textAlign = 'center';
+        sCtx.textBaseline = 'middle';
+        sCtx.shadowColor = '#d4af37';
+        sCtx.shadowBlur = 8;
+        sCtx.fillText('★ JACKPOT ★', 128, 32);
     }
-    const screenTex = new THREE.CanvasTexture(canvas);
-    const screenMat = new THREE.MeshBasicMaterial({ map: screenTex });
-    const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.26, 0.18), screenMat);
-    screen.position.set(0, 0.06, 0.131); // Slightly in front of body
-    group.add(screen);
+    const signTex = new THREE.CanvasTexture(signCanvas);
+    const signMat = new THREE.MeshBasicMaterial({ map: signTex });
+    const signMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.36, 0.08), signMat);
+    signMesh.position.set(0, 0.29, 0.161);
+    group.add(signMesh);
 
-    // Side arm lever rod
-    const armMat = new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.8, roughness: 0.2 });
+    // Reel cutout housing backplate (thin plate placed further back to prevent clipping)
+    const backing = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.22, 0.02), darkMat);
+    backing.position.set(0, 0.05, -0.08);
+    group.add(backing);
+
+    // Front trim panels with cutout window
+    const topPlate = new THREE.Mesh(new THREE.BoxGeometry(0.40, 0.08, 0.03), goldMat);
+    topPlate.position.set(0, 0.20, 0.15);
+    group.add(topPlate);
+
+    const bottomPlate = new THREE.Mesh(new THREE.BoxGeometry(0.40, 0.12, 0.03), goldMat);
+    bottomPlate.position.set(0, -0.10, 0.15);
+    group.add(bottomPlate);
+
+    // Divider bars (aligned between reels)
+    const div1 = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.22, 0.02), goldMat);
+    div1.position.set(-0.0625, 0.05, 0.155);
+    group.add(div1);
+
+    const div2 = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.22, 0.02), goldMat);
+    div2.position.set(0.0625, 0.05, 0.155);
+    group.add(div2);
+
+    // 2. High resolution canvas texture (horizontal strip) for mechanical reels
+    const canvas = document.createElement('canvas');
+    canvas.width = 2048; // 256 * 8 symbols
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d');
+    const pool = ['🍎', '💎', '🍒', '🔔', '🍋', '⭐', '🍀', '7️⃣'];
+    if (ctx) {
+        pool.forEach((symbol, idx) => {
+            const xCenter = idx * 256 + 128;
+            const yCenter = 128;
+            
+            // Fill slot background: light retro off-white paper color
+            ctx.fillStyle = '#f5f5f3';
+            ctx.fillRect(idx * 256, 0, 256, 256);
+            
+            // Draw gold vertical borders
+            ctx.strokeStyle = '#d4af37';
+            ctx.lineWidth = 8;
+            ctx.beginPath();
+            ctx.moveTo(idx * 256, 0);
+            ctx.lineTo(idx * 256, 256);
+            ctx.stroke();
+
+            // Draw gold horizontal borders
+            ctx.beginPath();
+            ctx.moveTo(idx * 256, 4);
+            ctx.lineTo((idx + 1) * 256, 4);
+            ctx.moveTo(idx * 256, 252);
+            ctx.lineTo((idx + 1) * 256, 252);
+            ctx.stroke();
+
+            const grad = ctx.createLinearGradient(idx * 256, 0, (idx + 1) * 256, 0);
+            grad.addColorStop(0, 'rgba(0,0,0,0.15)');
+            grad.addColorStop(0.18, 'rgba(0,0,0,0)');
+            grad.addColorStop(0.82, 'rgba(0,0,0,0)');
+            grad.addColorStop(1, 'rgba(0,0,0,0.15)');
+            ctx.fillStyle = grad;
+            ctx.fillRect(idx * 256, 0, 256, 256);
+
+            // Rotate emoji by Math.PI / 2 (counter-clockwise) so that when cylinder lies horizontally (rotated clockwise by -Math.PI / 2), it is upright and unmirrored!
+            ctx.save();
+            ctx.translate(xCenter, yCenter);
+            ctx.rotate(Math.PI / 2);
+
+            // Apply shadow to separate emoji from background
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
+            ctx.shadowBlur = 6;
+            ctx.shadowOffsetX = 3;
+            ctx.shadowOffsetY = 3;
+
+            // Apply a canvas filter to make the emoji itself much darker and higher contrast
+            ctx.filter = 'brightness(0.45) contrast(1.3)';
+
+            ctx.fillStyle = '#000000';
+            // Specify robust system fallbacks for emoji fonts to ensure correct cross-platform emoji rendering
+            ctx.font = '160px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(symbol, 0, 0);
+            ctx.restore();
+        });
+
+        // Close border line
+        ctx.strokeStyle = '#d4af37';
+        ctx.lineWidth = 8;
+        ctx.beginPath();
+        ctx.moveTo(2048, 0);
+        ctx.lineTo(2048, 256);
+        ctx.stroke();
+    }
+    const reelTex = new THREE.CanvasTexture(canvas);
+    reelTex.wrapS = THREE.RepeatWrapping;
+    reelTex.wrapT = THREE.RepeatWrapping;
+
+    // Use MeshStandardMaterial to correctly handle WebGL tone mapping and exposure, preventing emojis from washing out.
+    // The diffuse color is set to a light grey to prevent overexposure highlights while keeping the background paper look light.
+    const reelMat = new THREE.MeshStandardMaterial({
+        color: new THREE.Color(0xcccccc), // Slightly scale down to prevent overexposure glare
+        map: reelTex,
+        roughness: 0.6,
+        metalness: 0.0,
+        emissive: new THREE.Color(0x1e1e1e), // warm backlit glow
+        emissiveIntensity: 0.25
+    });
+
+    // Enlarge cylinders geometry (radius 0.11, height 0.095) for maximum readability
+    const reelGeo = new THREE.CylinderGeometry(0.11, 0.11, 0.095, 32);
+
+    // Reel 1 Group, Spin Group & Mesh (centered at z = 0.04 to sit neatly behind faceplates)
+    const reel1Group = new THREE.Group();
+    reel1Group.position.set(-0.125, 0.05, 0.04);
+    const reel1Spin = new THREE.Group();
+    const reel1 = new THREE.Mesh(reelGeo, reelMat);
+    reel1.rotation.z = -Math.PI / 2; // Orient horizontally (clockwise rotation prevents mirroring)
+    reel1Spin.add(reel1);
+    reel1Group.add(reel1Spin);
+    group.add(reel1Group);
+
+    // Reel 2 Group, Spin Group & Mesh
+    const reel2Group = new THREE.Group();
+    reel2Group.position.set(0, 0.05, 0.04);
+    const reel2Spin = new THREE.Group();
+    const reel2 = new THREE.Mesh(reelGeo, reelMat);
+    reel2.rotation.z = -Math.PI / 2; // Orient horizontally
+    reel2Spin.add(reel2);
+    reel2Group.add(reel2Spin);
+    group.add(reel2Group);
+
+    // Reel 3 Group, Spin Group & Mesh
+    const reel3Group = new THREE.Group();
+    reel3Group.position.set(0.125, 0.05, 0.04);
+    const reel3Spin = new THREE.Group();
+    const reel3 = new THREE.Mesh(reelGeo, reelMat);
+    reel3.rotation.z = -Math.PI / 2; // Orient horizontally
+    reel3Spin.add(reel3);
+    reel3Group.add(reel3Spin);
+    group.add(reel3Group);
+
+    // Lever arm
     const armGroup = new THREE.Group();
-    armGroup.position.set(0.17, 0.05, 0);
-    
-    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.25, 8), armMat);
-    arm.position.y = 0.125;
-    armGroup.add(arm);
+    armGroup.position.set(0.245, 0.05, 0);
 
-    // Lever handle (red ball)
-    const ballMat = new THREE.MeshStandardMaterial({ color: 0xcc0000, roughness: 0.3 });
-    const ball = new THREE.Mesh(new THREE.SphereGeometry(0.04, 16, 16), ballMat);
-    ball.position.y = 0.25;
-    armGroup.add(ball);
-    
-    armGroup.rotation.z = Math.PI / 6; // Angled backward slightly
+    const armShaft = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.012, 0.012, 0.26, 8),
+        new THREE.MeshStandardMaterial({ color: 0x999999, metalness: 0.9, roughness: 0.1 })
+    );
+    armShaft.position.y = 0.13;
+    armGroup.add(armShaft);
+
+    const armBall = new THREE.Mesh(
+        new THREE.SphereGeometry(0.042, 16, 16),
+        new THREE.MeshStandardMaterial({ color: 0xaa0000, roughness: 0.3 })
+    );
+    armBall.position.y = 0.26;
+    armGroup.add(armBall);
+
+    armGroup.rotation.z = Math.PI / 6;
     group.add(armGroup);
 
     group.name = 'ITEM_JACKPOT';
-    group.userData = { canvas, ctx, texture: screenTex, arm: armGroup };
+    group.userData = { reel1: reel1Spin, reel2: reel2Spin, reel3: reel3Spin, arm: armGroup, pool };
 
-    group.scale.setScalar(2.0);
+    // Increase model overall scale to 4.2x so it is much bigger, better, and visible
+    group.scale.setScalar(4.2);
 
     return group;
 };

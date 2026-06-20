@@ -78,6 +78,8 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
   const [isScoreboardOpen, setIsScoreboardOpen] = useState(false);
+  const [showPerformancePopup, setShowPerformancePopup] = useState(false);
+  const [detectedLowFps, setDetectedLowFps] = useState(0);
 
   const [settings, setSettings] = useState<GameSettings>(() => {
     const saved = localStorage.getItem('aadish_roulette_settings');
@@ -479,6 +481,10 @@ export default function App() {
         dealer={spGame.dealer}
         gameState={spGame.gameState}
         onCardClick={spGame.selectTarotCard}
+        onLowPerformance={(fps) => {
+          setDetectedLowFps(Math.round(fps));
+          setShowPerformancePopup(true);
+        }}
       />
 
       {/* UI Overlay */}
@@ -608,6 +614,78 @@ export default function App() {
         <TutorialGuide
           onClose={() => setIsGuideOpen(false)}
         />
+      )}
+
+      {showPerformancePopup && (
+        <div className="fixed inset-0 z-[300] flex flex-col items-center justify-center bg-black/85 backdrop-blur-sm p-4 animate-in fade-in duration-300">
+          <div className="w-full max-w-md bg-stone-950 border-2 border-amber-600/50 shadow-[0_0_50px_rgba(245,158,11,0.15)] rounded-2xl p-6 text-center space-y-6 relative overflow-hidden">
+            {/* CRT scanlines effect */}
+            <div className="absolute inset-0 pointer-events-none bg-gradient-to-b from-stone-950/20 via-transparent to-stone-950/20" />
+            
+            <div className="space-y-2">
+              <div className="inline-flex items-center justify-center p-3 bg-amber-950/30 border border-amber-500/30 rounded-full text-amber-500 animate-pulse">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-gauge">
+                  <path d="m12 14 4-4"/>
+                  <path d="M3.34 19a10 10 0 1 1 17.32 0"/>
+                </svg>
+              </div>
+              <h2 className="text-lg font-black text-amber-500 tracking-[0.2em] uppercase">PERFORMANCE WARNING</h2>
+              <p className="text-[10px] text-stone-400 font-bold uppercase tracking-widest leading-relaxed">
+                {settings.ultraPerformance ? (
+                  `SYSTEM DETECTED LOW FRAME RATE (${detectedLowFps} FPS) EVEN IN POTATO MODE. CONSIDER CLOSING OTHER APPS.`
+                ) : settings.balancedPerformance ? (
+                  `SYSTEM DETECTED LOW FRAME RATE (${detectedLowFps} FPS) WHILE IN BALANCED MODE. PLEASE SWITCH TO POTATO PROFILE TO OPTIMIZE.`
+                ) : (
+                  `SYSTEM DETECTED LOW FRAME RATE (${detectedLowFps} FPS). ADJUST GRAPHICS PROFILE TO IMPROVE GAMEPLAY FLUIDITY.`
+                )}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-2.5">
+              {!settings.balancedPerformance && !settings.ultraPerformance && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSettings((prev) => ({
+                      ...prev,
+                      ultraPerformance: false,
+                      balancedPerformance: true,
+                    }));
+                    setShowPerformancePopup(false);
+                  }}
+                  className="w-full py-3 bg-amber-950/25 border border-amber-700/50 hover:bg-amber-900/40 text-amber-400 font-black text-[10px] sm:text-xs tracking-[0.2em] uppercase rounded-xl transition-all active:scale-[0.98] cursor-pointer"
+                >
+                  SWITCH TO BALANCED PROFILE
+                </button>
+              )}
+              
+              {!settings.ultraPerformance && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSettings((prev) => ({
+                      ...prev,
+                      ultraPerformance: true,
+                      balancedPerformance: false,
+                    }));
+                    setShowPerformancePopup(false);
+                  }}
+                  className="w-full py-3 bg-orange-950/25 border border-orange-700/50 hover:bg-orange-900/40 text-orange-400 font-black text-[10px] sm:text-xs tracking-[0.2em] uppercase rounded-xl transition-all active:scale-[0.98] cursor-pointer"
+                >
+                  SWITCH TO POTATO PROFILE
+                </button>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowPerformancePopup(false)}
+              className="px-6 py-2 border border-stone-800 text-stone-500 hover:text-white hover:bg-stone-900 font-black text-[9px] tracking-[0.2em] uppercase rounded-lg transition-all active:scale-95 cursor-pointer block mx-auto"
+            >
+              DISMISS
+            </button>
+          </div>
+        </div>
       )}
 
       {settings.debugMode && appState === 'GAME' && spGame.gameState.phase !== 'BOOT' && spGame.gameState.phase !== 'INTRO' && (

@@ -1183,65 +1183,58 @@ export function updateItemAnimations(context: SceneContext, props: SceneProps, t
                     }
                 }
 
-                // Spin reels between 0.8 and 2.5
-                if (jackpotTime >= 0.8 && jackpotTime < 2.5) {
-                    const seed = Math.floor(time * 25);
-                    const pool = ['🍎', '💎', '🍒', '🔔', '🍋', '⭐', '🍀'];
-                    const r1 = pool[(seed + 1) % pool.length];
-                    const r2 = pool[(seed + 3) % pool.length];
-                    const r3 = pool[(seed + 5) % pool.length];
-                    
-                    const ud = items.itemJackpot.userData;
-                    if (ud.canvas && ud.ctx && ud.texture) {
-                        ud.ctx.fillStyle = '#0a0a0a';
-                        ud.ctx.fillRect(0, 0, 256, 128);
-                        ud.ctx.strokeStyle = '#d4af37';
-                        ud.ctx.lineWidth = 4;
-                        ud.ctx.strokeRect(2, 2, 252, 124);
-                        ud.ctx.beginPath();
-                        ud.ctx.moveTo(85, 0); ud.ctx.lineTo(85, 128);
-                        ud.ctx.moveTo(170, 0); ud.ctx.lineTo(170, 128);
-                        ud.ctx.stroke();
-
-                        ud.ctx.font = '42px sans-serif';
-                        ud.ctx.textAlign = 'center';
-                        ud.ctx.textBaseline = 'middle';
-                        ud.ctx.fillText(r1, 42, 64);
-                        ud.ctx.fillText(r2, 128, 64);
-                        ud.ctx.fillText(r3, 213, 64);
-                        ud.texture.needsUpdate = true;
-                    }
-                } 
-                // Stop reels on final result
-                else if (jackpotTime >= 2.5) {
-                    let finalReels = ['🍒', '🍒', '🍋']; // Default normal
-                    if (animState.jackpotResult === 'JACKPOT') {
-                        finalReels = ['💎', '💎', '💎'];
-                    } else if (animState.jackpotResult === 'LOSE') {
-                        finalReels = ['🍎', '🍋', '🔔'];
-                    }
-                    
-                    const ud = items.itemJackpot.userData;
-                    if (ud.canvas && ud.ctx && ud.texture) {
-                        ud.ctx.fillStyle = '#0a0a0a';
-                        ud.ctx.fillRect(0, 0, 256, 128);
-                        ud.ctx.strokeStyle = '#d4af37';
-                        ud.ctx.lineWidth = 4;
-                        ud.ctx.strokeRect(2, 2, 252, 124);
-                        ud.ctx.beginPath();
-                        ud.ctx.moveTo(85, 0); ud.ctx.lineTo(85, 128);
-                        ud.ctx.moveTo(170, 0); ud.ctx.lineTo(170, 128);
-                        ud.ctx.stroke();
-
-                        ud.ctx.font = '42px sans-serif';
-                        ud.ctx.textAlign = 'center';
-                        ud.ctx.textBaseline = 'middle';
-                        ud.ctx.fillText(finalReels[0], 42, 64);
-                        ud.ctx.fillText(finalReels[1], 128, 64);
-                        ud.ctx.fillText(finalReels[2], 213, 64);
-                        ud.texture.needsUpdate = true;
-                    }
+                // Determine final reels symbols based on outcome
+                let finalSymbols = ['🍎', '🍋', '🔔']; // Default LOSE
+                if (animState.jackpotResult === 'JACKPOT') {
+                    finalSymbols = ['7️⃣', '7️⃣', '7️⃣'];
+                } else if (animState.jackpotResult === 'NORMAL') {
+                    finalSymbols = ['🍒', '🍒', '🍋'];
                 }
+
+                const ud = items.itemJackpot.userData;
+                const pool = ud.pool || ['🍎', '💎', '🍒', '🔔', '🍋', '⭐', '🍀', '7️⃣'];
+
+                // Upgraded proper mechanical spinning animation with staggered stops:
+                // Reel 1 stops at 1.8s, Reel 2 at 2.15s, Reel 3 at 2.5s.
+                const tStart = 0.8;
+                const tStop1 = 1.8;
+                const tStop2 = 2.15;
+                const tStop3 = 2.5;
+
+                const getReelAngle = (t: number, tStartVal: number, tStopVal: number, symbol: string) => {
+                    const idx = pool.indexOf(symbol);
+                    const k = idx !== -1 ? idx : 0;
+                    
+                    // Base calibration offset: aligns index 0 directly facing forward
+                    const offset = Math.PI / 2 + Math.PI; 
+                    const finalAngle = k * (Math.PI / 4) + offset;
+                    const spinSpeed = 38; // fast mechanical roll speed (radians/sec)
+
+                    if (t < tStartVal) return offset;
+
+                    const decelTime = 0.6; // 0.6s smooth braking deceleration
+                    const decelStart = tStopVal - decelTime;
+
+                    if (t < decelStart) {
+                        return offset + (t - tStartVal) * spinSpeed;
+                    } else if (t < tStopVal) {
+                        const decelStartAngle = offset + (decelStart - tStartVal) * spinSpeed;
+                        const diff = finalAngle - decelStartAngle;
+                        const extraSpins = Math.ceil(-diff / (2 * Math.PI)) + 2;
+                        const targetAngle = finalAngle + extraSpins * (2 * Math.PI);
+
+                        const p = (t - decelStart) / decelTime;
+                        const ease = Math.sin(p * Math.PI / 2); // smooth ease-out (reaches zero velocity at p=1)
+
+                        return decelStartAngle + (targetAngle - decelStartAngle) * ease;
+                    } else {
+                        return finalAngle;
+                    }
+                };
+
+                if (ud.reel1) ud.reel1.rotation.x = getReelAngle(jackpotTime, tStart, tStop1, finalSymbols[0]);
+                if (ud.reel2) ud.reel2.rotation.x = getReelAngle(jackpotTime, tStart, tStop2, finalSymbols[1]);
+                if (ud.reel3) ud.reel3.rotation.x = getReelAngle(jackpotTime, tStart, tStop3, finalSymbols[2]);
             } 
             // Descend back down
             else {

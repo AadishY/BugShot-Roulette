@@ -322,7 +322,7 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
                         <ItemCard
                             icon={<Icons.Jackpot size={20} />}
                             name="JACKPOT SLOT MACHINE"
-                            description="Spin to win! 20% chance for 3-shot immunity (Jackpot Win), 20% chance for 1-shot immunity (Normal Win), and 60% chance for no win. Exclusive to Player (Dealer cannot get or steal). Stacks with multiple wins."
+                            description="Spin to win! 20% chance for 3-shot immunity (7-7-7 Jackpot Win), 30% chance for 1-shot immunity (Cherry-Cherry-Lemon Normal Win), 50% lose. Only live shots decrement immunity; blank self/dealer shots are exempt. Using Blood Contract consumes 1 immunity shot instead of 1 HP. Stacks with multiple wins."
                             color="text-yellow-500"
                             effect="→ SPIN FOR SHOT IMMUNITY (PLAYER ONLY)"
                         />

@@ -57,7 +57,7 @@
 | 🌟 | **Totem of Undying** | [PASSIVE] Auto-saves at 1 HP on lethal damage. Cannot be stolen via Adrenaline. Can be destroyed by Crusher. Max 1. |
 | 🪞 | **Mirror** | Replays ALL items opponent used on their last turn, in sequence. Excludes Mirror itself. |
 | 🃏 | **Tarot Deck** | Draw one of 6 randomly fanned cards. 11 possible cards with varied effects. |
-| 🎰 | **Jackpot Machine** | Spin to win immunity! 20% 3-shot immune (Jackpot Win), 20% 1-shot immune (Normal Win), 60% lose. Exclusive to Player. Stacks. |
+| 🎰 | **Jackpot Machine** | Spin to win immunity! 20% 3-shot immune (7-7-7 Jackpot Win), 30% 1-shot immune (Cherry-Cherry-Lemon Normal Win), 50% lose. Only live shots decrement immunity; blank self/dealer shots are exempt. Using Blood Contract consumes 1 immunity shot instead of 1 HP. Stacks. |
 
 ---
 
@@ -201,7 +201,18 @@ npm run build
 ---
  
 ## 📜 Changelog
- 
+
+### v2.1.2 (Slot Machine Model & Staggered Spins)
+- **Upgraded Jackpot Slot Machine 3D Model**: Developed a larger, premium 3D cabinet housing featuring three separate horizontal cylinders, golden chrome panels, vertical divider trims, and high-definition vertical emoji canvas strips.
+- **Realistic Staggered Spin Physics**: Programmed sequential wheel braking (Left reel at 1.8s, Center at 2.15s, Right at 2.5s) decelerating smoothly via a trigonometric ease-out curve.
+- **Jackpot Probability Redesign**: Tuned spin outcome distributions to: 20% Jackpot Win (7-7-7 reel match), 30% Normal Win (Cherry-Cherry-Lemon match), and 50% No Win (Apple-Lemon-Bell match).
+
+### v2.1.1 (Performance Safeguards & Jackpot Refinements)
+- **Performance Detector**: Integrated real-time frame rate monitoring in the ThreeJS canvas loop. Automatically prompts players with a CRT warning pop-up if the frame rate dips below 30 FPS, giving quick controls to switch graphics profiles to Balanced or Potato.
+- **Exempt Blank Shots**: Prevent blank shells (fired by either the Player or Dealer) from decrementing the player's Jackpot immunity. Only live shots and Blood Contract sacrifices decrement immunity.
+- **Blood Contract Integration**: Using a Blood Contract with active Jackpot immunity consumes 1 immunity shot and triggers the RCT healing animation sequence instead of permanently losing 1 HP.
+- **Persistent Jackpot Loop**: Ensured that the Jackpot win background loop persists across round transitions and shotgun reloads if the player still has remaining immunity.
+
 ### v2.1.0 (Jackpot Protocols & Audio Dimming)
 - **Jackpot Audio Fixed**: Realigned slot machine audio pathways (`slotmachine`, `jackpot`, and `jackpotloop` files loaded properly).
 - **Dynamic Music Dimming**: Game music dims to 35% during standard item SFX, and to 5% (almost muted) while the Jackpot looping immunity theme is active.

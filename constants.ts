@@ -55,7 +55,7 @@ const getInitialSettings = (): GameSettings => {
       sfxVolume: 1.0,
       debugMode: false,
       ultraPerformance: false,
-      balancedPerformance: false
+      balancedPerformance: true
     };
   }
 };

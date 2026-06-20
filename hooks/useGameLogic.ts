@@ -384,7 +384,9 @@ export const useGameLogic = () => {
       // In HM, roundsSurvived could track match rounds
     }
 
-    audioManager.stopJackpotMusic();
+    if (resetItems || !playerRef.current.jackpotImmunityShots || playerRef.current.jackpotImmunityShots <= 0) {
+      audioManager.stopJackpotMusic();
+    }
     setKnownShell(null);
     setAnim({ dealerDropping: false, playerHit: false });
     setCameraView(turnOwnerOverride || 'PLAYER');
@@ -843,7 +845,7 @@ export const useGameLogic = () => {
         } else {
           if (rand < 0.20) {
             outcome = 'JACKPOT';
-          } else if (rand < 0.40) {
+          } else if (rand < 0.50) {
             outcome = 'NORMAL';
           } else {
             outcome = 'LOSE';

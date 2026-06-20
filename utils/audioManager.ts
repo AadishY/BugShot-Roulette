@@ -253,6 +253,12 @@ class AudioManager {
         this.musicVolume = settings.musicVolume ?? 0.5;
         this.sfxVolume = settings.sfxVolume ?? 0.7;
         this.applyMusicVolume();
+        if (this.jackpotIntroAudio) {
+            this.jackpotIntroAudio.volume = this.sfxVolume;
+        }
+        if (this.jackpotLoopAudio) {
+            this.jackpotLoopAudio.volume = this.sfxVolume;
+        }
     }
 
     public stopMusic() {

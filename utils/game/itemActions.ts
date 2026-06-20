@@ -31,49 +31,80 @@ export const handleContract = async (
 
     // 1. Pay Handling Cost (1 HP)
     if (user === 'PLAYER') {
-        const newHp = player.hp - 1;
-        const hasTotem = player.items.includes('TOTEM');
+        const hasJackpot = player.jackpotImmunityShots !== undefined && player.jackpotImmunityShots > 0;
 
-        if (newHp <= 0) {
-            if (hasTotem) {
-                setPlayer(p => {
-                    const idx = p.items.indexOf('TOTEM');
-                    const newItems = [...p.items];
-                    if (idx !== -1) newItems.splice(idx, 1);
-                    return { ...p, hp: 1, items: newItems };
-                });
-
-                if (setOverlayText) setOverlayText('✨ TOTEM ACTIVATED ✨\nSurvives at 1 HP!');
-                setAnim(prev => ({
-                    ...prev,
-                    triggerTotem: (prev.triggerTotem || 0) + 1,
-                    totemTarget: 'PLAYER'
-                }));
-                audioManager.playSound('totem');
-                addLog("PLAYER'S TOTEM ACTIVATED: Survived lethal blood contract sacrifice at 1 HP!", 'safe');
-                await wait(3000);
-                if (setOverlayText) setOverlayText(null);
-            } else {
-                setPlayer(p => ({ ...p, hp: 0 }));
-                // Immediate Death
-                if (isHardMode && handleHardModeRoundEnd) {
-                    addLog('YOU DIED (BLOOD CONTRACT).', 'danger');
-                    handleHardModeRoundEnd('DEALER');
-                    return;
-                }
-                if (isMultiplayer && handleMPRoundEnd) {
-                    addLog('YOU DIED (BLOOD CONTRACT).', 'danger');
-                    handleMPRoundEnd('DEALER');
-                    return;
-                }
-                setGameState(prev => ({ ...prev, winner: 'DEALER', phase: 'GAME_OVER' }));
-                addLog('YOU DIED (BLOOD CONTRACT).', 'danger');
-                await wait(1500);
-                if (setOverlayColor) setOverlayColor('none');
-                return; // End execution
+        if (hasJackpot) {
+            const nextImmunity = Math.max(0, player.jackpotImmunityShots - 1);
+            setPlayer(p => ({ ...p, jackpotImmunityShots: nextImmunity }));
+            if (nextImmunity <= 0) {
+                audioManager.stopJackpotMusic();
             }
+
+            // RCT Sequence for Contract Sacrifice
+            const originalHp = player.hp;
+            const tempHp = Math.max(0, originalHp - 1);
+
+            setPlayer(p => ({ ...p, hp: tempHp }));
+            if (setOverlayColor) setOverlayColor('red');
+            if (setOverlayText) setOverlayText('✨ REVERSE CURSED TECHNIQUE ✨');
+            setAnim((prev: any) => ({ ...prev, playerHit: true, playerRecovering: false }));
+
+            await wait(1800);
+
+            setPlayer(p => ({ ...p, hp: originalHp }));
+            if (setOverlayText) setOverlayText('✨ RCT: HEALED! ✨');
+            if (setOverlayColor) setOverlayColor('green');
+
+            setAnim((prev: any) => ({ ...prev, playerHit: false, playerRecovering: true }));
+            await wait(1500);
+
+            if (setOverlayColor) setOverlayColor('none');
+            if (setOverlayText) setOverlayText(null);
         } else {
-            setPlayer(p => ({ ...p, hp: newHp }));
+            const newHp = player.hp - 1;
+            const hasTotem = player.items.includes('TOTEM');
+
+            if (newHp <= 0) {
+                if (hasTotem) {
+                    setPlayer(p => {
+                        const idx = p.items.indexOf('TOTEM');
+                        const newItems = [...p.items];
+                        if (idx !== -1) newItems.splice(idx, 1);
+                        return { ...p, hp: 1, items: newItems };
+                    });
+
+                    if (setOverlayText) setOverlayText('✨ TOTEM ACTIVATED ✨\nSurvives at 1 HP!');
+                    setAnim((prev: any) => ({
+                        ...prev,
+                        triggerTotem: (prev.triggerTotem || 0) + 1,
+                        totemTarget: 'PLAYER'
+                    }));
+                    audioManager.playSound('totem');
+                    addLog("PLAYER'S TOTEM ACTIVATED: Survived lethal blood contract sacrifice at 1 HP!", 'safe');
+                    await wait(3000);
+                    if (setOverlayText) setOverlayText(null);
+                } else {
+                    setPlayer(p => ({ ...p, hp: 0 }));
+                    // Immediate Death
+                    if (isHardMode && handleHardModeRoundEnd) {
+                        addLog('YOU DIED (BLOOD CONTRACT).', 'danger');
+                        handleHardModeRoundEnd('DEALER');
+                        return;
+                    }
+                    if (isMultiplayer && handleMPRoundEnd) {
+                        addLog('YOU DIED (BLOOD CONTRACT).', 'danger');
+                        handleMPRoundEnd('DEALER');
+                        return;
+                    }
+                    setGameState(prev => ({ ...prev, winner: 'DEALER', phase: 'GAME_OVER' }));
+                    addLog('YOU DIED (BLOOD CONTRACT).', 'danger');
+                    await wait(1500);
+                    if (setOverlayColor) setOverlayColor('none');
+                    return; // End execution
+                }
+            } else {
+                setPlayer(p => ({ ...p, hp: newHp }));
+            }
         }
     } else {
         const newHp = dealer.hp - 1;
