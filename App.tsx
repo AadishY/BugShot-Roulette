@@ -7,6 +7,7 @@ import { useDealerAI } from './hooks/useDealerAI';
 import { SettingsMenu } from './components/SettingsMenu';
 import { GameSettings } from './types';
 import { DEFAULT_SETTINGS } from './constants';
+import { DiscordSDK } from '@discord/embedded-app-sdk';
 
 import { LoadingScreen } from './components/LoadingScreen';
 import { DebugOverlay } from './components/ui/DebugOverlay';
@@ -38,12 +39,38 @@ export default function App() {
   // --- ORIENTATION CHECK ---
   const [showRotateWarning, setShowRotateWarning] = useState(false);
 
+  // --- DISCORD SDK HANDSHAKE ---
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const isDiscord = params.has('frame_id') || params.has('instance_id') || window.location.search.includes('platform=') || window.location.hostname.includes('discordsays.com');
+
+    if (isDiscord) {
+      const clientId = import.meta.env.VITE_DISCORD_CLIENT_ID || '1517863650998882406';
+      console.log(`[Discord] Initializing SDK with client ID: ${clientId}`);
+      const discordSdk = new DiscordSDK(clientId);
+      discordSdk.ready()
+        .then(() => {
+          console.log("[Discord] SDK is ready!");
+        })
+        .catch((err) => {
+          console.error("[Discord] SDK initialization failed:", err);
+        });
+    }
+  }, []);
+
   useEffect(() => {
     let timeoutId: NodeJS.Timeout;
 
     const checkOrientation = () => {
       clearTimeout(timeoutId);
       timeoutId = setTimeout(() => {
+        const params = new URLSearchParams(window.location.search);
+        const isDiscord = params.has('frame_id') || params.has('instance_id') || window.location.search.includes('platform=') || window.location.hostname.includes('discordsays.com');
+        if (isDiscord) {
+          setShowRotateWarning(false);
+          return;
+        }
+
         let isPortrait = false;
         if (window.matchMedia) {
           isPortrait = window.matchMedia("(orientation: portrait)").matches;

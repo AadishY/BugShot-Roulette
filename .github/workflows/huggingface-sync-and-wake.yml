@@ -1,0 +1,42 @@
+name: Sync Server to Hugging Face Space & Wake Up
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'server/**'
+      - '.github/workflows/**'
+  schedule:
+    # Run every 48 hours to wake the space
+    - cron: '0 0 */2 * *'
+  workflow_dispatch: # Allow manual execution inside GitHub UI
+
+jobs:
+  deploy-and-wake:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Deploy server folder to Hugging Face Space root (Runs on pushes/manual triggers)
+      - name: Deploy to Hugging Face Space
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          cd server
+          git init -b main
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add .
+          git commit -m "Deploy server to Hugging Face Space"
+          git remote add hf https://YoAkatsuki:${HF_TOKEN}@huggingface.co/spaces/YoAkatsuki/Buckshot
+          git push --force hf main:main
+
+      # Wake up Hugging Face space (Runs on pushes, manual runs, and schedule crons)
+      - name: Wake Up Space
+        run: |
+          echo "Sending wake-up ping to Hugging Face Space..."
+          curl -s -L --fail https://yoakatsuki-buckshot.hf.space/ || echo "Space is currently waking up or booting."
