@@ -30,7 +30,8 @@ export function useMultiplayer() {
 
         const newSocket = io(SERVER_URL, {
             reconnectionAttempts: 3,
-            timeout: 5000
+            timeout: 5000,
+            path: isDiscord ? '/socket/socket.io' : '/socket.io'
         });
 
         newSocket.on('connect', () => {

@@ -38,7 +38,7 @@ app.use(express.json());
 const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL || "https://enormous-mackerel-87613.upstash.io";
 const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || "gQAAAAAAAVY9AAIncDFhZDhkNGNjODM5M2I0NmY5YTg5YzQwYWFhOGU3NzI2NnAxODc2MTM";
 
-app.post('/api/redis', async (req, res) => {
+app.post('/redis', async (req, res) => {
     try {
         const response = await fetch(REDIS_URL, {
             method: 'POST',
@@ -56,7 +56,7 @@ app.post('/api/redis', async (req, res) => {
     }
 });
 
-app.post('/api/redis/pipeline', async (req, res) => {
+app.post('/redis/pipeline', async (req, res) => {
     try {
         const response = await fetch(`${REDIS_URL}/pipeline`, {
             method: 'POST',
