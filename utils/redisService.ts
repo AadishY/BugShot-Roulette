@@ -10,6 +10,11 @@ const getRedisConfig = () => {
 };
 
 const getBackendUrl = () => {
+    const params = new URLSearchParams(window.location.search);
+    const isDiscord = params.has('frame_id') || params.has('instance_id') || window.location.search.includes('platform=') || window.location.hostname.includes('discordsays.com');
+    if (isDiscord) {
+        return window.location.origin;
+    }
     if (import.meta.env.VITE_SERVER_URL) {
         return import.meta.env.VITE_SERVER_URL;
     }

@@ -2,7 +2,12 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { MultiplayerGameState, RoomSettings, ChatMessage, MultiplayerPlayer } from '../types';
 
-const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'https://yoakatsuki-buckshot.hf.space';
+const params = new URLSearchParams(window.location.search);
+const isDiscord = params.has('frame_id') || params.has('instance_id') || window.location.search.includes('platform=') || window.location.hostname.includes('discordsays.com');
+
+const SERVER_URL = isDiscord 
+    ? window.location.origin 
+    : (import.meta.env.VITE_SERVER_URL || 'https://yoakatsuki-buckshot.hf.space');
 
 export function useMultiplayer() {
     const [socket, setSocket] = useState<Socket | null>(null);
