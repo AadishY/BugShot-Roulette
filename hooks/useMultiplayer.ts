@@ -6,7 +6,7 @@ const params = new URLSearchParams(window.location.search);
 const isDiscord = params.has('frame_id') || params.has('instance_id') || window.location.search.includes('platform=') || window.location.hostname.includes('discordsays.com');
 
 const SERVER_URL = import.meta.env.VITE_SERVER_URL || 
-    (isDiscord ? window.location.origin : 'https://yoakatsuki-buckshot.hf.space');
+    (isDiscord ? window.location.origin + '/server' : 'https://yoakatsuki-buckshot.hf.space');
 
 const loadSavedSettings = () => {
     let savedSettings = { rounds: 3, hp: 9, itemsPerShipment: 9, isPrivate: false, isAdvanced: false };
@@ -58,7 +58,7 @@ export function useMultiplayer() {
             reconnectionAttempts: 15,
             reconnectionDelay: 3000,
             timeout: 10000,
-            path: isDiscord ? '/socket/socket.io' : '/socket.io',
+            path: isDiscord ? '/server/socket.io' : '/socket.io',
             transports: ['websocket', 'polling']
         });
 

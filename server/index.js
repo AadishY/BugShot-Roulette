@@ -74,6 +74,43 @@ app.post('/redis/pipeline', async (req, res) => {
     }
 });
 
+// Aliased routes for Discord Activity proxy (client calls /api/redis when in Discord)
+app.post('/api/redis', async (req, res) => {
+    try {
+        const response = await fetch(REDIS_URL, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${REDIS_TOKEN}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(req.body)
+        });
+        const data = await response.json();
+        res.status(response.status).json(data);
+    } catch (err) {
+        console.error("Redis proxy error:", err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/api/redis/pipeline', async (req, res) => {
+    try {
+        const response = await fetch(`${REDIS_URL}/pipeline`, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${REDIS_TOKEN}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(req.body)
+        });
+        const data = await response.json();
+        res.status(response.status).json(data);
+    } catch (err) {
+        console.error("Redis pipeline proxy error:", err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // --- DISCORD EMBEDDED ACTIVITY OAUTH TOKEN EXCHANGE ---
 app.post('/api/token', async (req, res) => {
     try {

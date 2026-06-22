@@ -31,7 +31,7 @@ declare global {
 }
 const isDiscordPlatform = urlParams.has('frame_id') || urlParams.has('instance_id') || window.location.search.includes('platform=') || window.location.hostname.includes('discordsays.com');
 const SERVER_URL = import.meta.env.VITE_SERVER_URL || 
-    (isDiscordPlatform ? window.location.origin : 'https://yoakatsuki-buckshot.hf.space');
+    (isDiscordPlatform ? window.location.origin + '/server' : 'https://yoakatsuki-buckshot.hf.space');
 
 type AppState = 'MENU' | 'LOADING_SP' | 'LOADING_GAME' | 'GAME' | 'LOADING_MP' | 'MP_SELECTION' | 'LOBBY';
 
@@ -611,45 +611,83 @@ export default function App() {
 
     try {
       if (appState === 'MENU') {
-        window.updateDiscordActivity("In Main Menu", "Preparing to bind soul...");
+        window.updateDiscordActivity("In Main Menu", "Awaiting the next challenger...");
       } else if (appState === 'MP_SELECTION') {
-        window.updateDiscordActivity("Browsing Multiplayer", "Searching for active lobbies...");
+        window.updateDiscordActivity("Browsing Multiplayer", "Hunting for a worthy opponent...");
       } else if (appState === 'LOBBY') {
         const roomObj = mp.room as any;
         const roomName = roomObj?.name || "Room";
         const isHost = roomObj?.hostId === mp.playerId;
         const playerCount = roomObj?.players?.length || 1;
+        const allReady = roomObj?.players?.every((p: any) => p.ready);
         window.updateDiscordActivity(
-          `In Lobby: ${roomName}`,
-          isHost ? `Host // Players: ${playerCount}/2` : `Waiting // Players: ${playerCount}/2`
+          `Lobby: ${roomName}`,
+          isHost
+            ? `Host // ${playerCount}/2 Players ${allReady ? '// All Ready!' : ''}`
+            : `Waiting // ${playerCount}/2 Players`
         );
       } else if (appState === 'GAME') {
-        if (spGame.gameState.isMultiplayer && mp.room) {
+        const phase = spGame.gameState.phase;
+
+        if (phase === 'GAME_OVER') {
+          // Show win/loss result
+          const playerWon = spGame.gameState.winner === 'PLAYER';
+          if (spGame.gameState.isMultiplayer && mp.room) {
+            const roomObj = mp.room as any;
+            const opponent = roomObj.players?.find((p: any) => p.id !== mp.playerId);
+            const opponentName = opponent?.name || "Opponent";
+            window.updateDiscordActivity(
+              playerWon ? "🏆 Victory!" : "💀 Defeated",
+              `VS ${opponentName} // ${playerWon ? 'Survived the game' : 'Fell in battle'}`
+            );
+          } else {
+            const round = spGame.gameState.isHardMode
+              ? (spGame.gameState.hardModeState?.round || 1)
+              : (spGame.gameState.roundCount + 1);
+            const modeText = spGame.gameState.isHardMode ? "Hard Mode" : "Normal";
+            window.updateDiscordActivity(
+              playerWon ? "🏆 Defeated the Dealer" : "💀 The Dealer Won",
+              `${modeText} // Round ${round}`
+            );
+          }
+        } else if (spGame.gameState.isMultiplayer && mp.room) {
+          // Multiplayer in-game
           const roomObj = mp.room as any;
           const opponent = roomObj.players?.find((p: any) => p.id !== mp.playerId);
           const opponentName = opponent?.name || "Opponent";
-          const playerHp = roomObj.gameState?.players?.[mp.playerId]?.hp ?? spGame.player.hp;
-          const playerMaxHp = roomObj.gameState?.settings?.hp ?? spGame.player.maxHp;
+          const hp = spGame.player.hp;
+          const maxHp = spGame.player.maxHp;
+          const isMyTurn = spGame.gameState.turnOwner === 'PLAYER';
+          const shellsLeft = spGame.gameState.chamber.length - spGame.gameState.currentShellIndex;
+          const roundState = spGame.gameState.multiModeState;
+          const scoreText = roundState ? `${roundState.playerWins}-${roundState.opponentWins}` : '';
+
           window.updateDiscordActivity(
-            "In Multiplayer Match",
-            `VS ${opponentName} // HP: ${playerHp}/${playerMaxHp}`
+            `VS ${opponentName} ${scoreText ? `(${scoreText})` : ''}`,
+            `${isMyTurn ? '🔫 My Turn' : '⏳ Opponent\'s Turn'} // HP: ${hp}/${maxHp} // ${shellsLeft} shells left`
           );
         } else {
+          // Singleplayer in-game
           const round = spGame.gameState.isHardMode
             ? (spGame.gameState.hardModeState?.round || 1)
             : (spGame.gameState.roundCount + 1);
           const hp = spGame.player.hp;
           const maxHp = spGame.player.maxHp;
-          const modeText = spGame.gameState.isHardMode ? "HARD MODE" : "NORMAL MODE";
+          const modeText = spGame.gameState.isHardMode ? "Hard Mode" : "Normal";
+          const isMyTurn = spGame.gameState.turnOwner === 'PLAYER';
+          const shellsLeft = spGame.gameState.chamber.length - spGame.gameState.currentShellIndex;
+          const hardState = spGame.gameState.hardModeState;
+          const scoreText = hardState ? ` (${hardState.playerWins}-${hardState.dealerWins})` : '';
+
           window.updateDiscordActivity(
-            `Fighting Dealer (${modeText})`,
-            `Round ${round} // HP: ${hp}/${maxHp}`
+            `${modeText} — Round ${round}${scoreText}`,
+            `${isMyTurn ? '🔫 My Turn' : '⏳ Dealer\'s Turn'} // HP: ${hp}/${maxHp} // ${shellsLeft} shells`
           );
         }
       } else if (appState === 'LOADING_MP') {
-        window.updateDiscordActivity("Loading Multiplayer", "Establishing connection link...");
+        window.updateDiscordActivity("Connecting...", "Establishing multiplayer link...");
       } else if (appState === 'LOADING_SP' || appState === 'LOADING_GAME') {
-        window.updateDiscordActivity("Loading Match", "Calibrating systems...");
+        window.updateDiscordActivity("Loading Match", "Preparing the chamber...");
       }
     } catch (err) {
       console.error("[Discord RPC] Error updating status:", err);
@@ -660,10 +698,18 @@ export default function App() {
     mp.playerId,
     spGame.gameState.roundCount,
     spGame.gameState.hardModeState?.round,
+    spGame.gameState.hardModeState?.playerWins,
+    spGame.gameState.hardModeState?.dealerWins,
+    spGame.gameState.multiModeState?.playerWins,
+    spGame.gameState.multiModeState?.opponentWins,
     spGame.player.hp,
     spGame.player.maxHp,
     spGame.gameState.isHardMode,
-    spGame.gameState.isMultiplayer
+    spGame.gameState.isMultiplayer,
+    spGame.gameState.phase,
+    spGame.gameState.turnOwner,
+    spGame.gameState.winner,
+    spGame.gameState.currentShellIndex
   ]);
 
   const handleMainMenu = () => {
