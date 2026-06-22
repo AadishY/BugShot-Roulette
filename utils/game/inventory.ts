@@ -1,7 +1,23 @@
 import React from 'react';
-import { GameState, PlayerState, ItemType } from '../../types';
+import { GameState, PlayerState, ItemType, RoomSettings } from '../../types';
 import { wait, randomInt } from '../gameUtils';
 import { MAX_ITEMS } from '../../constants';
+
+export const getCustomWeightedItem = (weights: Record<string, number>): ItemType => {
+    const items = Object.keys(weights) as ItemType[];
+    const totalWeight = items.reduce((sum, item) => sum + (weights[item] || 0), 0);
+    if (totalWeight <= 0) return 'BEER'; // fallback
+    
+    let roll = Math.random() * totalWeight;
+    for (const item of items) {
+        const weight = weights[item] || 0;
+        if (roll < weight) {
+            return item;
+        }
+        roll -= weight;
+    }
+    return 'BEER';
+};
 
 type StateSetter<T> = React.Dispatch<React.SetStateAction<T>>;
 
@@ -152,6 +168,30 @@ export const getContractLoot = (luckycharmsUsed: number = 0): ItemType[] => {
     return [item1, item2];
 };
 
+export const getMultiplayerDefaultWeights = (playerCount: number): Record<string, number> => {
+    return {
+        CONTRACT: 9,
+        BEER: 10,
+        CIGS: 9,
+        GLASS: 7,
+        CUFFS: 7,
+        PHONE: 8,
+        SAW: 5,
+        INVERTER: 7,
+        ADRENALINE: 7,
+        CHOKE: 5,
+        REMOTE: playerCount > 2 ? 3 : 0,
+        BIG_INVERTER: 4,
+        LUCKYCHARM: 4,
+        FLASHBANG: 5,
+        CRUSHER: 3,
+        MIRROR: 4,
+        DECK_CARD: 3,
+        TOTEM: 1,
+        JACKPOT: 2
+    };
+};
+
 export const generateLootBatch = (
     amount: number, 
     isHardMode: boolean, 
@@ -160,7 +200,9 @@ export const generateLootBatch = (
     existingItems: ItemType[] = [],
     luckycharmsUsed: number = 0,
     userHp: number = 4,
-    userMaxHp: number = 4
+    userMaxHp: number = 4,
+    roomSettings?: RoomSettings,
+    playerCount?: number
 ): ItemType[] => {
     const UNIQUE_ITEMS: ItemType[] = ['CONTRACT', 'LUCKYCHARM', 'TOTEM'];
     const batch: ItemType[] = [];
@@ -175,7 +217,17 @@ export const generateLootBatch = (
 
             const isCharmed = luckycharmsUsed > 0 && Math.random() < (1 - Math.pow(0.4, luckycharmsUsed));
 
-            if (isCharmed) {
+            if (roomSettings) {
+                const defaultWeights = getMultiplayerDefaultWeights(playerCount || 2);
+                let weights = roomSettings.isAdvanced && roomSettings.itemWeights
+                    ? roomSettings.itemWeights
+                    : defaultWeights;
+                
+                if (playerCount !== undefined && playerCount <= 2) {
+                    weights = { ...weights, REMOTE: 0 };
+                }
+                candidate = getCustomWeightedItem(weights);
+            } else if (isCharmed) {
                 // Determine curated needed items pool based on HP
                 if (userHp <= 2) {
                     // Critical health: Cigs (45% weight), Cuffs (25%), Glass (15%), Inverter (15%)

@@ -88,6 +88,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
     // Leaderboard & Detailed Profile states
     const [leaderboard, setLeaderboard] = React.useState<any[]>([]);
     const [isLoadingLeaderboard, setIsLoadingLeaderboard] = React.useState(false);
+    const [selectedMPMatch, setSelectedMPMatch] = React.useState<any>(null);
     const [selectedCareerUser, setSelectedCareerUser] = React.useState<any | null>(null);
 
     const loadLeaderboardData = async () => {
@@ -347,10 +348,9 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
         );
     }
      return (
-        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center overflow-hidden pointer-events-auto bg-black/40 backdrop-blur-[2px] p-2 sm:p-4 select-none">
-            
-            {/* Top Right User Profile Badge Section */}
-            <div className="absolute top-4 right-4 sm:top-6 sm:right-6 z-[60] flex items-center gap-3">
+         <div className="absolute inset-0 z-50 flex flex-col items-center justify-start sm:justify-center overflow-y-auto pointer-events-auto bg-black/40 backdrop-blur-[2px] p-2 sm:p-4 select-none custom-scrollbar">
+                  {/* Top Right User Profile Badge Section (Hidden on mobile) */}
+            <div className="absolute top-4 right-4 sm:top-6 sm:right-6 z-[60] hidden sm:flex items-center gap-3">
                 {loggedInUser ? (
                     <div className="flex items-center gap-3 bg-stone-950/80 border border-green-950/40 p-2 px-3 sm:px-4 rounded-xl backdrop-blur-md shadow-[0_10px_30px_rgba(0,0,0,0.5)]">
                         <div className="flex flex-col text-left">
@@ -359,7 +359,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                         </div>
                         <button
                             onClick={handleLogout}
-                            className="ml-2 px-2.5 py-1.5 bg-red-950/40 hover:bg-red-900 text-red-500 hover:text-white font-mono font-bold text-[8px] tracking-widest rounded-lg border border-red-900/30 uppercase transition-all cursor-pointer"
+                            className="ml-2 px-2.5 py-1.5 bg-red-955/40 hover:bg-red-900 text-red-500 hover:text-white font-mono font-bold text-[8px] tracking-widest rounded-lg border border-red-900/30 uppercase transition-all cursor-pointer small-btn"
                         >
                             Disconnect
                         </button>
@@ -370,25 +370,24 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                             audioManager.playSound('click');
                             setShowLoginModal(true);
                         }}
-                        className="group/signin px-4 py-2 sm:px-5 sm:py-2.5 bg-gradient-to-r from-red-950/60 to-stone-950/80 border border-red-700/50 text-red-400 hover:text-white hover:border-red-500 font-mono font-black text-[9px] sm:text-[10px] tracking-[0.2em] rounded-xl backdrop-blur-md transition-all shadow-[0_0_25px_rgba(220,38,38,0.15)] hover:shadow-[0_0_40px_rgba(220,38,38,0.3)] hover:scale-105 active:scale-95 uppercase flex items-center gap-2 cursor-pointer"
+                        className="group/signin px-4 py-2 sm:px-5 sm:py-2.5 bg-gradient-to-r from-red-955/60 to-stone-950/80 border border-red-700/50 text-red-400 hover:text-white hover:border-red-500 font-mono font-black text-[9px] sm:text-[10px] tracking-[0.2em] rounded-xl backdrop-blur-md transition-all shadow-[0_0_25px_rgba(220,38,38,0.15)] hover:shadow-[0_0_40px_rgba(220,38,38,0.3)] hover:scale-105 active:scale-95 uppercase flex items-center gap-2 cursor-pointer small-btn"
                     >
                         <span className="relative flex h-1.5 w-1.5 sm:h-2 sm:w-2">
                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-1.5 w-1.5 sm:h-2 sm:w-2 bg-red-600"></span>
+                            <span className="relative inline-flex rounded-full h-1.5 w-1.5 sm:h-2 sm:w-2 bg-red-650"></span>
                         </span>
                         Sign In / Register
                     </button>
                 )}
             </div>
-
-            {/* Bottom Right Floating Changelog Button */}
-            <div className="absolute bottom-4 right-4 sm:bottom-6 sm:right-6 z-[60]">
+            {/* Bottom Right Floating Changelog Button (Hidden on mobile) */}
+            <div className="absolute bottom-4 right-4 sm:bottom-6 sm:right-6 z-[60] hidden sm:block">
                 <button
                     onClick={() => {
                         audioManager.playSound('click');
                         setShowChangelog(true);
                     }}
-                    className="group/cl p-3.5 sm:p-4 bg-gradient-to-br from-stone-900/90 to-stone-950/90 border border-stone-700/50 text-stone-400 hover:text-amber-450 hover:border-amber-600/50 rounded-full shadow-[0_10px_30px_rgba(0,0,0,0.8)] backdrop-blur-md transition-all hover:scale-110 active:scale-95 flex items-center justify-center cursor-pointer hover:shadow-[0_0_30px_rgba(245,158,11,0.15)]"
+                    className="group/cl p-3.5 sm:p-4 bg-gradient-to-br from-stone-900/90 to-stone-950/90 border border-stone-700/50 text-stone-400 hover:text-amber-455 hover:border-amber-600/50 rounded-full shadow-[0_10px_30px_rgba(0,0,0,0.8)] backdrop-blur-md transition-all hover:scale-110 active:scale-95 flex items-center justify-center cursor-pointer hover:shadow-[0_0_30px_rgba(245,158,11,0.15)] small-btn"
                     title="System Changelog"
                 >
                     <BookOpen size={20} className="group-hover/cl:rotate-[-8deg] transition-transform duration-300" />
@@ -483,7 +482,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                 setLoginPassword('');
                                 setLoginUsername('');
                             }}
-                            className="absolute top-3 right-3 sm:top-4 sm:right-4 text-stone-300 hover:text-red-400 bg-stone-900/60 hover:bg-red-950/30 border border-stone-800 hover:border-red-500/45 p-1.5 rounded-xl z-50 cursor-pointer flex items-center justify-center shadow-lg hover:shadow-[0_0_15px_rgba(239,68,68,0.25)] transition-all"
+                            className="absolute top-3 right-3 sm:top-4 sm:right-4 text-stone-300 hover:text-red-400 bg-stone-900/60 hover:bg-red-955/30 border border-stone-800 hover:border-red-500/45 p-1.5 rounded-xl z-50 cursor-pointer flex items-center justify-center shadow-lg hover:shadow-[0_0_15px_rgba(239,68,68,0.25)] transition-all small-btn"
                             title="Close Portal"
                         >
                             <X size={12} />
@@ -640,7 +639,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                 audioManager.playSound('click');
                                 setShowChangelog(false);
                             }}
-                            className="absolute top-3 right-3 sm:top-5 sm:right-5 text-stone-300 hover:text-red-400 bg-stone-900/60 hover:bg-red-950/30 border border-stone-800 hover:border-red-500/45 p-1.5 sm:p-2 rounded-xl z-50 cursor-pointer flex items-center justify-center shadow-lg hover:shadow-[0_0_15px_rgba(239,68,68,0.25)] transition-all"
+                            className="absolute top-3 right-3 sm:top-5 sm:right-5 text-stone-300 hover:text-red-400 bg-stone-900/60 hover:bg-red-955/30 border border-stone-850 hover:border-red-500/45 p-1.5 sm:p-2 rounded-xl z-50 cursor-pointer flex items-center justify-center shadow-lg hover:shadow-[0_0_15px_rgba(239,68,68,0.25)] transition-all small-btn"
                             title="Close Console"
                         >
                             <X size={14} className="sm:w-[18px] sm:h-[18px]" />
@@ -660,6 +659,86 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                         
                         <div className="space-y-3.5 sm:space-y-4.5 text-left flex-1 min-h-0 overflow-y-auto pr-1.5 select-text scrollbar-thin text-[10px] sm:text-xs md:text-sm text-stone-400 custom-scrollbar">
                             <div className="space-y-2.5 bg-stone-950 border border-stone-900/60 p-3.5 sm:p-5 rounded-lg animate-pulse-slow">
+                                <span className="text-stone-200 font-black block border-b border-stone-900 pb-1 text-[11px] sm:text-xs md:text-sm tracking-wider">[June 22, 2026 - Server Performance & Memory Leaks Cleanups (v1.4.2)]</span>
+                                <ul className="list-none space-y-2 pl-0.5">
+                                    <li className="flex items-start gap-2.5">
+                                        <span className="px-1.5 py-0.5 bg-green-950/50 border border-green-800/40 text-green-400 text-[8px] font-black rounded-md uppercase tracking-widest shrink-0 select-none">OPTIMIZED</span>
+                                        <span className="leading-relaxed">Stateless Throttling Engine: Replaced per-connection background intervals with high-frequency timestamp differential calculations, reducing server memory allocation loads.</span>
+                                    </li>
+                                    <li className="flex items-start gap-2.5">
+                                        <span className="px-1.5 py-0.5 bg-green-950/50 border border-green-800/40 text-green-400 text-[8px] font-black rounded-md uppercase tracking-widest shrink-0 select-none">OPTIMIZED</span>
+                                        <span className="leading-relaxed">Allocation Pools: Moved join logic handlers outside the connection events closure scope to minimize dynamic javascript stack overheads.</span>
+                                    </li>
+                                    <li className="flex items-start gap-2.5">
+                                        <span className="px-1.5 py-0.5 bg-cyan-950/50 border border-cyan-800/40 text-cyan-400 text-[8px] font-black rounded-md uppercase tracking-widest shrink-0 select-none">RECONNECTED</span>
+                                        <span className="leading-relaxed">Seamless Link Recovery: Reconnecting players using duplicate identities overwrite obsolete socket descriptors cleanly, avoiding ghost nodes in active rooms.</span>
+                                    </li>
+                                    <li className="flex items-start gap-2.5">
+                                        <span className="px-1.5 py-0.5 bg-amber-950/50 border border-amber-800/40 text-amber-400 text-[8px] font-black rounded-md uppercase tracking-widest shrink-0 select-none">CLEANED</span>
+                                        <span className="leading-relaxed">Resource GC Safeguard: Room memory collector ejects lingering socket connections upon purging inactive rooms, and React layout hooks clear initial check timers to prevent leak states.</span>
+                                    </li>
+                                </ul>
+                            </div>
+                            <div className="space-y-2.5 bg-stone-950 border border-stone-900/60 p-3.5 sm:p-5 rounded-lg opacity-90 hover:opacity-100 transition-opacity">
+                                <span className="text-stone-200 font-black block border-b border-stone-900 pb-1 text-[11px] sm:text-xs md:text-sm tracking-wider">[June 22, 2026 - Crash Prevention & Connection Stability (v1.4.1)]</span>
+                                <ul className="list-none space-y-2 pl-0.5">
+                                    <li className="flex items-start gap-2.5">
+                                        <span className="px-1.5 py-0.5 bg-green-950/50 border border-green-800/40 text-green-400 text-[8px] font-black rounded-md uppercase tracking-widest shrink-0 select-none">ADDED</span>
+                                        <span className="leading-relaxed">Crash & Freeze Protection: Listens for mid-game opponent disconnect alerts to instantly clear variables and cleanly redirect survivors back to the room lobby.</span>
+                                    </li>
+                                    <li className="flex items-start gap-2.5">
+                                        <span className="px-1.5 py-0.5 bg-green-950/50 border border-green-800/40 text-green-400 text-[8px] font-black rounded-md uppercase tracking-widest shrink-0 select-none">ADDED</span>
+                                        <span className="leading-relaxed">Fallback Long-Polling Transport: Socket connections now seamlessly fall back to polling transport when WebSockets are blocked by proxies.</span>
+                                    </li>
+                                    <li className="flex items-start gap-2.5">
+                                        <span className="px-1.5 py-0.5 bg-cyan-950/50 border border-cyan-800/40 text-cyan-400 text-[8px] font-black rounded-md uppercase tracking-widest shrink-0 select-none">REFACTORED</span>
+                                        <span className="leading-relaxed">Code Deduplication: Extracted room configuration builders on the server and cache configuration loading hooks on the client.</span>
+                                    </li>
+                                    <li className="flex items-start gap-2.5">
+                                        <span className="px-1.5 py-0.5 bg-amber-950/50 border border-amber-800/40 text-amber-400 text-[8px] font-black rounded-md uppercase tracking-widest shrink-0 select-none">UPDATED</span>
+                                        <span className="leading-relaxed">Server Spec Diagnostic Labels: Diagnostics screen correctly formats RANDOM attribute markers to "RNDM" instead of absolute sentinel integers.</span>
+                                    </li>
+                                </ul>
+                            </div>
+                            <div className="space-y-2.5 bg-stone-950 border border-stone-900/60 p-3.5 sm:p-5 rounded-lg opacity-90 hover:opacity-100 transition-opacity">
+                                <span className="text-stone-200 font-black block border-b border-stone-900 pb-1 text-[11px] sm:text-xs md:text-sm tracking-wider">[June 21, 2026 - Final Polish & Multiplayer Optimizations (v1.4.0)]</span>
+                                <ul className="list-none space-y-2 pl-0.5">
+                                    <li className="flex items-start gap-2.5">
+                                        <span className="px-1.5 py-0.5 bg-green-950/50 border border-green-800/40 text-green-400 text-[8px] font-black rounded-md uppercase tracking-widest shrink-0 select-none">ADDED</span>
+                                        <span className="leading-relaxed">Multiplayer Manual Section: Reorganized the Tactical Manual and added a Multiplayer overview section with item page pagination adjustments.</span>
+                                    </li>
+                                    <li className="flex items-start gap-2.5">
+                                        <span className="px-1.5 py-0.5 bg-green-950/50 border border-green-800/40 text-green-400 text-[8px] font-black rounded-md uppercase tracking-widest shrink-0 select-none">ADDED</span>
+                                        <span className="leading-relaxed">Visual Performance Optimizations: Auto-disables GPU-heavy CRT and scanline overlay animations during active multiplayer window configurations to boost FPS.</span>
+                                    </li>
+                                    <li className="flex items-start gap-2.5">
+                                        <span className="px-1.5 py-0.5 bg-amber-950/50 border border-amber-800/40 text-amber-400 text-[8px] font-black rounded-md uppercase tracking-widest shrink-0 select-none">UPDATED</span>
+                                        <span className="leading-relaxed">Chatarea Status Indicator: In-game chat boxes now present an informative label identifying system-wide messaging nodes and join notices.</span>
+                                    </li>
+                                </ul>
+                            </div>
+                            <div className="space-y-2.5 bg-stone-950 border border-stone-900/60 p-3.5 sm:p-5 rounded-lg opacity-90 hover:opacity-100 transition-opacity">
+                                <span className="text-stone-200 font-black block border-b border-stone-900 pb-1 text-[11px] sm:text-xs md:text-sm tracking-wider">[June 21, 2026 - Multiplayer settings & performance update (v1.3.0)]</span>
+                                <ul className="list-none space-y-2 pl-0.5">
+                                    <li className="flex items-start gap-2.5">
+                                        <span className="px-1.5 py-0.5 bg-green-950/50 border border-green-800/40 text-green-400 text-[8px] font-black rounded-md uppercase tracking-widest shrink-0 select-none">ADDED</span>
+                                        <span className="leading-relaxed">RANDOM Lobby Settings: Default starting health and items per shipment are set to RANDOM (value 9) on lobby entrance.</span>
+                                    </li>
+                                    <li className="flex items-start gap-2.5">
+                                        <span className="px-1.5 py-0.5 bg-green-950/50 border border-green-800/40 text-green-400 text-[8px] font-black rounded-md uppercase tracking-widest shrink-0 select-none">ADDED</span>
+                                        <span className="leading-relaxed">Advanced Settings Auto-Disable: Keeps Advanced Configuration toggled off initially when creating or joining rooms.</span>
+                                    </li>
+                                    <li className="flex items-start gap-2.5">
+                                        <span className="px-1.5 py-0.5 bg-amber-950/50 border border-amber-800/40 text-amber-400 text-[8px] font-black rounded-md uppercase tracking-widest shrink-0 select-none">UPDATED</span>
+                                        <span className="leading-relaxed">Full Selection Layout Scaling: Locks stable horizontal three-column layout deck on mobile viewports with no cards wrapping.</span>
+                                    </li>
+                                    <li className="flex items-start gap-2.5">
+                                        <span className="px-1.5 py-0.5 bg-amber-950/50 border border-amber-800/40 text-amber-400 text-[8px] font-black rounded-md uppercase tracking-widest shrink-0 select-none">OPTIMIZED</span>
+                                        <span className="leading-relaxed">Background WebGL Rendering: Pauses animation tick loops and hides container element completely when selection/lobby screens are active.</span>
+                                    </li>
+                                </ul>
+                            </div>
+                            <div className="space-y-2.5 bg-stone-950 border border-stone-900/60 p-3.5 sm:p-5 rounded-lg opacity-90 hover:opacity-100 transition-opacity">
                                 <span className="text-stone-200 font-black block border-b border-stone-900 pb-1 text-[11px] sm:text-xs md:text-sm tracking-wider">[June 20, 2026 - Calibration & Smart AI Update (v1.2.1)]</span>
                                 <ul className="list-none space-y-2 pl-0.5">
                                     <li className="flex items-start gap-2.5">
@@ -818,7 +897,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                 audioManager.playSound('click');
                                 setShowLeaderboard(false);
                             }}
-                            className="absolute top-4 right-4 text-stone-350 hover:text-amber-450 bg-stone-900/60 hover:bg-amber-950/30 border border-stone-800 hover:border-amber-500/45 p-1.5 rounded-xl z-50 cursor-pointer flex items-center justify-center shadow-lg hover:shadow-[0_0_15px_rgba(245,158,11,0.25)] transition-all"
+                            className="absolute top-4 right-4 text-stone-355 hover:text-amber-455 bg-stone-900/60 hover:bg-amber-955/30 border border-stone-800 hover:border-amber-500/45 p-1.5 rounded-xl z-50 cursor-pointer flex items-center justify-center shadow-lg hover:shadow-[0_0_15px_rgba(245,158,11,0.25)] transition-all small-btn"
                             title="Close Leaderboard"
                         >
                             <X size={16} />
@@ -963,7 +1042,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                     audioManager.playSound('click');
                                     setSelectedCareerUser(null);
                                 }}
-                                className="text-stone-300 hover:text-red-400 bg-stone-900/60 hover:bg-red-950/30 border border-stone-800 hover:border-red-500/45 p-2 rounded-xl cursor-pointer flex items-center justify-center transition-all"
+                                className="text-stone-300 hover:text-red-400 bg-stone-900/60 hover:bg-red-955/30 border border-stone-800 hover:border-red-500/45 p-2 rounded-xl cursor-pointer flex items-center justify-center transition-all small-btn"
                             >
                                 <X size={18} />
                             </button>
@@ -1033,17 +1112,30 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                 [...selectedCareerUser.stats.matchHistory].reverse().map((match: any, mIdx: number) => {
                                     const isWin = match.result === 'WIN';
                                     return (
-                                        <div key={mIdx} className="bg-stone-950 border border-stone-900 p-3 rounded-xl flex items-center justify-between">
+                                        <div 
+                                            key={mIdx} 
+                                            onClick={() => {
+                                                if (match.isMultiplayer) {
+                                                    audioManager.playSound('click');
+                                                    setSelectedMPMatch(match);
+                                                }
+                                            }}
+                                            className={`bg-stone-955 border border-stone-900 p-3 rounded-xl flex items-center justify-between transition-all ${
+                                                match.isMultiplayer ? 'cursor-pointer hover:border-cyan-500/40 hover:bg-stone-900/10' : ''
+                                            }`}
+                                        >
                                             <div className="flex items-center gap-3">
-                                                <div className={`w-8 h-8 rounded-lg font-black text-xs flex items-center justify-center shrink-0 ${isWin ? 'bg-green-950/40 text-green-400 border border-green-900/30' : 'bg-red-950/40 text-red-500 border border-red-900/20'}`}>
+                                                <div className={`w-8 h-8 rounded-lg font-black text-xs flex items-center justify-center shrink-0 ${isWin ? 'bg-green-950/40 text-green-400 border border-green-900/30' : 'bg-red-955/40 text-red-500 border border-red-900/20'}`}>
                                                     {isWin ? 'W' : 'L'}
                                                 </div>
                                                 <div>
                                                     <div className="text-xs font-black text-stone-300 uppercase tracking-wider flex items-center gap-1.5">
                                                         MATCH #{selectedCareerUser.stats.matchHistory.length - mIdx}
-                                                        {match.isHardMode && (
+                                                        {match.isMultiplayer ? (
+                                                            <span className="px-1.5 py-0.5 bg-cyan-950/60 border border-cyan-900/40 text-cyan-400 text-[6px] font-black tracking-widest rounded uppercase animate-pulse">MP</span>
+                                                        ) : match.isHardMode ? (
                                                             <span className="px-1.5 py-0.5 bg-red-950/60 border border-red-900/40 text-red-500 text-[6px] font-black tracking-widest rounded uppercase">HardMode</span>
-                                                        )}
+                                                        ) : null}
                                                     </div>
                                                     <div className="text-[8px] text-stone-600 font-bold mt-0.5">{match.timestamp ? new Date(match.timestamp).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : 'Unknown'}</div>
                                                 </div>
@@ -1085,6 +1177,38 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                         <p className="text-stone-500 font-black tracking-[0.5em] text-[8.5px] sm:text-[9.5px] uppercase">Version {GAME_VERSION}</p>
                         <div className="h-[1px] w-8 sm:w-12 bg-stone-850" />
                     </div>
+                </div>
+
+                {/* Mobile-only User Profile Badge (Flowed inline to prevent viewport overlap) */}
+                <div className="sm:hidden mb-3.5 flex justify-center shrink-0">
+                    {loggedInUser ? (
+                        <div className="flex items-center gap-3 bg-stone-950 border border-green-950/40 p-2 px-3.5 rounded-xl shadow-md">
+                            <div className="flex flex-col text-left">
+                                <span className="text-[6.5px] text-stone-550 font-bold uppercase tracking-widest leading-none mb-0.5">Agent Signed In</span>
+                                <span className="text-[10px] text-green-400 font-mono font-black uppercase tracking-wider leading-none">{loggedInUser.username}</span>
+                            </div>
+                            <button
+                                onClick={handleLogout}
+                                className="ml-2 px-2.5 py-1.5 bg-red-955/40 hover:bg-red-900 text-red-500 hover:text-white font-mono font-bold text-[8px] tracking-widest rounded-lg border border-red-900/30 uppercase transition-all cursor-pointer small-btn"
+                            >
+                                Disconnect
+                            </button>
+                        </div>
+                    ) : (
+                        <button
+                            onClick={() => {
+                                audioManager.playSound('click');
+                                setShowLoginModal(true);
+                            }}
+                            className="group/signin px-4 py-2 bg-gradient-to-r from-red-955/60 to-stone-950/80 border border-red-700/50 text-red-400 hover:text-white font-mono font-black text-[9px] tracking-[0.2em] rounded-xl backdrop-blur-md transition-all shadow-[0_0_25px_rgba(220,38,38,0.15)] hover:shadow-[0_0_40px_rgba(220,38,38,0.3)] hover:scale-105 active:scale-95 uppercase flex items-center gap-2 cursor-pointer small-btn"
+                        >
+                            <span className="relative flex h-1.5 w-1.5">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-650"></span>
+                            </span>
+                            Sign In / Register
+                        </button>
+                    )}
                 </div>
 
                 <div className="flex flex-col gap-1.5 sm:gap-2 max-w-sm mx-auto w-full">
@@ -1191,21 +1315,119 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                         </button>
                     </div>
 
-                    {/* Leaderboard Trigger Button */}
-                    <button
-                        onClick={() => {
-                            audioManager.playSound('click');
-                            loadLeaderboardData();
-                            setShowLeaderboard(true);
-                        }}
-                        className="mt-0.5 w-full py-2 sm:py-2.5 bg-gradient-to-r from-amber-950/20 via-stone-900/20 to-amber-950/20 border border-amber-900/40 text-amber-600/90 font-black text-[9px] sm:text-xs flex items-center justify-center gap-2.5 tracking-[0.3em] hover:text-amber-455 hover:border-amber-500 hover:bg-amber-950/25 hover:shadow-[0_0_25px_rgba(245,158,11,0.2)] hover:scale-[1.015] active:scale-[0.985] transition-all duration-300 uppercase rounded-xl cursor-pointer group/lb"
-                    >
-                        <Crown size={14} className="text-amber-750 group-hover/lb:text-amber-400 transition-colors group-hover/lb:rotate-[-10deg] transition-transform duration-300" />
-                        Global Leaderboard
-                        <Crown size={14} className="text-amber-750 group-hover/lb:text-amber-400 transition-colors group-hover/lb:rotate-[10deg] transition-transform duration-300" />
-                    </button>
+                    <div className="grid grid-cols-2 gap-1.5 mt-0.5">
+                        {/* Leaderboard Trigger Button */}
+                        <button
+                            onClick={() => {
+                                audioManager.playSound('click');
+                                loadLeaderboardData();
+                                setShowLeaderboard(true);
+                            }}
+                            className="w-full py-2 sm:py-2.5 bg-gradient-to-r from-amber-955/20 via-stone-900/20 to-amber-955/20 border border-amber-900/40 text-amber-600/90 font-black text-[9px] sm:text-xs flex items-center justify-center gap-1.5 tracking-[0.15em] sm:tracking-[0.3em] hover:text-amber-455 hover:border-amber-500 hover:bg-amber-955/25 hover:shadow-[0_0_25px_rgba(245,158,11,0.2)] hover:scale-[1.015] active:scale-[0.985] transition-all duration-300 uppercase rounded-xl cursor-pointer group/lb"
+                        >
+                            <Crown size={12} className="text-amber-750 group-hover/lb:text-amber-400 transition-colors group-hover/lb:rotate-[-10deg] transition-transform duration-300 shrink-0" />
+                            <span>Leaderboard</span>
+                        </button>
+
+                        {/* System Changelog Button */}
+                        <button
+                            onClick={() => {
+                                audioManager.playSound('click');
+                                setShowChangelog(true);
+                            }}
+                            className="w-full py-2 sm:py-2.5 bg-gradient-to-r from-stone-900/20 via-stone-900/40 to-stone-900/20 border border-stone-850 hover:border-stone-600 text-stone-400 font-black text-[9px] sm:text-xs flex items-center justify-center gap-1.5 tracking-[0.15em] sm:tracking-[0.3em] hover:text-amber-455 hover:border-amber-600 hover:bg-stone-900/30 hover:scale-[1.015] active:scale-[0.985] transition-all duration-300 uppercase rounded-xl cursor-pointer group/cl"
+                        >
+                            <BookOpen size={12} className="text-stone-500 group-hover/cl:text-amber-500 transition-colors group-hover/cl:rotate-[-8deg] transition-transform duration-300 shrink-0" />
+                            <span>Changelog</span>
+                        </button>
+                    </div>
                 </div>
 
+                {/* Multiplayer Match Summary Popup */}
+                {selectedMPMatch && (
+                    <>
+                        <div className="fixed inset-0 bg-black/80 z-[120] cursor-default" onClick={() => setSelectedMPMatch(null)} />
+                        <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-sm bg-stone-950 border border-cyan-900/40 p-6 rounded-2xl shadow-[0_0_50px_rgba(6,182,212,0.15)] z-[130] font-mono text-stone-300">
+                            {/* Header */}
+                            <div className="flex justify-between items-center border-b border-stone-900 pb-3 mb-4">
+                                <div className="flex items-center gap-2">
+                                    <Swords className="text-cyan-400" size={14} />
+                                    <span className="font-black text-xs tracking-wider uppercase text-white">MULTIPLAYER SUMMARY</span>
+                                </div>
+                                <button onClick={() => setSelectedMPMatch(null)} className="text-stone-500 hover:text-white transition-colors cursor-pointer">
+                                    <X size={14} />
+                                </button>
+                            </div>
+
+                            {/* Details */}
+                            <div className="space-y-4 text-left font-mono">
+                                <div className="flex justify-between text-[8px] text-stone-500 border-b border-stone-900/50 pb-2">
+                                    <span>DATE: {selectedMPMatch.timestamp ? new Date(selectedMPMatch.timestamp).toLocaleString() : 'UNKNOWN'}</span>
+                                    <span className="text-cyan-400 font-bold">SCORE: {selectedMPMatch.totalScore?.toLocaleString() || 0}</span>
+                                </div>
+
+                                {/* Deployed list */}
+                                <div className="space-y-1.5">
+                                    <span className="text-[8px] text-stone-500 uppercase tracking-widest font-black block">DEPLOYED AGENTS</span>
+                                    <div className="space-y-1">
+                                        {selectedMPMatch.mpPlayers && selectedMPMatch.mpPlayers.map((player: any, idx: number) => (
+                                            <div key={idx} className="flex justify-between items-center p-2 bg-stone-900/20 border border-stone-900/40 rounded-lg text-[10px]">
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="font-bold text-stone-200">{player.name}</span>
+                                                    {player.isHost && (
+                                                        <span className="text-[6px] bg-red-955/20 text-red-400 px-1 py-0.5 rounded border border-red-900/30 font-bold">HOST</span>
+                                                    )}
+                                                    {player.isMe && (
+                                                        <span className="text-[6px] bg-cyan-950/20 text-cyan-400 px-1 py-0.5 rounded border border-cyan-900/30 font-bold">YOU</span>
+                                                    )}
+                                                </div>
+                                                <span className={`font-black tracking-widest uppercase text-[9px] ${
+                                                    player.result === 'WIN' ? 'text-green-400' :
+                                                    player.result === 'LOSS' ? 'text-red-455' : 'text-stone-500'
+                                                }`}>
+                                                    {player.result}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Player stats */}
+                                <div className="space-y-1.5 pt-2 border-t border-stone-900/60">
+                                    <span className="text-[8px] text-stone-500 uppercase tracking-widest font-black block">PERFORMANCE REPORT</span>
+                                    <div className="grid grid-cols-2 gap-2 text-[9px]">
+                                        <div className="p-2 bg-stone-950 border border-stone-900/50 rounded flex justify-between">
+                                            <span className="text-stone-500">RDS SURVIVED</span>
+                                            <span className="text-stone-200 font-bold">{selectedMPMatch.roundsSurvived}</span>
+                                        </div>
+                                        <div className="p-2 bg-stone-950 border border-stone-900/50 rounded flex justify-between">
+                                            <span className="text-stone-500">PRECISION</span>
+                                            <span className="text-stone-200 font-bold">
+                                                {selectedMPMatch.shotsFired > 0 ? Math.round((selectedMPMatch.shotsHit / selectedMPMatch.shotsFired) * 100) : 0}%
+                                            </span>
+                                        </div>
+                                        <div className="p-2 bg-stone-950 border border-stone-900/50 rounded flex justify-between">
+                                            <span className="text-stone-500">DMG DEALT</span>
+                                            <span className="text-stone-200 font-bold">{selectedMPMatch.damageDealt}</span>
+                                        </div>
+                                        <div className="p-2 bg-stone-950 border border-stone-900/50 rounded flex justify-between">
+                                            <span className="text-stone-500">DMG TAKEN</span>
+                                            <span className="text-stone-200 font-bold">{selectedMPMatch.damageTaken}</span>
+                                        </div>
+                                        <div className="p-2 bg-stone-950 border border-stone-900/50 rounded flex justify-between col-span-2">
+                                            <span className="text-stone-500">SELF SHOTS</span>
+                                            <span className={`${selectedMPMatch.selfShots > 0 ? 'text-red-400' : 'text-stone-400'} font-bold`}>{selectedMPMatch.selfShots}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <button onClick={() => setSelectedMPMatch(null)} className="w-full mt-4 py-2 bg-cyan-950/20 border border-cyan-850 hover:bg-cyan-900/20 text-cyan-400 font-black text-[9px] tracking-wider uppercase rounded-xl transition-all cursor-pointer">
+                                DISMISS LOG
+                            </button>
+                        </div>
+                    </>
+                )}
                 <div className="mt-2.5 sm:mt-4 flex flex-col items-center gap-2">
                     {!isStandalone && (isInstallable || isMobile || isIOS) && (
                         <button

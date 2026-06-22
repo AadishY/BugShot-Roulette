@@ -8,6 +8,7 @@ import { Controls } from './ui/Controls';
 import { BootScreen } from './ui/BootScreen';
 import { IntroScreen } from './ui/IntroScreen';
 import ShellBackground from './ui/ShellBackground';
+import { LinkPreviewCard } from './ui/LinkPreviewCard';
 
 import { GameOverScreen } from './ui/GameOverScreen';
 import { LootOverlay } from './ui/LootOverlay';
@@ -510,13 +511,14 @@ export const GameUI: React.FC<GameUIProps> = ({
 
 
 
-                {/* Game Over - Singleplayer only */}
+                {/* Game Over Screen */}
                 {gameState.phase === 'GAME_OVER' && (
                     <GameOverScreen
                         winner={gameState.winner}
                         onResetGame={onResetGame}
                         matchData={matchData}
                         isDebugUsed={gameState.isDebugUsed}
+                        isMultiplayer={isMultiplayer}
                     />
                 )}
 
@@ -631,6 +633,10 @@ export const GameUI: React.FC<GameUIProps> = ({
                                             <span style={{ color: msg.color }} className="font-black text-[10px] lg:text-[11px] uppercase tracking-widest opacity-80 group-hover:opacity-100 transition-opacity whitespace-nowrap">{msg.sender}</span>
                                             <span className="text-white font-medium break-words leading-relaxed drop-shadow-sm">{msg.text}</span>
                                         </div>
+                                        {(() => {
+                                            const url = msg.text.match(/https?:\/\/[^\s]+/)?.[0];
+                                            return url ? <LinkPreviewCard url={url} /> : null;
+                                        })()}
                                     </div>
                                 ))}
                             </div>

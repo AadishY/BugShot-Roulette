@@ -17,16 +17,45 @@ import { audioManager } from './utils/audioManager';
 import { useMultiplayer } from './hooks/useMultiplayer';
 import { MultiplayerLobby } from './components/MultiplayerLobby';
 import { ChatBox } from './components/ChatBox';
+import { MultiplayerSelection } from './components/MultiplayerSelection';
 import { generateLootBatch } from './utils/game/inventory';
 import { randomInt } from './utils/gameUtils';
 import { ShellType, ItemType } from './types';
 
-type AppState = 'MENU' | 'LOADING_SP' | 'LOADING_GAME' | 'GAME';
+const urlParams = new URLSearchParams(window.location.search);
+const isDiscordPlatform = urlParams.has('frame_id') || urlParams.has('instance_id') || window.location.search.includes('platform=') || window.location.hostname.includes('discordsays.com');
+const SERVER_URL = isDiscordPlatform 
+    ? window.location.origin 
+    : (import.meta.env.VITE_SERVER_URL || 'https://yoakatsuki-buckshot.hf.space');
+
+type AppState = 'MENU' | 'LOADING_SP' | 'LOADING_GAME' | 'GAME' | 'LOADING_MP' | 'MP_SELECTION' | 'LOBBY';
 
 export default function App() {
   const spGame = useGameLogic();
   const mp = useMultiplayer();
   const [appState, setAppState] = useState<AppState>('MENU');
+  const [initialRoomId, setInitialRoomId] = useState<string | null>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('room');
+  });
+  const [mobileActiveTab, setMobileActiveTab] = useState<'LOBBY' | 'CHAT'>('LOBBY');
+
+  // Ping the server to wake it up in case it's asleep on Hugging Face
+  useEffect(() => {
+    fetch(`${SERVER_URL}/health`).then((res) => {
+      console.log("[Wakeup] Server response:", res.status);
+    }).catch((err) => {
+      console.log("[Wakeup] Server wake-up ping attempted:", err.message);
+    });
+  }, []);
+
+  // Enable VirtualKeyboard overlaysContent if available
+  useEffect(() => {
+    if (typeof navigator !== 'undefined' && 'virtualKeyboard' in navigator) {
+      // @ts-ignore
+      navigator.virtualKeyboard.overlaysContent = true;
+    }
+  }, []);
 
   // Try to initialize audio ASAP (will only succeed if browser allows)
   useEffect(() => {
@@ -34,6 +63,20 @@ export default function App() {
       // If successful, ensure menu music starts immediately without waiting for state update cycle
       audioManager.playMusic('menu');
     }).catch(() => { });
+  }, []);
+
+  // Handle direct url invite link joining if name is already cached
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const roomId = params.get('room');
+    if (roomId && /^[0-9]{4}$/.test(roomId)) {
+      const cachedName = localStorage.getItem('aadish_roulette_name');
+      if (cachedName && cachedName.trim().length > 0) {
+        spGame.setPlayerName(cachedName.trim());
+        setAppState('LOADING_MP');
+        mp.connect();
+      }
+    }
   }, []);
 
   // --- ORIENTATION CHECK ---
@@ -82,7 +125,7 @@ export default function App() {
       }, 200);
     };
 
-    setTimeout(checkOrientation, 100);
+    const initTimeout = setTimeout(checkOrientation, 100);
 
     window.addEventListener('resize', checkOrientation);
     if (window.matchMedia) {
@@ -95,6 +138,7 @@ export default function App() {
         window.matchMedia("(orientation: portrait)").removeEventListener("change", checkOrientation);
       }
       clearTimeout(timeoutId);
+      clearTimeout(initTimeout);
     };
   }, []);
 
@@ -182,7 +226,6 @@ export default function App() {
 
   const handleStartMP = (name: string) => {
     spGame.setPlayerName(name);
-    // @ts-ignore
     setAppState('LOADING_MP');
     mp.connect();
   };
@@ -262,8 +305,9 @@ export default function App() {
               spGame.setOverlayText('RELOADING NEW BATCH...');
               const pItems = iAmHost ? action.hostItems : action.clientItems;
               const dItems = iAmHost ? action.clientItems : action.hostItems;
+              const clientNextTurn = action.nextTurnOwner === 'PLAYER' ? 'DEALER' : 'PLAYER';
               // @ts-ignore
-              spGame.startRound(false, false, undefined, action.chamber, pItems, dItems);
+              spGame.startRound(false, false, undefined, action.chamber, pItems, dItems, clientNextTurn);
               break;
             case 'SYNC_STATE':
               // Deep sync if host tells us the ground truth
@@ -290,61 +334,93 @@ export default function App() {
   }, [appState, spGame.gameState.isMultiplayer, mp.playerId, mp.setOnAction, mp.room, spGame]);
 
   useEffect(() => {
-    // @ts-ignore
-    if (appState === 'LOADING_MP' || appState === 'LOBBY') {
-      if (mp.isConnected) {
-        if (appState === 'LOADING_MP') {
-          mp.joinRoom('DEFAULT_ROOM', spGame.playerName);
-          // @ts-ignore
-          setAppState('LOBBY');
-        }
-
-        // Handle Game Start from Server
-        mp.socket?.on('gameStarted', ({ room, gameData }: { room: any, gameData: any }) => {
-          console.log('Multiplayer game starting...', room, gameData);
-
-          const opponent = room.players.find((p: any) => p.id !== mp.playerId);
-          const opponentName = opponent ? opponent.name : 'OPPONENT';
-          const iAmHost = mp.playerId === room.hostId;
-
-          const chamberOverride = gameData.chamber;
-          const pItemsOverride = iAmHost ? gameData.hostItems : gameData.clientItems;
-          const dItemsOverride = iAmHost ? gameData.clientItems : gameData.hostItems;
-
-          let initialTurnOwner: import('./types').TurnOwner = 'PLAYER';
-          if (gameData.hostStarts) {
-            initialTurnOwner = iAmHost ? 'PLAYER' : 'DEALER';
-          } else {
-            initialTurnOwner = iAmHost ? 'DEALER' : 'PLAYER';
-          }
-
-          // 1. Transition state FIRST to mount components
-          // @ts-ignore
-          setAppState('GAME');
-
-          // 2. Delay game logic slightly to ensure UI is ready for messages/animations
-          setTimeout(() => {
-            spGame.startGame(
-              spGame.playerName,
-              false, // hardMode
-              true, // isMultiplayer
-              opponentName,
-              initialTurnOwner,
-              chamberOverride,
-              pItemsOverride,
-              dItemsOverride,
-              gameData.hpOverride, // Apply HP from settings
-              room.settings
-            );
-          }, 100);
-        });
-
-        return () => {
-          mp.socket?.off('gameStarted');
-        };
+    if (mp.isConnected && appState === 'LOADING_MP') {
+      if (initialRoomId && /^[0-9]{4}$/.test(initialRoomId)) {
+        mp.joinRoom(initialRoomId, spGame.playerName);
+        window.history.replaceState({}, document.title, window.location.pathname);
+        setInitialRoomId(null);
+      } else {
+        setAppState('MP_SELECTION');
       }
     }
-  }, [mp.isConnected, appState, mp.joinRoom, spGame.playerName, mp.socket]);
+  }, [mp.isConnected, appState, initialRoomId, spGame.playerName]);
+
+  useEffect(() => {
+    if (mp.room && (appState === 'MP_SELECTION' || appState === 'LOADING_MP')) {
+      setAppState('LOBBY');
+    } else if (appState === 'LOBBY' && !mp.room) {
+      setAppState('MP_SELECTION');
+    }
+  }, [mp.room, appState]);
+
+  useEffect(() => {
+    if (mp.isConnected) {
+      // Handle Game Start from Server
+      mp.socket?.on('gameStarted', ({ room, gameData }: { room: any, gameData: any }) => {
+        console.log('Multiplayer game starting...', room, gameData);
+
+        const opponent = room.players.find((p: any) => p.id !== mp.playerId);
+        const opponentName = opponent ? opponent.name : 'OPPONENT';
+        const iAmHost = mp.playerId === room.hostId;
+
+        const chamberOverride = gameData.chamber;
+        const pItemsOverride = iAmHost ? gameData.hostItems : gameData.clientItems;
+        const dItemsOverride = iAmHost ? gameData.clientItems : gameData.hostItems;
+
+        let initialTurnOwner: import('./types').TurnOwner = 'PLAYER';
+        if (gameData.hostStarts) {
+          initialTurnOwner = iAmHost ? 'PLAYER' : 'DEALER';
+        } else {
+          initialTurnOwner = iAmHost ? 'DEALER' : 'PLAYER';
+        }
+
+        // 1. Transition state FIRST to mount components
+        setAppState('GAME');
+
+        // 2. Delay game logic slightly to ensure UI is ready for messages/animations
+        setTimeout(() => {
+          spGame.startGame(
+            spGame.playerName,
+            false, // hardMode
+            true, // isMultiplayer
+            opponentName,
+            initialTurnOwner,
+            chamberOverride,
+            pItemsOverride,
+            dItemsOverride,
+            gameData.hpOverride, // Apply HP from settings
+            room.settings
+          );
+        }, 100);
+      });
+
+      // Handle Game Reset/Play Again from Server
+      mp.socket?.on('matchReset', () => {
+        console.log('Multiplayer match reset by host, returning to lobby...');
+        spGame.resetGame(true); // Reset game states cleanly
+        setAppState('LOBBY');   // Route back to lobby view
+      });
+
+      // Handle kicked event routing
+      mp.socket?.on('kicked', () => {
+        setAppState('MP_SELECTION');
+      });
+
+      // Handle opponent disconnection mid-game
+      mp.socket?.on('matchAborted', ({ abortedBy }: { abortedBy: string }) => {
+        console.log(`Multiplayer match aborted: ${abortedBy} disconnected.`);
+        spGame.resetGame(true); // Reset game states cleanly
+        setAppState('LOBBY');   // Route back to lobby view
+      });
+
+      return () => {
+        mp.socket?.off('gameStarted');
+        mp.socket?.off('matchReset');
+        mp.socket?.off('kicked');
+        mp.socket?.off('matchAborted');
+      };
+    }
+  }, [mp.isConnected, mp.socket, mp.playerId, spGame]);
 
   const handleStartMPGame = () => {
     if (mp.room && mp.playerId === mp.room.hostId) {
@@ -362,15 +438,18 @@ export default function App() {
         [chamber[i], chamber[j]] = [chamber[j], chamber[i]];
       }
 
-      const hostItems = generateLootBatch(settings.itemsPerShipment, false, false, 4);
-      const clientItems = generateLootBatch(settings.itemsPerShipment, false, false, 4);
+      const playerCount = mp.room?.players?.length || 2;
+      const itemsCount = settings.itemsPerShipment === 9 ? randomInt(1, 8) : settings.itemsPerShipment;
+      const hostItems = generateLootBatch(itemsCount, false, false, 4, [], 0, 4, 4, settings, playerCount);
+      const clientItems = generateLootBatch(itemsCount, false, false, 4, [], 0, 4, 4, settings, playerCount);
 
+      const hpVal = settings.hp === 9 ? randomInt(2, 8) : settings.hp;
       const gameData = {
         chamber,
         hostItems,
         clientItems,
         hostStarts: true,
-        hpOverride: settings.hp
+        hpOverride: hpVal
       };
 
       mp.startGame(mp.room.id, gameData);
@@ -397,14 +476,17 @@ export default function App() {
             [chamber[i], chamber[j]] = [chamber[j], chamber[i]];
           }
 
-          const hostItems = generateLootBatch(settings.itemsPerShipment, false, false, 4);
-          const clientItems = generateLootBatch(settings.itemsPerShipment, false, false, 4);
+          const playerCount = mp.room?.players?.length || 2;
+          const itemsCount = settings.itemsPerShipment === 9 ? randomInt(1, 8) : settings.itemsPerShipment;
+          const hostItems = generateLootBatch(itemsCount, false, false, 4, [], 0, 4, 4, settings, playerCount);
+          const clientItems = generateLootBatch(itemsCount, false, false, 4, [], 0, 4, 4, settings, playerCount);
 
           const syncAction = {
             type: 'SYNC_ROUND',
             chamber,
             hostItems,
-            clientItems
+            clientItems,
+            nextTurnOwner: 'PLAYER'
           };
 
           mp.sendAction(mp.room.id, syncAction);
@@ -463,11 +545,12 @@ export default function App() {
 
   return (
     <div
-      className={`relative w-full h-screen bg-black overflow-hidden select-none crt text-stone-200 cursor-crosshair animate-in fade-in duration-1000 ${spGame.gameState.isHardMode ? 'hardmode-scanline' : ''} ${settings.ultraPerformance ? 'ultra-perf' : ''}`}
+      className={`relative w-full h-[100dvh] bg-black overflow-hidden select-none crt text-stone-200 cursor-crosshair animate-in fade-in duration-1000 ${spGame.gameState.isHardMode ? 'hardmode-scanline' : ''} ${settings.ultraPerformance ? 'ultra-perf' : ''}`}
+      style={{ height: '100dvh' }}
       onClick={() => audioManager.initialize()}
       onKeyDown={() => audioManager.initialize()}
     >
-      {!settings.ultraPerformance && (
+      {!settings.ultraPerformance && appState !== 'MP_SELECTION' && appState !== 'LOBBY' && appState !== 'LOADING_MP' && (
         <>
           <div className="crt-overlay opacity-[0.15] pointer-events-none" />
           <div className="vhs-static" />
@@ -512,6 +595,7 @@ export default function App() {
           setDetectedLowFps(Math.round(fps));
           setShowPerformancePopup(true);
         }}
+        isPaused={appState === 'MP_SELECTION' || appState === 'LOBBY' || appState === 'LOADING_MP'}
       />
 
       {/* UI Overlay */}
@@ -538,14 +622,26 @@ export default function App() {
         settings={settings}
         onStartGame={handleStartSP}
         onResetGame={(toMenu) => {
-          if (toMenu) {
-            // @ts-ignore
-            setAppState('LOADING_GAME');
-            spGame.resetGame(true);
+          if (spGame.gameState.isMultiplayer) {
+            if (toMenu) {
+              mp.disconnect();
+              spGame.resetGame(true);
+              setAppState('MENU');
+            } else {
+              if (mp.room && mp.playerId === mp.room.hostId) {
+                mp.resetRoomState(mp.room.id);
+              }
+            }
           } else {
-            // @ts-ignore
-            setAppState('LOADING_SP');
-            spGame.resetGame(false, false);
+            if (toMenu) {
+              // @ts-ignore
+              setAppState('LOADING_GAME');
+              spGame.resetGame(true);
+            } else {
+              // @ts-ignore
+              setAppState('LOADING_SP');
+              spGame.resetGame(false, false);
+            }
           }
         }}
         onFireShot={handleFireShot}
@@ -558,31 +654,64 @@ export default function App() {
         onUpdateName={spGame.setPlayerName}
         onStealItem={handleStealItem}
         onBootComplete={handleBootComplete}
-        matchData={spGame.matchStats}
+        matchData={
+          spGame.gameState.isMultiplayer && mp.room
+            ? {
+                ...spGame.matchStats,
+                isMultiplayer: true,
+                mpPlayers: mp.room.players.map((p: any) => {
+                  const isMe = p.id === mp.playerId;
+                  const isHost = p.id === mp.room.hostId;
+                  const activeOpponentId = mp.playerId === mp.room.hostId
+                    ? (mp.room.players.find((pl: any) => pl.id !== mp.room.hostId)?.id || '')
+                    : mp.room.hostId;
+                  
+                  let playerResult: 'WIN' | 'LOSS' | 'SPECTATED' = 'SPECTATED';
+                  if (isMe) {
+                    playerResult = spGame.gameState.winner === 'PLAYER' ? 'WIN' : 'LOSS';
+                  } else if (p.id === activeOpponentId) {
+                    playerResult = spGame.gameState.winner === 'PLAYER' ? 'LOSS' : 'WIN';
+                  }
+                  
+                  return {
+                    name: p.name,
+                    id: p.id,
+                    isHost,
+                    isMe,
+                    result: playerResult
+                  };
+                })
+              }
+            : spGame.matchStats
+        }
         onStartMultiplayer={handleStartMP}
         isMultiplayer={spGame.gameState.isMultiplayer}
         messages={mp.messages}
         onSendMessage={(t) => mp.sendMessage(mp.room?.id || '', t)}
       />
 
-      {/* @ts-ignore */}
       {appState === 'LOBBY' && mp.room && (
-        <div className="absolute inset-0 z-[110] flex items-center justify-center bg-black/80 p-10">
-          <div className="w-full max-w-5xl h-[80vh] flex gap-4">
-            <div className="flex-1">
+        <div className="absolute inset-0 z-[110] flex flex-col bg-stone-950 overflow-hidden lobby-three-cols-container">
+          <div className="w-full flex-1 flex flex-row gap-0 min-h-0 overflow-hidden">
+            {/* Lobby View */}
+            <div className="h-full min-h-0 flex lobby-main-view">
               <MultiplayerLobby
                 room={mp.room}
                 playerId={mp.playerId!}
                 onUpdateSettings={(s) => mp.updateSettings(mp.room.id, s)}
                 onReadyUp={(r) => mp.readyUp(mp.room.id, r)}
                 onStartGame={handleStartMPGame}
+                onKick={(targetPlayerId) => mp.kickPlayer(mp.room.id, targetPlayerId)}
                 onBack={() => {
                   mp.disconnect();
-                  setAppState('MENU');
+                  setAppState('GAME');
+                  spGame.resetGame(true);
                 }}
               />
             </div>
-            <div className="w-80">
+            
+            {/* Chat View */}
+            <div className="h-full min-h-0 flex border-l border-stone-900 lobby-chat-view">
               <ChatBox
                 messages={mp.messages}
                 onSendMessage={(t) => mp.sendMessage(mp.room.id, t)}
@@ -593,20 +722,34 @@ export default function App() {
         </div>
       )}
 
-      {/* @ts-ignore */}
+      {appState === 'MP_SELECTION' && (
+        <div className="absolute inset-0 z-[110] flex items-center justify-center bg-black/80 p-4 md:p-10 animate-in fade-in duration-300 overflow-hidden">
+          <MultiplayerSelection
+            playerName={spGame.playerName}
+            getActiveRooms={mp.getActiveRooms}
+            onQuickJoin={() => mp.quickJoin(spGame.playerName)}
+            onCreateRoom={() => mp.createRoom(spGame.playerName)}
+            onJoinRoom={(code) => mp.joinRoom(code, spGame.playerName)}
+            onBack={() => {
+              mp.disconnect();
+              setAppState('MENU');
+            }}
+            error={mp.error}
+            clearError={mp.clearError}
+            isConnecting={mp.isConnecting}
+          />
+        </div>
+      )}
+
       {(appState === 'LOADING_SP' || appState === 'LOADING_GAME' || appState === 'LOADING_MP') && (
         <div className="absolute inset-0 z-[100]">
           <LoadingScreen
             onComplete={onLoadingComplete}
-            // @ts-ignore
-            text={appState === 'LOADING_GAME' ? "INITIALIZING TABLE..." : appState === 'LOADING_MP' ? "CONNECTING TO SERVER..." : "LOADING..."}
-            // @ts-ignore
+            text={appState === 'LOADING_GAME' ? "INITIALIZING TABLE..." : appState === 'LOADING_MP' ? (mp.connectionStatus || "CONNECTING TO SERVER...") : "LOADING..."}
             duration={appState === 'LOADING_GAME' ? 800 : appState === 'LOADING_MP' ? 800 : 1200}
             onBack={handleBackToMenu}
-            // @ts-ignore
             error={appState === 'LOADING_MP' ? mp.error : null}
             onRetry={() => {
-              // @ts-ignore
               if (appState === 'LOADING_MP') mp.connect();
             }}
           />

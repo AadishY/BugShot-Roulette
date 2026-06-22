@@ -21,7 +21,7 @@ const allowedOrigins = allowedOriginsEnv ? allowedOriginsEnv.split(',') : [];
 const corsOptions = {
     origin: (origin, callback) => {
         // Broad capture to allow local servers, matching environment origins, Hugging Face iframe deployments, or Discord Activity client
-        if (!origin || allowedOrigins.includes(origin) || allowedOriginsEnv === "*" || origin.includes('.hf.space') || origin.includes('localhost:') || origin.includes('127.0.0.1:') || origin.includes('.discordsays.com')) {
+        if (!origin || allowedOrigins.includes(origin) || allowedOriginsEnv === "*" || origin.includes('.hf.space') || origin.includes('localhost:') || origin.includes('127.0.0.1:') || origin.includes('.discordsays.com') || origin.includes('.pages.dev')) {
             callback(null, true);
         } else {
             callback(new Error('Blocked by Security Framework: Unauthorized Origin Connection'));
@@ -85,12 +85,12 @@ let activeConnectionsCount = 0;
 const rooms = new Map();
 
 const PLAYER_COLORS = [
-    '#ff4444', // Red Matrix
-    '#44ff44', // Emerald Matrix
-    '#4444ff', // Cobalt Matrix
-    '#ffff44', // Amber Matrix
-    '#ff44ff', // Amethyst Matrix
-    '#44ffff'  // Cyan Matrix
+    '#06b6d4', // Cyan
+    '#f59e0b', // Amber/Yellow
+    '#8b5cf6', // Violet
+    '#ec4899', // Pink
+    '#3b82f6', // Cobalt/Electric Blue
+    '#f97316'  // Orange
 ];
 
 const httpServer = createServer(app);
@@ -99,7 +99,7 @@ const httpServer = createServer(app);
 const io = new Server(httpServer, {
     cors: {
         origin: allowedOriginsEnv === "*" ? true : (origin, callback) => {
-            if (!origin || allowedOrigins.includes(origin) || origin.includes('.hf.space') || origin.includes('localhost:') || origin.includes('.discordsays.com')) {
+            if (!origin || allowedOrigins.includes(origin) || origin.includes('.hf.space') || origin.includes('localhost:') || origin.includes('.discordsays.com') || origin.includes('.pages.dev')) {
                 callback(null, true);
             } else {
                 callback(null, false);
@@ -225,7 +225,7 @@ app.get('/', (req, res) => {
                                 </div>
                                 <div class="text-right shrink-0">
                                     <span class="text-[9px] block text-stone-500 uppercase">Attributes Context</span>
-                                    <span class="text-stone-400 font-medium font-mono">${room.settings.hp}HP | ${room.settings.rounds}R | ${room.settings.itemsPerShipment}I</span>
+                                    <span class="text-stone-400 font-medium font-mono">${room.settings.hp === 9 ? 'RNDM' : room.settings.hp}HP | ${room.settings.rounds}R | ${room.settings.itemsPerShipment === 9 ? 'RNDM' : room.settings.itemsPerShipment}I</span>
                                 </div>
                             </div>
                         `).join('')}
@@ -244,11 +244,115 @@ app.get('/health', (req, res) => {
     res.status(200).json({ status: 'HEALTHY', timestamp: Date.now(), roomCount: rooms.size });
 });
 
+// Active rooms query vector
+app.get('/active-rooms', (req, res) => {
+    const activeRooms = [];
+    rooms.forEach((room) => {
+        if (!room.settings?.isPrivate) {
+            activeRooms.push({
+                id: room.id,
+                name: room.name || `${room.players[0]?.name || 'Unknown'}'s Bunker`,
+                playerCount: room.players.length,
+                maxPlayers: 4,
+                settings: room.settings,
+                isPlaying: !!room.gameState
+            });
+        }
+    });
+    res.status(200).json(activeRooms);
+});
+
+// Link preview parser vector for chat rich embeds
+app.get('/api/link-preview', async (req, res) => {
+    const urlStr = req.query.url;
+    if (!urlStr) {
+        return res.status(400).json({ error: 'URL parameter required' });
+    }
+
+    // Static override for mockup matching and offline developer test integrity
+    if (urlStr.includes('gameslists.pages.dev')) {
+        return res.json({
+            title: 'Steam Backlog Tracker — Organise Your Games in Style',
+            description: 'A premium, gaming-themed backlog tracker for Steam users. Track your collection with neon aesthetics and snapping interactions.',
+            image: 'https://gameslists.pages.dev/preview.png',
+            siteName: 'gameslists.pages.dev'
+        });
+    }
+
+    try {
+        const url = new URL(urlStr);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
+
+        const response = await fetch(url.toString(), {
+            signal: controller.signal,
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+        });
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+            throw new Error(`HTTP Error: ${response.status}`);
+        }
+
+        const html = await response.text();
+
+        const getMetaTag = (text, propertyOrName) => {
+            const regex = new RegExp(`<meta[^>]*(?:property|name)=["']${propertyOrName}["'][^>]*content=["']([^"']+)["']`, 'i');
+            const match = text.match(regex);
+            if (match) return match[1];
+
+            const regexAlt = new RegExp(`<meta[^>]*content=["']([^"']+)["'][^>]*(?:property|name)=["']${propertyOrName}["']`, 'i');
+            const matchAlt = text.match(regexAlt);
+            return matchAlt ? matchAlt[1] : null;
+        };
+
+        const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
+        const title = getMetaTag(html, 'og:title') || (titleMatch ? titleMatch[1] : url.hostname);
+        const description = getMetaTag(html, 'og:description') || getMetaTag(html, 'description') || '';
+        let image = getMetaTag(html, 'og:image') || '';
+
+        if (image && !image.startsWith('http')) {
+            image = new URL(image, url.origin).toString();
+        }
+
+        res.json({
+            title: (title || '').trim(),
+            description: (description || '').trim(),
+            image: image,
+            siteName: url.hostname
+        });
+    } catch (err) {
+        console.error("Link preview extraction failure:", err.message);
+        try {
+            const url = new URL(urlStr);
+            res.json({
+                title: url.hostname,
+                description: 'External link target',
+                image: '',
+                siteName: url.hostname
+            });
+        } catch (e) {
+            res.status(400).json({ error: 'Invalid destination URL format' });
+        }
+    }
+});
+
+
 // Periodic Automatic Stale Registry Memory Garbage Collector
 setInterval(() => {
     const now = Date.now();
     for (const [roomId, room] of rooms.entries()) {
         if (room.players.length === 0 || (room.lastActivity && now - room.lastActivity > 7200000)) {
+            // Eject and notify any lingering players in the room
+            room.players.forEach(p => {
+                const s = io.sockets.sockets.get(p.id);
+                if (s) {
+                    s.emit('error', 'Lobby closed due to inactivity.');
+                    s.leave(roomId);
+                }
+            });
             rooms.delete(roomId);
             console.log(`[GARBAGE COLLECTION] Pruned inactive room data stack: ${roomId}`);
         }
@@ -256,62 +360,197 @@ setInterval(() => {
 }, 180000); // 3-minute check interval
 
 // --- REAL-TIME SERVER TRANSACTION HANDLERS ---
+const parseHpSetting = (val) => {
+    const parsed = parseInt(val);
+    if (isNaN(parsed)) return 9; // Default to 9 (Random)
+    return Math.min(Math.max(parsed, 2), 9); // Allow 2 to 9
+};
+
+const parseItemsSetting = (val) => {
+    const parsed = parseInt(val);
+    if (isNaN(parsed)) return 9; // Default to 9 (Random)
+    return Math.min(Math.max(parsed, 0), 9); // Allow 0 to 9
+};
+
+const createRoomObject = (roomId, hostId, hostName, settings) => {
+    const defaultSettings = { rounds: 3, hp: 9, itemsPerShipment: 9, isPrivate: false, isAdvanced: false, itemWeights: null };
+    const finalSettings = settings ? {
+        rounds: Math.min(Math.max(parseInt(settings.rounds) || 3, 1), 7),
+        hp: parseHpSetting(settings.hp),
+        itemsPerShipment: parseItemsSetting(settings.itemsPerShipment),
+        isPrivate: !!settings.isPrivate,
+        isAdvanced: false, // Always force false when initially entering a new room
+        itemWeights: settings.itemWeights || null
+    } : defaultSettings;
+
+    return {
+        id: roomId,
+        name: `${hostName}'s Bunker`,
+        hostId,
+        players: [],
+        settings: finalSettings,
+        gameState: null,
+        messages: [],
+        lastActivity: Date.now()
+    };
+};
+
+const joinSocketToRoom = (socket, room, playerName) => {
+    if (room.players.length >= 4) {
+        socket.emit('error', 'Lobby is full (Max 4 players allowed).');
+        return;
+    }
+    if (room.gameState) {
+        socket.emit('error', 'Match is already in progress in this room.');
+        return;
+    }
+
+    const newPlayerName = playerName ? playerName.trim().substring(0, 14) : `Player ${room.players.length + 1}`;
+
+    // Check if player with same name already in room (for reconnection resume state)
+    const existingPlayerIndex = room.players.findIndex(p => p.name.toLowerCase() === newPlayerName.toLowerCase());
+    if (existingPlayerIndex !== -1) {
+        const oldPlayer = room.players[existingPlayerIndex];
+        console.log(`[RECONNECT] Player ${oldPlayer.name} reconnected. Updating socket ID from ${oldPlayer.id} to ${socket.id}`);
+        
+        // If the old socket is still connected (ghost connection), leave and emit warning
+        const oldSocket = io.sockets.sockets.get(oldPlayer.id);
+        if (oldSocket) {
+            oldSocket.emit('error', 'Linked connection active elsewhere. Dropping tunnel.');
+            oldSocket.leave(room.id);
+        }
+        
+        // Re-assign socket ID and reset state
+        oldPlayer.id = socket.id;
+        oldPlayer.ready = false; // reset ready status on reconnecting
+        
+        socket.join(room.id);
+        
+        const reconnectMessage = {
+            sender: 'SYSTEM',
+            color: '#737373',
+            text: `${oldPlayer.name} reconnected to the bunker.`,
+            timestamp: Date.now()
+        };
+        room.messages.push(reconnectMessage);
+        if (room.messages.length > 50) room.messages.shift();
+        
+        io.to(room.id).emit('roomUpdated', room);
+        socket.emit('joinedRoom', { room, playerId: socket.id });
+        io.to(room.id).emit('chatMessageReceived', reconnectMessage);
+        return;
+    }
+
+    const playerColor = PLAYER_COLORS[room.players.length % PLAYER_COLORS.length];
+    const newPlayer = {
+        id: socket.id,
+        name: newPlayerName,
+        color: playerColor,
+        ready: false,
+        hp: room.settings.hp,
+        maxHp: room.settings.hp,
+        items: [],
+        isHandcuffed: false,
+        isSawedActive: false
+    };
+
+    room.players.push(newPlayer);
+    room.lastActivity = Date.now();
+    socket.join(room.id);
+
+    console.log(`[JOINED] ${newPlayer.name} hooked to room cluster: ${room.id}`);
+    
+    const joinMessage = {
+        sender: 'SYSTEM',
+        color: '#737373',
+        text: `${newPlayer.name} entered the bunker.`,
+        timestamp: Date.now()
+    };
+    room.messages.push(joinMessage);
+    if (room.messages.length > 50) room.messages.shift();
+    
+    io.to(room.id).emit('roomUpdated', room);
+    socket.emit('joinedRoom', { room, playerId: socket.id });
+    socket.to(room.id).emit('chatMessageReceived', joinMessage);
+};
+
 io.on('connection', (socket) => {
     activeConnectionsCount++;
     let requestPacketCounter = 0;
+    let lastThrottleReset = Date.now();
     
     // Antiflood state packet counter validation
     const throttleCheck = () => {
+        const now = Date.now();
+        if (now - lastThrottleReset > 1000) {
+            requestPacketCounter = 0;
+            lastThrottleReset = now;
+        }
         requestPacketCounter++;
         return requestPacketCounter > 50;
     };
-    
-    const tokenBucketsTimer = setInterval(() => { requestPacketCounter = 0; }, 1000);
 
-    socket.on('joinRoom', ({ roomId, playerName }) => {
+    socket.on('createRoom', ({ playerName, settings }) => {
         if (throttleCheck()) return;
-        let room = rooms.get(roomId);
+        
+        let roomId;
+        let attempts = 0;
+        do {
+            roomId = Math.floor(1000 + Math.random() * 9000).toString();
+            attempts++;
+        } while (rooms.has(roomId) && attempts < 100);
 
-        if (!room) {
-            room = {
-                id: roomId,
-                hostId: socket.id,
-                players: [],
-                settings: { rounds: 3, hp: 4, itemsPerShipment: 4 },
-                gameState: null,
-                messages: [],
-                lastActivity: Date.now()
-            };
-            rooms.set(roomId, room);
-        }
-
-        if (room.players.length >= 4) {
-            socket.emit('error', 'Lobby is full (Max 4 players allowed).');
+        if (rooms.has(roomId)) {
+            socket.emit('error', 'Failed to generate a unique room code. Try again.');
             return;
         }
 
-        const playerColor = PLAYER_COLORS[room.players.length % PLAYER_COLORS.length];
-        const newPlayer = {
-            id: socket.id,
-            name: playerName ? playerName.trim().substring(0, 14) : `Player ${room.players.length + 1}`,
-            color: playerColor,
-            ready: false,
-            hp: room.settings.hp,
-            maxHp: room.settings.hp,
-            items: [],
-            isHandcuffed: false,
-            isSawedActive: false
-        };
+        const hostName = playerName ? playerName.trim().substring(0, 14) : 'Host';
+        const room = createRoomObject(roomId, socket.id, hostName, settings);
+        rooms.set(roomId, room);
 
-        room.players.push(newPlayer);
-        room.lastActivity = Date.now();
-        socket.join(roomId);
+        joinSocketToRoom(socket, room, playerName);
+    });
 
-        console.log(`[JOINED] ${newPlayer.name} hooked to room cluster: ${roomId}`);
+    socket.on('joinRoom', ({ roomId, playerName }) => {
+        if (throttleCheck()) return;
+        const room = rooms.get(roomId);
+
+        if (!room) {
+            socket.emit('error', 'Room not found.');
+            return;
+        }
+
+        joinSocketToRoom(socket, room, playerName);
+    });
+
+    socket.on('quickJoin', ({ playerName, settings }) => {
+        if (throttleCheck()) return;
         
-        // REPLACEMENT NOTE: System text announcements are strictly omitted here to prevent logs pollution
-        io.to(roomId).emit('roomUpdated', room);
-        socket.emit('joinedRoom', { room, playerId: socket.id });
+        let availableRoom = null;
+        for (const room of rooms.values()) {
+            if (room.players.length < 4 && !room.gameState && !room.settings?.isPrivate) {
+                availableRoom = room;
+                break;
+            }
+        }
+
+        if (availableRoom) {
+            joinSocketToRoom(socket, availableRoom, playerName);
+        } else {
+            let roomId;
+            let attempts = 0;
+            do {
+                roomId = Math.floor(1000 + Math.random() * 9000).toString();
+                attempts++;
+            } while (rooms.has(roomId) && attempts < 100);
+
+            const hostName = playerName ? playerName.trim().substring(0, 14) : 'Host';
+            const room = createRoomObject(roomId, socket.id, hostName, settings);
+            rooms.set(roomId, room);
+
+            joinSocketToRoom(socket, room, playerName);
+        }
     });
 
     socket.on('updateSettings', ({ roomId, settings }) => {
@@ -320,8 +559,11 @@ io.on('connection', (socket) => {
         if (room && room.hostId === socket.id && !room.gameState) {
             room.settings = {
                 rounds: Math.min(Math.max(parseInt(settings.rounds) || 3, 1), 7),
-                hp: Math.min(Math.max(parseInt(settings.hp) || 4, 2), 8),
-                itemsPerShipment: Math.min(Math.max(parseInt(settings.itemsPerShipment) || 4, 1), 8)
+                hp: parseHpSetting(settings.hp),
+                itemsPerShipment: parseItemsSetting(settings.itemsPerShipment),
+                isPrivate: !!settings.isPrivate,
+                isAdvanced: !!settings.isAdvanced,
+                itemWeights: settings.itemWeights || null
             };
             room.lastActivity = Date.now();
             io.to(roomId).emit('roomUpdated', room);
@@ -413,9 +655,57 @@ io.on('connection', (socket) => {
         }
     });
 
+    socket.on('kickPlayer', ({ roomId, targetPlayerId }) => {
+        if (throttleCheck()) return;
+        const room = rooms.get(roomId);
+        if (room && room.hostId === socket.id) {
+            const playerIndex = room.players.findIndex(p => p.id === targetPlayerId);
+            if (playerIndex !== -1) {
+                const kickedPlayer = room.players[playerIndex];
+                room.players.splice(playerIndex, 1);
+                
+                const targetSocket = io.sockets.sockets.get(targetPlayerId);
+                if (targetSocket) {
+                    targetSocket.leave(roomId);
+                    targetSocket.emit('kicked');
+                }
+
+                const kickMessage = {
+                    sender: 'SYSTEM',
+                    color: '#737373',
+                    text: `${kickedPlayer.name} was expelled from the bunker.`,
+                    timestamp: Date.now()
+                };
+                room.messages.push(kickMessage);
+                if (room.messages.length > 50) room.messages.shift();
+                io.to(roomId).emit('chatMessageReceived', kickMessage);
+
+                io.to(roomId).emit('roomUpdated', room);
+                console.log(`[KICK] Host ${socket.id} kicked player ${kickedPlayer.name} (${targetPlayerId}) from room ${roomId}`);
+            }
+        }
+    });
+
+    socket.on('resetRoomState', ({ roomId }) => {
+        if (throttleCheck()) return;
+        const room = rooms.get(roomId);
+        if (room && room.hostId === socket.id) {
+            room.gameState = null;
+            room.players.forEach(p => {
+                p.ready = false;
+                p.items = [];
+                p.isHandcuffed = false;
+                p.isSawedActive = false;
+            });
+            room.lastActivity = Date.now();
+            io.to(roomId).emit('roomUpdated', room);
+            io.to(roomId).emit('matchReset');
+            console.log(`[RESET] Host ${socket.id} reset room ${roomId} back to lobby.`);
+        }
+    });
+
     socket.on('disconnect', () => {
         activeConnectionsCount--;
-        clearInterval(tokenBucketsTimer);
         
         rooms.forEach((room, roomId) => {
             const playerIndex = room.players.findIndex(p => p.id === socket.id);
@@ -428,6 +718,16 @@ io.on('connection', (socket) => {
                     rooms.delete(roomId);
                     console.log(`[GARBAGE COLLECTION] Purged zero-node inactive room cache memory tree: ${roomId}`);
                 } else {
+                    const leaveMessage = {
+                        sender: 'SYSTEM',
+                        color: '#737373',
+                        text: `${disconnectedPlayer.name} has left the bunker.`,
+                        timestamp: Date.now()
+                    };
+                    room.messages.push(leaveMessage);
+                    if (room.messages.length > 50) room.messages.shift();
+                    io.to(roomId).emit('chatMessageReceived', leaveMessage);
+
                     // --- AUTOMATED MID-GAME TRANSITION CRASH PROTECTION MATRIX ---
                     // Instantly catches mid-game runtime failures/quits. Resets remaining players back to the
                     // lobby safely with zeroed items/states, preventing frozen interfaces.

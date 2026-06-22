@@ -5,16 +5,20 @@ import { setupLighting, createTable, createGunModel, createDealerModel, createPl
 
 
 export const cleanScene = (scene: THREE.Scene) => {
-
     scene.traverse((object) => {
-        if (object instanceof THREE.Mesh) {
+        if (object instanceof THREE.Mesh || object instanceof THREE.Points || (object as any).isLine) {
             if (object.geometry) object.geometry.dispose();
             if (object.material) {
-                if (Array.isArray(object.material)) {
-                    object.material.forEach((mat) => mat.dispose());
-                } else {
-                    object.material.dispose();
-                }
+                const materials = Array.isArray(object.material) ? object.material : [object.material];
+                materials.forEach((mat) => {
+                    for (const key in mat) {
+                        const val = (mat as any)[key];
+                        if (val && val instanceof THREE.Texture) {
+                            val.dispose();
+                        }
+                    }
+                    mat.dispose();
+                });
             }
         }
     });

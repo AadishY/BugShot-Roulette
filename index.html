@@ -633,10 +633,15 @@
       }
 
       /* Optimize touch targets */
-      button,
-      .interactive {
+      button:not(.small-btn),
+      .interactive:not(.small-btn) {
         min-width: 44px;
         min-height: 44px;
+      }
+
+      .small-btn {
+        min-width: auto !important;
+        min-height: auto !important;
       }
 
       /* Reduce complex shadows */

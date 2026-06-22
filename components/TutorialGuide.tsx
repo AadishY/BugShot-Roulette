@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, ChevronLeft, ChevronRight, Target, Beer, Cigarette, Scale, Link, Scissors, Phone, RefreshCw, Zap, Settings, Code, Github, Instagram, Gamepad2, HelpCircle, Shield, Heart, Crosshair, CircleDot, Smartphone, Monitor, Volume2, Maximize, Eye } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, Target, Beer, Cigarette, Scale, Link, Scissors, Phone, RefreshCw, Zap, Settings, Code, Github, Instagram, Gamepad2, HelpCircle, Shield, Heart, Crosshair, CircleDot, Smartphone, Monitor, Volume2, Maximize, Eye, Swords, Users, Terminal } from 'lucide-react';
 import { GAME_VERSION } from '../constants';
 import { Icons } from './ui/Icons';
 
@@ -215,22 +215,7 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
                             color="text-blue-300"
                             effect="→ FUTURE SHELL (5% LIE RISK)"
                         />
-                    </div>
-                </div>
-            )
-        },
 
-        // Page 3: Items - Part 2
-        {
-            title: "ITEMS (2/2)",
-            icon: <Zap size={20} className="text-pink-500" />,
-            content: (
-                <div className="space-y-3">
-                    <p className="text-stone-400 text-center text-xs md:text-sm mb-4">
-                        ⚡ Advanced items that can <span className="text-red-400 font-bold">turn the tide</span> of battle!
-                    </p>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <ItemCard
                             icon={<RefreshCw size={20} />}
                             name="POLARITY INVERTER"
@@ -254,7 +239,22 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
                             color="text-yellow-700"
                             effect="→ DOUBLE FIRE (SAW STACKS)"
                         />
+                    </div>
+                </div>
+            )
+        },
 
+        // Page 3: Items - Part 2
+        {
+            title: "ITEMS (2/2)",
+            icon: <Zap size={20} className="text-pink-500" />,
+            content: (
+                <div className="space-y-3">
+                    <p className="text-stone-400 text-center text-xs md:text-sm mb-4">
+                        ⚡ Advanced items that can <span className="text-red-400 font-bold">turn the tide</span> of battle!
+                    </p>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <ItemCard
                             icon={<Icons.BigInverter size={20} />}
                             name="BIG INVERTER"
@@ -651,7 +651,67 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
             )
         },
 
-        // Page 6: Settings Menu
+        // Page 6: Multiplayer Bunker
+        {
+            title: "MULTIPLAYER",
+            icon: <Swords size={20} className="text-cyan-400" />,
+            content: (
+                <div className="space-y-4">
+                    <div className="text-center mb-4">
+                        <div className="w-14 h-14 md:w-16 md:h-16 mx-auto mb-3 bg-gradient-to-br from-cyan-900 to-stone-900 rounded-full flex items-center justify-center border border-cyan-500/30">
+                            <Swords size={24} className="text-cyan-400" />
+                        </div>
+                        <p className="text-sm md:text-base text-stone-300">Multiplayer Bunker Protocols</p>
+                        <p className="text-xs md:text-sm text-stone-500 mt-1">Cooperative and Competitive Online Systems</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="md:col-span-2">
+                            <InfoCard icon={<Users size={16} />} title="ROOMS & MATCHMAKING" color="border-cyan-500">
+                                • **Create Room**: Generates a unique 4-digit code. Share the code or invite link to gather players.<br />
+                                • **Quick Join**: Searches public registries and automatically connects you to available lobbies.<br />
+                                • **Active Room Browser**: Live card-based browser displays all public rooms, their player counts, and configurations.
+                            </InfoCard>
+                        </div>
+
+                        <InfoCard icon={<Settings size={16} />} title="LOBBY CONFIGURATION" color="border-cyan-500">
+                            • **Starting HP**: Set starting health points from 2 to 8, or set to <span className="text-cyan-400 font-bold">RANDOM</span> to shuffle starting health per match.<br />
+                            • **Items per Shipment**: Set loaded items from 0 to 8, or select <span className="text-cyan-400 font-bold">RANDOM</span> to randomize shipment amounts.<br />
+                            • **Rounds**: Host can adjust the victory count threshold from 1 to 7 rounds.
+                        </InfoCard>
+
+                        <InfoCard icon={<Zap size={16} />} title="ITEM GENERATION LOGIC" color="border-cyan-500">
+                            • **Host-Driven Randomness**: All random settings, magazine shell loadouts, item distributions, and slot machine rolls are calculated securely on the Host's system to prevent de-syncs.<br />
+                            • **Deterministic Synced Drops**: Client drawers and tables are locked in step with host computations initially.
+                        </InfoCard>
+
+                        <InfoCard icon={<Swords size={16} />} title="MULTIPLAYER EXCLUSIVES" color="border-cyan-500">
+                            • **Remote Item**: Swaps the current shell casing with the next in line. Available in multiplayer lobbies when total player count exceeds 2 players.<br />
+                            • **Advanced Weights**: Host can toggle Advanced mode to individually adjust drop weights for each item.
+                        </InfoCard>
+
+                        <InfoCard icon={<Terminal size={16} />} title="BUNKER CHAT FEED" color="border-cyan-500">
+                            • **Real-Time Log Transmission**: Text communication remains live in lobbies and mid-game.<br />
+                            • **Tactical Emojis**: Send quick icons directly from the chat drawer to convey quick strategies or taunts.
+                        </InfoCard>
+
+                        <div className="md:col-span-2">
+                            <div className="bg-gradient-to-r from-cyan-950/20 to-stone-900/40 border border-cyan-900/30 p-3 md:p-4 rounded-sm">
+                                <h4 className="font-black text-cyan-400 text-xs md:text-sm uppercase tracking-wider mb-2 flex items-center gap-2">
+                                    📊 Leaderboard & Multiplayer Stats
+                                </h4>
+                                <div className="space-y-1.5 text-stone-400 text-xs leading-relaxed">
+                                    • All matches played online are logged in your profile with a distinct <span className="text-cyan-400 font-bold">MP</span> tag.<br />
+                                    • Click on any multiplayer entry in your Career history log to open a dedicated summary detail card showing all participating agents, host designations, and individual outcomes (WIN/LOSS).
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )
+        },
+
+        // Page 7: Settings Menu
         {
             title: "SETTINGS",
             icon: <Settings size={20} className="text-stone-400" />,

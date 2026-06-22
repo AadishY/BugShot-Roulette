@@ -58,6 +58,9 @@ export interface RoomSettings {
   rounds: number;
   hp: number;
   itemsPerShipment: number;
+  isAdvanced?: boolean;
+  itemWeights?: Record<string, number>;
+  isPrivate?: boolean;
 }
 
 export interface ChatMessage {

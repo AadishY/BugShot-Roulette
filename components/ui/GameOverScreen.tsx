@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Skull, Power, Trophy, Target, Zap, Activity, RotateCcw } from 'lucide-react';
+import { Skull, Power, Trophy, Target, Zap, Activity, RotateCcw, X, Swords } from 'lucide-react';
 import { TurnOwner } from '../../types';
 import { MatchStats, GameStats, getStoredStats, calculateMatchScore, saveGameStats } from '../../utils/statsManager';
 import { audioManager } from '../../utils/audioManager';
@@ -10,6 +10,7 @@ interface GameOverScreenProps {
     onResetGame: (toMenu: boolean) => void;
     matchData?: MatchStats;
     isDebugUsed?: boolean; // Added
+    isMultiplayer?: boolean;
 }
 
 const WIN_QUOTES = [
@@ -35,8 +36,9 @@ const LOSS_QUOTES = [
 ];
 
 
-export const GameOverScreen: React.FC<GameOverScreenProps> = ({ winner, onResetGame, matchData, isDebugUsed }) => {
+export const GameOverScreen: React.FC<GameOverScreenProps> = ({ winner, onResetGame, matchData, isDebugUsed, isMultiplayer }) => {
     const [stats, setStats] = useState<GameStats | null>(null);
+    const [selectedMPMatch, setSelectedMPMatch] = useState<any>(null);
     const [finalScore, setFinalScore] = useState(0);
     const [displayedScore, setDisplayedScore] = useState(0);
     const [quote, setQuote] = useState('');
@@ -326,13 +328,24 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ winner, onResetG
                             {stats && stats.matchHistory && stats.matchHistory.length > 0 ? (
                                 <div className="space-y-2.5 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
                                     {stats.matchHistory.slice(0, 5).map((match, mi) => (
-                                        <div key={mi} className="flex items-center justify-between p-2.5 bg-stone-950/30 border border-white/5 rounded-xl text-xs font-mono">
+                                        <div 
+                                            key={mi} 
+                                            onClick={() => {
+                                                if (match.isMultiplayer) {
+                                                    audioManager.playSound('click');
+                                                    setSelectedMPMatch(match);
+                                                }
+                                            }}
+                                            className={`flex items-center justify-between p-2.5 bg-stone-950/30 border border-white/5 rounded-xl text-xs font-mono transition-all ${
+                                                match.isMultiplayer ? 'cursor-pointer hover:border-cyan-500/40 hover:bg-stone-900/30' : ''
+                                            }`}
+                                        >
                                             <div className="flex items-center gap-2.5">
                                                 <div className={`w-2.5 h-2.5 rounded-full ${match.result === 'WIN' ? 'bg-green-500 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-red-600'}`} />
                                                 <span className="font-sans font-bold text-stone-300">{match.result === 'WIN' ? 'WIN' : 'LOSS'}</span>
                                                 <span className="text-[10px] text-stone-600">|</span>
-                                                <span className={`text-[9px] font-sans px-1.5 py-0.5 rounded ${match.isHardMode ? 'bg-red-950/40 border border-red-900/30 text-red-500' : 'bg-stone-800 text-stone-400'}`}>
-                                                    {match.isHardMode ? 'HARD' : 'NORMAL'}
+                                                <span className={`text-[9px] font-sans px-1.5 py-0.5 rounded ${match.isMultiplayer ? 'bg-cyan-955/20 border border-cyan-900/30 text-cyan-400' : match.isHardMode ? 'bg-red-955/20 border border-red-900/30 text-red-500' : 'bg-stone-800 text-stone-400'}`}>
+                                                    {match.isMultiplayer ? 'MP' : match.isHardMode ? 'HARD' : 'NORMAL'}
                                                 </span>
                                             </div>
                                             <div className="flex items-center gap-3 text-[10px]">
@@ -389,18 +402,109 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ winner, onResetG
                     }}
                     className="flex-1 h-16 bg-white text-black font-black text-lg hover:bg-stone-200 hover:scale-105 active:scale-95 transition-all tracking-[0.4em] flex items-center justify-center gap-3 rounded-2xl shadow-[0_20px_40px_rgba(255,255,255,0.1)] uppercase"
                 >
-                    <RotateCcw size={20} /> Initiate
+                    <RotateCcw size={20} /> {isMultiplayer ? "Play Again" : "Initiate"}
                 </button>
                 <button
                     onClick={() => {
                         audioManager.playSound('click');
-                        onResetGame(true);
+                        if (isMultiplayer) {
+                            if (window.confirm("ARE YOU SURE YOU WANT TO EXIT AND RETURN TO THE MAIN MENU?")) {
+                                onResetGame(true);
+                            }
+                        } else {
+                            onResetGame(true);
+                        }
                     }}
                     className="flex-1 h-16 bg-stone-900/40 backdrop-blur-md border border-stone-800 text-stone-400 font-black text-lg hover:text-white hover:border-white hover:bg-white/5 hover:scale-105 active:scale-95 transition-all tracking-[0.4em] flex items-center justify-center gap-3 rounded-2xl uppercase"
                 >
                     <Power size={20} /> Logout
                 </button>
             </div>
+            {/* Multiplayer Match Summary Popup */}
+            {selectedMPMatch && (
+                <>
+                    <div className="fixed inset-0 bg-black/80 z-[120] cursor-default" onClick={() => setSelectedMPMatch(null)} />
+                    <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-sm bg-stone-950 border border-cyan-900/40 p-6 rounded-2xl shadow-[0_0_50px_rgba(6,182,212,0.15)] z-[130] font-mono text-stone-300">
+                        {/* Header */}
+                        <div className="flex justify-between items-center border-b border-stone-900 pb-3 mb-4">
+                            <div className="flex items-center gap-2">
+                                <Swords className="text-cyan-400" size={14} />
+                                <span className="font-black text-xs tracking-wider uppercase text-white">MULTIPLAYER SUMMARY</span>
+                            </div>
+                            <button onClick={() => setSelectedMPMatch(null)} className="text-stone-500 hover:text-white transition-colors cursor-pointer">
+                                <X size={14} />
+                            </button>
+                        </div>
+
+                        {/* Details */}
+                        <div className="space-y-4 text-left">
+                            <div className="flex justify-between text-[8px] text-stone-500 border-b border-stone-900/50 pb-2">
+                                <span>DATE: {selectedMPMatch.timestamp ? new Date(selectedMPMatch.timestamp).toLocaleString() : 'UNKNOWN'}</span>
+                                <span className="text-cyan-400 font-bold">SCORE: {selectedMPMatch.totalScore?.toLocaleString() || 0}</span>
+                            </div>
+
+                            {/* Deployed list */}
+                            <div className="space-y-1.5">
+                                <span className="text-[8px] text-stone-500 uppercase tracking-widest font-black block">DEPLOYED AGENTS</span>
+                                <div className="space-y-1">
+                                    {selectedMPMatch.mpPlayers && selectedMPMatch.mpPlayers.map((player: any, idx: number) => (
+                                        <div key={idx} className="flex justify-between items-center p-2 bg-stone-900/20 border border-stone-900/40 rounded-lg text-[10px]">
+                                            <div className="flex items-center gap-1.5">
+                                                <span className="font-bold text-stone-200">{player.name}</span>
+                                                {player.isHost && (
+                                                    <span className="text-[6px] bg-red-955/20 text-red-400 px-1 py-0.5 rounded border border-red-900/30 font-bold">HOST</span>
+                                                )}
+                                                {player.isMe && (
+                                                    <span className="text-[6px] bg-cyan-950/20 text-cyan-400 px-1 py-0.5 rounded border border-cyan-900/30 font-bold">YOU</span>
+                                                )}
+                                            </div>
+                                            <span className={`font-black tracking-widest uppercase text-[9px] ${
+                                                player.result === 'WIN' ? 'text-green-400' :
+                                                player.result === 'LOSS' ? 'text-red-450' : 'text-stone-500'
+                                            }`}>
+                                                {player.result}
+                                            </span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Player stats */}
+                            <div className="space-y-1.5 pt-2 border-t border-stone-900/60">
+                                <span className="text-[8px] text-stone-500 uppercase tracking-widest font-black block">PERFORMANCE REPORT</span>
+                                <div className="grid grid-cols-2 gap-2 text-[9px]">
+                                    <div className="p-2 bg-stone-950 border border-stone-900/50 rounded flex justify-between">
+                                        <span className="text-stone-500">RDS SURVIVED</span>
+                                        <span className="text-stone-200 font-bold">{selectedMPMatch.roundsSurvived}</span>
+                                    </div>
+                                    <div className="p-2 bg-stone-950 border border-stone-900/50 rounded flex justify-between">
+                                        <span className="text-stone-500">PRECISION</span>
+                                        <span className="text-stone-200 font-bold">
+                                            {selectedMPMatch.shotsFired > 0 ? Math.round((selectedMPMatch.shotsHit / selectedMPMatch.shotsFired) * 100) : 0}%
+                                        </span>
+                                    </div>
+                                    <div className="p-2 bg-stone-950 border border-stone-900/50 rounded flex justify-between">
+                                        <span className="text-stone-500">DMG DEALT</span>
+                                        <span className="text-stone-200 font-bold">{selectedMPMatch.damageDealt}</span>
+                                    </div>
+                                    <div className="p-2 bg-stone-950 border border-stone-900/50 rounded flex justify-between">
+                                        <span className="text-stone-500">DMG TAKEN</span>
+                                        <span className="text-stone-200 font-bold">{selectedMPMatch.damageTaken}</span>
+                                    </div>
+                                    <div className="p-2 bg-stone-950 border border-stone-900/50 rounded flex justify-between col-span-2">
+                                        <span className="text-stone-500">SELF SHOTS</span>
+                                        <span className={`${selectedMPMatch.selfShots > 0 ? 'text-red-400' : 'text-stone-400'} font-bold`}>{selectedMPMatch.selfShots}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <button onClick={() => setSelectedMPMatch(null)} className="w-full mt-4 py-2 bg-cyan-950/20 border border-cyan-850 hover:bg-cyan-900/20 text-cyan-400 font-black text-[9px] tracking-wider uppercase rounded-xl transition-all cursor-pointer">
+                            DISMISS LOG
+                        </button>
+                    </div>
+                </>
+            )}
         </div>
     );
 };

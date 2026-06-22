@@ -9,6 +9,28 @@ const SERVER_URL = isDiscord
     ? window.location.origin 
     : (import.meta.env.VITE_SERVER_URL || 'https://yoakatsuki-buckshot.hf.space');
 
+const loadSavedSettings = () => {
+    let savedSettings = { rounds: 3, hp: 9, itemsPerShipment: 9, isPrivate: false, isAdvanced: false };
+    try {
+        const saved = localStorage.getItem('aadish_roulette_last_lobby_settings');
+        if (saved) {
+            const parsed = JSON.parse(saved);
+            if (parsed && typeof parsed === 'object') {
+                savedSettings = {
+                    rounds: parsed.rounds !== undefined ? parsed.rounds : 3,
+                    hp: parsed.hp !== undefined ? parsed.hp : 9,
+                    itemsPerShipment: parsed.itemsPerShipment !== undefined ? parsed.itemsPerShipment : 9,
+                    isPrivate: parsed.isPrivate !== undefined ? parsed.isPrivate : false,
+                    isAdvanced: false
+                };
+            }
+        }
+    } catch (e) {
+        console.error("Failed to load saved settings:", e);
+    }
+    return savedSettings;
+};
+
 export function useMultiplayer() {
     const [socket, setSocket] = useState<Socket | null>(null);
     const [room, setRoom] = useState<any>(null);
@@ -16,7 +38,10 @@ export function useMultiplayer() {
     const [error, setError] = useState<string | null>(null);
     const [isConnected, setIsConnected] = useState(false);
     const [isConnecting, setIsConnecting] = useState(false);
+    const [connectionStatus, setConnectionStatus] = useState('');
     const [messages, setMessages] = useState<ChatMessage[]>([]);
+
+    const connectionAttemptsRef = useRef(0);
 
     // Callback for incoming actions
     const onActionRef = useRef<((data: { playerId: string, action: any }) => void) | null>(null);
@@ -27,22 +52,36 @@ export function useMultiplayer() {
     const connect = useCallback(() => {
         setIsConnecting(true);
         setError(null);
+        setConnectionStatus('ESTABLISHING LINK...');
+        connectionAttemptsRef.current = 0;
 
         const newSocket = io(SERVER_URL, {
-            reconnectionAttempts: 3,
-            timeout: 5000,
-            path: isDiscord ? '/socket/socket.io' : '/socket.io'
+            reconnectionAttempts: 15,
+            reconnectionDelay: 3000,
+            timeout: 10000,
+            path: isDiscord ? '/socket/socket.io' : '/socket.io',
+            transports: ['websocket', 'polling']
         });
 
         newSocket.on('connect', () => {
             setIsConnected(true);
             setIsConnecting(false);
             setSocket(newSocket);
+            setError(null);
+            setConnectionStatus('');
+            connectionAttemptsRef.current = 0;
         });
 
         newSocket.on('connect_error', () => {
-            setError('Server is offline');
-            setIsConnecting(false);
+            connectionAttemptsRef.current += 1;
+            if (connectionAttemptsRef.current >= 5) {
+                setError('Server is offline. Waking up server, please refresh after 1 min.');
+                setIsConnecting(false);
+                setConnectionStatus('');
+                newSocket.disconnect();
+            } else {
+                setConnectionStatus(`WAKING UP SERVER... (ATTEMPT ${connectionAttemptsRef.current}/5)`);
+            }
         });
 
         newSocket.on('joinedRoom', ({ room, playerId }) => {
@@ -65,6 +104,12 @@ export function useMultiplayer() {
             }
         });
 
+        newSocket.on('kicked', () => {
+            setError('You were kicked from the room.');
+            setRoom(null);
+            setPlayerId(null);
+        });
+
         newSocket.on('error', (err: string) => {
             setError(err);
         });
@@ -77,15 +122,45 @@ export function useMultiplayer() {
             socket.disconnect();
             setSocket(null);
             setIsConnected(false);
+            setConnectionStatus('');
+            connectionAttemptsRef.current = 0;
             setRoom(null);
         }
+    }, [socket]);
+
+    useEffect(() => {
+        return () => {
+            if (socket) {
+                socket.disconnect();
+            }
+        };
     }, [socket]);
 
     const joinRoom = (roomId: string, playerName: string) => {
         socket?.emit('joinRoom', { roomId, playerName });
     };
 
+    const createRoom = (playerName: string) => {
+        const savedSettings = loadSavedSettings();
+        socket?.emit('createRoom', { playerName, settings: savedSettings });
+    };
+
+    const quickJoin = (playerName: string) => {
+        const savedSettings = loadSavedSettings();
+        socket?.emit('quickJoin', { playerName, settings: savedSettings });
+    };
+
+    const clearError = useCallback(() => {
+        setError(null);
+    }, []);
+
     const updateSettings = (roomId: string, settings: RoomSettings) => {
+        try {
+            const settingsToSave = { ...settings, isAdvanced: false };
+            localStorage.setItem('aadish_roulette_last_lobby_settings', JSON.stringify(settingsToSave));
+        } catch (e) {
+            console.error("Failed to save settings:", e);
+        }
         socket?.emit('updateSettings', { roomId, settings });
     };
 
@@ -105,6 +180,25 @@ export function useMultiplayer() {
         socket?.emit('gameAction', { roomId, action });
     };
 
+    const kickPlayer = (roomId: string, targetPlayerId: string) => {
+        socket?.emit('kickPlayer', { roomId, targetPlayerId });
+    };
+
+    const resetRoomState = (roomId: string) => {
+        socket?.emit('resetRoomState', { roomId });
+    };
+
+    const getActiveRooms = useCallback(async () => {
+        try {
+            const res = await fetch(`${SERVER_URL}/active-rooms`);
+            if (!res.ok) throw new Error('Failed to fetch active rooms');
+            return await res.json();
+        } catch (err) {
+            console.error("Error fetching active rooms:", err);
+            return [];
+        }
+    }, []);
+
     return {
         socket,
         room,
@@ -112,10 +206,17 @@ export function useMultiplayer() {
         error,
         isConnected,
         isConnecting,
+        connectionStatus,
         messages,
         connect,
         disconnect,
         joinRoom,
+        createRoom,
+        quickJoin,
+        clearError,
+        kickPlayer,
+        resetRoomState,
+        getActiveRooms,
         updateSettings,
         readyUp,
         startGame,

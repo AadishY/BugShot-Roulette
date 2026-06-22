@@ -578,9 +578,10 @@ export const useGameLogic = () => {
     setOverlayText(null);
 
     // Reset HP but keep going
-    const initialHp = mSettings.hp || 4;
-    setPlayer(p => ({ ...p, hp: initialHp }));
-    setDealer(d => ({ ...d, hp: initialHp }));
+    const initialPlayerHp = playerRef.current.maxHp;
+    const initialDealerHp = dealerRef.current.maxHp;
+    setPlayer(p => ({ ...p, hp: initialPlayerHp }));
+    setDealer(d => ({ ...d, hp: initialDealerHp }));
 
     // Start a new batch
     startRound(true, false, undefined, undefined, undefined, undefined, undefined, undefined, { playerWins: pWin, opponentWins: oWin });

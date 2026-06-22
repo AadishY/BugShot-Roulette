@@ -272,7 +272,7 @@ export const DebugOverlay: React.FC<DebugOverlayProps> = ({
                                         >
                                             <span className="text-[7px] md:text-[8px] font-bold text-stone-500 uppercase">#{idx + 1}</span>
                                             <span className="font-black text-[8px] md:text-[10px]">{shell}</span>
-                                            {isCurrent && <span className="text-[6px] md:text-[7px] bg-red-500 text-white font-extrabold px-0.5 md:px-1 rounded uppercase animate-pulse">Next</span>}
+                                            {isCurrent && <span className="text-[6px] md:text-[7px] bg-red-500 text-white font-extrabold px-0.5 md:px-1 rounded uppercase animate-pulse">Current</span>}
                                         </button>
                                     );
                                 })}
@@ -481,7 +481,6 @@ export const DebugOverlay: React.FC<DebugOverlayProps> = ({
                             {processItemEffect && (
                                 <button
                                     onClick={() => {
-                                        if (setCameraView) setCameraView('TABLE');
                                         processItemEffect('PLAYER', 'JACKPOT');
                                     }}
                                     className="w-full py-1 bg-emerald-950/40 border border-emerald-800/40 text-emerald-400 hover:bg-emerald-900/30 cursor-pointer font-bold uppercase text-[7px] md:text-[8px] text-center"

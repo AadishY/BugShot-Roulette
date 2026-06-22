@@ -349,33 +349,33 @@ export const performShot = async (
                     setOverlayColor('none');
                 } else {
                     setPlayer(p => ({ ...p, hp: newHp }));
-                }
 
-                if (newHp <= 0) {
-                    if (gameState.isHardMode && handleHardModeRoundEnd) {
-                        addLog('ROUND LOST', 'danger');
-                        handleHardModeRoundEnd('DEALER');
-                        setIsProcessing(false);
-                        return;
+                    if (newHp <= 0) {
+                        if (gameState.isHardMode && handleHardModeRoundEnd) {
+                            addLog('ROUND LOST', 'danger');
+                            handleHardModeRoundEnd('DEALER');
+                            setIsProcessing(false);
+                            return;
+                        }
+                        if (gameState.isMultiplayer && handleMPRoundEnd) {
+                            addLog('ROUND LOST', 'danger');
+                            handleMPRoundEnd('DEALER');
+                            setIsProcessing(false);
+                            return;
+                        }
+                        setGameState(prev => ({ ...prev, winner: 'DEALER', phase: 'GAME_OVER' }));
+                        if (matchStats?.current) matchStats.current.result = 'LOSS';
+                        gameOver = true;
+                        addLog('YOU DIED.', 'danger');
+                    } else {
+                        setOverlayColor('red');
+                        setAnim(prev => ({ ...prev, playerHit: true }));
+                        await wait(1800);
+                        setAnim(prev => ({ ...prev, playerHit: false, playerRecovering: true }));
+                        await wait(1500);
+                        setAnim(prev => ({ ...prev, playerRecovering: false }));
+                        setOverlayColor('none');
                     }
-                    if (gameState.isMultiplayer && handleMPRoundEnd) {
-                        addLog('ROUND LOST', 'danger');
-                        handleMPRoundEnd('DEALER');
-                        setIsProcessing(false);
-                        return;
-                    }
-                    setGameState(prev => ({ ...prev, winner: 'DEALER', phase: 'GAME_OVER' }));
-                    if (matchStats?.current) matchStats.current.result = 'LOSS';
-                    gameOver = true;
-                    addLog('YOU DIED.', 'danger');
-                } else {
-                    setOverlayColor('red');
-                    setAnim(prev => ({ ...prev, playerHit: true }));
-                    await wait(1800);
-                    setAnim(prev => ({ ...prev, playerHit: false, playerRecovering: true }));
-                    await wait(1500);
-                    setAnim(prev => ({ ...prev, playerRecovering: false }));
-                    setOverlayColor('none');
                 }
             }
         } else {

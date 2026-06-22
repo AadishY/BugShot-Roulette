@@ -22,6 +22,7 @@ interface ThreeSceneProps {
     gameState: GameState;
     onCardClick?: (index: number) => void;
     onLowPerformance?: (fps: number) => void;
+    isPaused?: boolean;
 }
 
 const calculatePixelScale = (settings: GameSettings, width: number) => {
@@ -95,7 +96,8 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
     dealer,
     gameState,
     onCardClick,
-    onLowPerformance
+    onLowPerformance,
+    isPaused = false
 }) => {
     const containerRef = useRef<HTMLDivElement>(null);
 
@@ -115,7 +117,8 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
         gameState,
         onCardClick,
         onGunClick,
-        onLowPerformance
+        onLowPerformance,
+        isPaused
     });
 
     useEffect(() => {
@@ -135,9 +138,10 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
             gameState,
             onCardClick,
             onGunClick,
-            onLowPerformance
+            onLowPerformance,
+            isPaused
         };
-    }, [isSawed, isChokeActive, isPlayerCuffed, aimTarget, cameraView, animState, turnOwner, settings, knownShell, isHardMode, player, dealer, gameState, onCardClick, onGunClick, onLowPerformance]);
+    }, [isSawed, isChokeActive, isPlayerCuffed, aimTarget, cameraView, animState, turnOwner, settings, knownShell, isHardMode, player, dealer, gameState, onCardClick, onGunClick, onLowPerformance, isPaused]);
 
     const sceneRef = useRef<SceneContext | null>(null);
 
@@ -211,12 +215,15 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
         let hasShownPerfWarning = false;
 
         const handleVisibilityChange = () => {
-            if (document.hidden) {
+            if (document.hidden || document.visibilityState !== 'visible') {
                 isTabVisible = false;
             } else {
                 isTabVisible = true;
                 lastTime = performance.now();
                 lastFrameTime = performance.now();
+                fpsTimeStart = performance.now();
+                frameCount = 0;
+                fpsAverages = [];
             }
         };
         document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -224,8 +231,15 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
         const animate = (currentTime: number = performance.now()) => {
             frameId = requestAnimationFrame(animate);
             if (!sceneRef.current) return;
-            if (!isTabVisible) {
+            if (propsRef.current.isPaused) {
                 lastTime = currentTime; lastFrameTime = currentTime; return;
+            }
+            if (!isTabVisible || document.hidden || document.visibilityState !== 'visible') {
+                lastTime = currentTime; 
+                lastFrameTime = currentTime; 
+                fpsTimeStart = currentTime;
+                frameCount = 0;
+                return;
             }
 
             // Frame Limiting Logic (Only strictly enforce on low-end to save battery/thermal)
@@ -254,7 +268,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
                     const avgFps = fpsAverages.reduce((a, b) => a + b, 0) / 3;
                     const currentSettings = propsRef.current.settings;
                     
-                    if (avgFps < 30 && !currentSettings.ultraPerformance && !hasShownPerfWarning) {
+                    if (avgFps < 20 && !currentSettings.ultraPerformance && !hasShownPerfWarning) {
                         hasShownPerfWarning = true;
                         if (propsRef.current.onLowPerformance) {
                             propsRef.current.onLowPerformance(avgFps);
@@ -691,5 +705,5 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
 
     }, [animState.triggerRack, animState.ejectedShellColor]);
 
-    return <div ref={containerRef} className="absolute inset-0 z-0 bg-neutral-950" />;
+    return <div ref={containerRef} className="absolute inset-0 z-0 bg-neutral-950" style={{ display: isPaused ? 'none' : 'block' }} />;
 };

@@ -26,6 +26,8 @@ export interface MatchStats {
     timestamp?: number;
     isHardMode?: boolean;
     roundResults?: string[]; // e.g. ['WIN', 'LOSS', 'WIN']
+    isMultiplayer?: boolean;
+    mpPlayers?: any[];
 }
 
 const STORAGE_KEY = 'aadish_roulette_stats_v1';

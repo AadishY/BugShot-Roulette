@@ -144,4 +144,127 @@
     .blood-overlay.blood-active {
         animation: none !important;
     }
+}
+
+/* Virtual Keyboard overlay support */
+.keyboard-aware-bottom {
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + env(keyboard-inset-height, 0px)) !important;
+}
+
+/* Custom horizontal flex layouts for Multiplayer Lobby */
+.lobby-main-view {
+    flex: 2;
+}
+.lobby-chat-view {
+    flex: 1;
+}
+.lobby-settings-column {
+    flex: 1.4;
+}
+.lobby-players-column {
+    flex: 0.6;
+}
+
+/* Multi-column Lobby scaling overrides for small screens */
+@media (max-width: 1024px) {
+    .lobby-three-cols-container {
+        padding: 2px !important;
+    }
+    
+    .lobby-three-cols-container * {
+        font-size: 8px !important;
+        line-height: 1.1 !important;
+    }
+    
+    .lobby-three-cols-container .text-2xl,
+    .lobby-three-cols-container .text-xl,
+    .lobby-three-cols-container .text-3xl {
+        font-size: 11px !important;
+    }
+    
+    .lobby-three-cols-container button,
+    .lobby-three-cols-container .interactive {
+        min-height: 20px !important;
+        min-width: 0px !important;
+        padding-left: 4px !important;
+        padding-right: 4px !important;
+        padding-top: 2px !important;
+        padding-bottom: 2px !important;
+        border-radius: 4px !important;
+    }
+
+    .lobby-three-cols-container svg {
+        width: 8px !important;
+        height: 8px !important;
+    }
+
+    .lobby-three-cols-container .p-2,
+    .lobby-three-cols-container .p-3,
+    .lobby-three-cols-container .p-4,
+    .lobby-three-cols-container .p-6,
+    .lobby-three-cols-container .p-2\.5,
+    .lobby-three-cols-container .p-3\.5 {
+        padding: 3px !important;
+    }
+
+    .lobby-three-cols-container .py-2,
+    .lobby-three-cols-container .py-2\.5,
+    .lobby-three-cols-container .py-4 {
+        padding-top: 2px !important;
+        padding-bottom: 2px !important;
+    }
+
+    .lobby-three-cols-container .px-3,
+    .lobby-three-cols-container .px-4,
+    .lobby-three-cols-container .px-6 {
+        padding-left: 3px !important;
+        padding-right: 3px !important;
+    }
+
+    .lobby-three-cols-container .gap-3,
+    .lobby-three-cols-container .gap-4,
+    .lobby-three-cols-container .gap-6,
+    .lobby-three-cols-container .gap-1\.5,
+    .lobby-three-cols-container .gap-2,
+    .lobby-three-cols-container .gap-2\.5 {
+        gap: 2.5px !important;
+    }
+
+    /* Column proportions for small viewports */
+    .lobby-main-view {
+        flex: 2.25 !important;
+    }
+    .lobby-chat-view {
+        flex: 0.75 !important;
+    }
+    .lobby-settings-column {
+        flex: 1.15 !important;
+    }
+    .lobby-players-column {
+        flex: 0.85 !important;
+    }
+
+    .lobby-three-cols-container .space-y-4,
+    .lobby-three-cols-container .space-y-3\.5,
+    .lobby-three-cols-container .space-y-2 {
+        margin-top: 0px !important;
+    }
+    .lobby-three-cols-container .space-y-4 > * + * {
+        margin-top: 16px !important;
+    }
+    .lobby-three-cols-container .space-y-3\.5 > * + * {
+        margin-top: 14px !important;
+    }
+    .lobby-three-cols-container .space-y-2 > * + * {
+        margin-top: 6px !important;
+    }
+
+    .lobby-three-cols-container .h-10,
+    .lobby-three-cols-container .h-12 {
+        height: 22px !important;
+    }
+    
+    .lobby-three-cols-container .w-44 {
+        width: 110px !important;
+    }
 }
