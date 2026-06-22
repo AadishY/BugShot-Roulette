@@ -2,16 +2,16 @@
 
 # 🎯 AADISH ROULETTE
 
-<img src="image/Banner.jpg" alt="Aadish Roulette Banner" width="100%" style="border-radius: 12px;" />
+<img src="public/image/Banner.jpg" alt="Aadish Roulette Banner" width="100%" style="border-radius: 12px;" />
 
 ### A Deadly Game of Chance
 
-[![Play Now](https://img.shields.io/badge/PLAY%20NOW-Live%20Demo-red?style=for-the-badge&logo=vercel)](https://aadishroulette.vercel.app/)
+[![Play Now](https://img.shields.io/badge/PLAY%20NOW-Live%20Demo-orange?style=for-the-badge&logo=cloudflare)](https://aadishroulette.pages.dev/)
 [![GitHub](https://img.shields.io/badge/GitHub-AadishY-black?style=for-the-badge&logo=github)](https://github.com/AadishY)
 
 ---
 
-<img src="image/Banner gif.gif" alt="Aadish Roulette Gameplay Banner" width="100%" style="border-radius: 12px;" />
+<img src="public/image/Banner%20gif.gif" alt="Aadish Roulette Gameplay Banner" width="100%" style="border-radius: 12px;" />
 
 *A high-stakes tabletop horror game where you play Russian Roulette with a 12-gauge pump-action shotgun.*
 
@@ -23,19 +23,12 @@
 
 **Aadish Roulette** is a web-based reimagining of the deadly shotgun game, inspired by Mike Klubnika's *Buckshot Roulette*. Built with React, TypeScript, and Three.js, it features 3D layouts, retro CRT filters, atmospheric volumetric lighting, and strategic item play.
 
-### 🎥 Gameplay Showcase
+---
 
-Watch the short gameplay trailer to see the high-stakes action in real-time:
+## Gameplay Showcase
 
-<div align="center">
-  <video src="image/ShortVideo(Lowsize).mp4" width="100%" controls loop muted style="border-radius: 12px; border: 1px solid #333; max-width: 800px;"></video>
-</div>
+https://github.com/user-attachments/assets/e369969c-1fcc-43d0-994e-a4c02572d001
 
-### 📸 Screenshots
-
-<div align="center">
-  <img src="image/preview-normalquality.jpg" alt="Aadish Roulette Table View" width="100%" style="border-radius: 12px; border: 1px solid #333; max-width: 800px;" />
-</div>
 
 ---
 
@@ -184,7 +177,7 @@ This project uses [Vite](https://vitejs.dev/) + [React](https://react.dev/) + [T
 
 ```bash
 # Clone the repository
-git clone https://github.com/AadishY/Aadish-Roulette.git
+git clone [https://github.com/AadishY/Aadish-Roulette.git](https://github.com/AadishY/Aadish-Roulette.git)
 cd Aadish-Roulette
 
 # Install dependencies
@@ -250,6 +243,6 @@ npm run build
 
 **Made with ❤️ by [Aadish](https://github.com/AadishY)**
 
-*Version 1.1.0 • 2026*
+*Version 2.1.2 • 2026*
 
 </div>
