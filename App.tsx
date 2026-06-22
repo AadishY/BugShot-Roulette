@@ -30,8 +30,12 @@ declare global {
   }
 }
 const isDiscordPlatform = urlParams.has('frame_id') || urlParams.has('instance_id') || window.location.search.includes('platform=') || window.location.hostname.includes('discordsays.com');
-const SERVER_URL = import.meta.env.VITE_SERVER_URL || 
-    (isDiscordPlatform ? window.location.origin + '/server' : 'https://yoakatsuki-buckshot.hf.space');
+const SERVER_URL = isDiscordPlatform
+    ? window.location.origin + '/server'
+    : (import.meta.env.VITE_SERVER_URL || 
+        (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+          ? 'http://localhost:3001'
+          : window.location.origin + '/server'));
 
 type AppState = 'MENU' | 'LOADING_SP' | 'LOADING_GAME' | 'GAME' | 'LOADING_MP' | 'MP_SELECTION' | 'LOBBY';
 
@@ -92,12 +96,13 @@ export default function App() {
     const params = new URLSearchParams(window.location.search);
     const isDiscord = params.has('frame_id') || params.has('instance_id') || window.location.search.includes('platform=') || window.location.hostname.includes('discordsays.com');
 
-    if (isDiscord) {
+    if (isDiscord && params.has('frame_id')) {
       const clientId = import.meta.env.VITE_DISCORD_CLIENT_ID || '1517863650998882406';
       console.log(`[Discord] Initializing SDK with client ID: ${clientId}`);
-      const discordSdk = new DiscordSDK(clientId);
-      let isAuthenticated = false;
-      const sessionStartTime = Date.now();
+      try {
+        const discordSdk = new DiscordSDK(clientId);
+        let isAuthenticated = false;
+        const sessionStartTime = Date.now();
 
       const initDiscord = async () => {
         try {
@@ -170,6 +175,9 @@ export default function App() {
       };
 
       initDiscord();
+      } catch (err) {
+        console.error("[Discord] SDK constructor initialization failed:", err);
+      }
     }
   }, []);
 

@@ -5,8 +5,12 @@ import { MultiplayerGameState, RoomSettings, ChatMessage, MultiplayerPlayer } fr
 const params = new URLSearchParams(window.location.search);
 const isDiscord = params.has('frame_id') || params.has('instance_id') || window.location.search.includes('platform=') || window.location.hostname.includes('discordsays.com');
 
-const SERVER_URL = import.meta.env.VITE_SERVER_URL || 
-    (isDiscord ? window.location.origin + '/server' : 'https://yoakatsuki-buckshot.hf.space');
+const SERVER_URL = isDiscord
+    ? window.location.origin + '/server'
+    : (import.meta.env.VITE_SERVER_URL || 
+        (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+          ? 'http://localhost:3001'
+          : window.location.origin + '/server'));
 
 const loadSavedSettings = () => {
     let savedSettings = { rounds: 3, hp: 9, itemsPerShipment: 9, isPrivate: false, isAdvanced: false };
@@ -54,11 +58,26 @@ export function useMultiplayer() {
         setConnectionStatus('ESTABLISHING LINK...');
         connectionAttemptsRef.current = 0;
 
-        const newSocket = io(SERVER_URL, {
+        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        let socketUrl = '';
+        let socketPath = '/socket.io';
+
+        if (isLocal) {
+            socketUrl = 'http://localhost:3001';
+            socketPath = '/socket.io';
+        } else if (isDiscord) {
+            socketUrl = window.location.origin;
+            socketPath = '/server/socket.io';
+        } else {
+            socketUrl = 'https://yoakatsuki-buckshot.hf.space';
+            socketPath = '/socket.io';
+        }
+
+        const newSocket = io(socketUrl, {
             reconnectionAttempts: 15,
             reconnectionDelay: 3000,
             timeout: 10000,
-            path: isDiscord ? '/server/socket.io' : '/socket.io',
+            path: socketPath,
             transports: ['websocket', 'polling']
         });
 

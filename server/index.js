@@ -10,6 +10,16 @@ const app = express();
 // Enable GZIP compression to reduce packet sizes across web hosting infrastructure
 app.use(compression());
 
+// Strip /server prefix if present (e.g. when proxied by Discord URL mapping or Cloudflare without stripping)
+app.use((req, res, next) => {
+    if (req.url.startsWith('/server/')) {
+        req.url = req.url.substring(7);
+    } else if (req.url === '/server') {
+        req.url = '/';
+    }
+    next();
+});
+
 // --- HUGGING FACE & REVERSE PROXY LAYER CONFIGURATION ---
 // Hugging Face Spaces route dynamic client traffic through layered reverse proxies.
 // Trusting proxies allows the Express core engine to correctly read downstream headers (IPs, proto upgrades).

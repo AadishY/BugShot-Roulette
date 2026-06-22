@@ -9,24 +9,22 @@ const getRedisConfig = () => {
     return { url, token };
 };
 
+const checkIfDiscord = () => {
+    const params = new URLSearchParams(window.location.search);
+    return params.has('frame_id') || params.has('instance_id') || window.location.search.includes('platform=') || window.location.hostname.includes('discordsays.com');
+};
+
 const getBackendUrl = () => {
+    if (checkIfDiscord()) {
+        return window.location.origin + '/server';
+    }
     if (import.meta.env.VITE_SERVER_URL) {
         return import.meta.env.VITE_SERVER_URL;
-    }
-    const params = new URLSearchParams(window.location.search);
-    const isDiscord = params.has('frame_id') || params.has('instance_id') || window.location.search.includes('platform=') || window.location.hostname.includes('discordsays.com');
-    if (isDiscord) {
-        return window.location.origin + '/server';
     }
     if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
         return 'http://localhost:3001';
     }
-    return 'https://yoakatsuki-buckshot.hf.space';
-};
-
-const checkIfDiscord = () => {
-    const params = new URLSearchParams(window.location.search);
-    return params.has('frame_id') || params.has('instance_id') || window.location.search.includes('platform=') || window.location.hostname.includes('discordsays.com');
+    return window.location.origin + '/server';
 };
 
 const executeRedisCommand = async (command: any[]) => {
