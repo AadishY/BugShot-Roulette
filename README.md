@@ -1,3 +1,10 @@
+> ### ⚠️ **Important Notice & Inspiration**
+> This game is **heavily inspired by Buckshot Roulette**. No model, textures or script have been used or extracted from the original game files; all visual assets are completely self-made.
+> 
+> Some item and background sounds used in this project were found publicly online—they were **not** obtained via reverse engineering. These sounds will be promptly removed if requested by the original creators.
+
+---
+
 <div align="center">
 
 # 🎯 AADISH ROULETTE
@@ -231,18 +238,16 @@ npm run build
  
 ---
 
-## 📜 Credits
+## 🏆 Credits & Acknowledgments[cite: 1]
 
-- **Original Game Concept**: [Mike Klubnika](https://mikeklubnika.itch.io/) (Buckshot Roulette)
-- **Web Development**: [Aadish](https://github.com/AadishY)
-- **Technologies**: React, Three.js, TypeScript, Vite, TailwindCSS, Socket.io, Lucide Icons
+This game is a fan-made tribute project built to honor the tense tabletop suspense of the original concept[cite: 1].
+
+*   **Original Concept & Design**: Deep gratitude to **Mike Klubnika** for creating the phenomenal *Buckshot Roulette*[cite: 1]. Please support the official game on Steam and Itch.io[cite: 1].
+*   **Project Development**: Maintained and engineered by **Aadish** within the repository source file **"aadishy/aadish-roulette"**[cite: 1].
+*   **Audio Engineering**: Ambient tracks and specific item sounds were found entirely through public web domains and were not obtained via reverse engineering[cite: 1].
+*   **Open Source Community**: Built using foundational tools provided by the React, Three.js, and Tailwind CSS ecosystems[cite: 1].
 
 ---
 
-<div align="center">
-
-**Made with ❤️ by [Aadish](https://github.com/AadishY)**
-
-*Version 2.1.2 • 2026*
-
-</div>
+> ⚠️ **Content Notice**  
+> All core visual assets and mechanics within **"aadishy/aadish-roulette"** are completely self-made[cite: 1]. If you are the original owner of any found audio assets used during this development phase and wish to request adjustments or immediate removal, please open a formal issue directly in the repository[cite: 1].
