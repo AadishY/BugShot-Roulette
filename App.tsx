@@ -229,6 +229,7 @@ export default function App() {
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [abortedByName, setAbortedByName] = useState<string | null>(null);
+  const [nameTags, setNameTags] = useState<{ name: string, x: number, y: number, visible: boolean }[]>([]);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
   const [isScoreboardOpen, setIsScoreboardOpen] = useState(false);
   const [showPerformancePopup, setShowPerformancePopup] = useState(false);
@@ -854,6 +855,7 @@ export default function App() {
           setShowPerformancePopup(true);
         }}
         isPaused={appState === 'MP_SELECTION' || appState === 'LOBBY' || appState === 'LOADING_MP'}
+        onUpdateNameTags={setNameTags}
       />
 
       {/* UI Overlay */}
@@ -1185,6 +1187,18 @@ export default function App() {
           </div>
         </div>
       )}
+      {/* Crisp HTML Player Name Tags (Multiplayer only) */}
+      {appState === 'GAME' && spGame.gameState.isMultiplayer && nameTags.map((tag, i) => (
+        tag.visible && (
+          <div
+            key={i}
+            className="absolute z-[40] pointer-events-none -translate-x-1/2 -translate-y-1/2 bg-black/80 border border-stone-800/80 px-2.5 py-1 text-[8px] sm:text-[9px] font-black tracking-[0.25em] text-stone-200 uppercase rounded-lg shadow-2xl select-none transition-opacity duration-150"
+            style={{ left: `${tag.x}%`, top: `${tag.y}%` }}
+          >
+            {tag.name}
+          </div>
+        )
+      ))}
     </div>
   );
 }

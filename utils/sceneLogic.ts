@@ -112,18 +112,24 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
         if (aimTarget === 'OPPONENT') {
             const swayX = Math.sin(time * 1.5) * 0.02;
             const swayY = Math.cos(time * 2.0) * 0.02;
-            targets.targetPos.set(swayX, swayY, 8);
-            targets.targetRot.set(swayY * 0.5, Math.PI + swayX * 0.5, 0);
+            const xOffset = isMobile ? swayX * 0.5 : swayX;
+            targets.targetPos.set(xOffset, swayY, 8);
+            targets.targetRot.set(swayY * 0.5, Math.PI + xOffset * 0.5, 0);
         } else if (aimTarget === 'SELF') {
             // Visceral face-to-barrel close-up coordinates (offset Z dynamically by barrel length to keep tip at Z=8.5)
-            targets.targetPos.set(0, 1.8, 8.5 - flashZ);
+            const yOffset = isMobile ? 1.55 : 1.8;
+            targets.targetPos.set(0, yOffset, 8.5 - flashZ);
             targets.targetRot.set(-0.08, 0, 0);
         } else if (aimTarget === 'CHOOSING') {
-            // Holding Gun, waiting for choice
-            targets.targetPos.set(0.5, -1.0, 5.5); // Low, near body
+            // Holding Gun, waiting for choice - optimized for mobile to avoid cutoff behind UI
+            const xPos = isMobile ? 0.0 : 0.5;
+            const yPos = isMobile ? -0.4 : -1.0;
+            const zPos = isMobile ? 4.8 : 5.5;
+            targets.targetPos.set(xPos, yPos, zPos);
             targets.targetRot.set(0, Math.PI / 2.2, Math.PI / 2); // Sideways hold
         } else if (cameraView === 'GUN') {
-            targets.targetPos.set(0, -0.75, 4);
+            const yPos = isMobile ? -0.4 : -0.75;
+            targets.targetPos.set(0, yPos, 4);
             targets.targetRot.set(0, Math.PI / 2, Math.PI / 2);
         } else if (cameraView === 'DEALER_GUN') {
             // Gun held by Dealer/Remote player in PLAYER turn (e.g. Adrenaline check?) or transition

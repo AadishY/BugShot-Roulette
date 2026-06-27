@@ -727,25 +727,13 @@ export const useGameLogic = () => {
     // Determine intended aim target
     const intendedAim = target === (shooter === 'PLAYER' ? 'PLAYER' : 'DEALER') ? 'SELF' : 'OPPONENT';
 
-    // --- DOUBLE TAP / SAFETY CHECK ---
-    // If gun is not already pointing at the intended target, JUST AIM first.
-    // This solves mobile tap issues (Tap 1 = Aim, Tap 2 = Shoot).
-    // On Desktop, hover events handle the "Aim" part, so click immediately shoots.
-    // NOTE: Only applies to PLAYER. Dealer AI should not be blocked.
-    if (shooter === 'PLAYER' && aimTarget !== intendedAim) {
-      setAimTarget(intendedAim);
-      // No need to setIsProcessing(true) if we're just aiming and returning
-      return;
-    }
-
-    // If we reach here, it means aimTarget === intendedAim OR shooter is DEALER
     // Lock input now that we're committing to the shot.
     setIsProcessing(true);
 
     // Proceed to Fire
     setAimTarget(intendedAim); // Ensure it's set, though it should already be
-    // Tiny delay to ensure visual sync - extended to match animation speed
-    await wait(300);
+    // 500ms delay to ensure gun has fully pointed at the target
+    await wait(500);
 
     // Update Stats - Shots Fired
     matchStatsRef.current.shotsFired++;

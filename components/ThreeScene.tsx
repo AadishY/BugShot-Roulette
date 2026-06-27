@@ -23,6 +23,7 @@ interface ThreeSceneProps {
     onCardClick?: (index: number) => void;
     onLowPerformance?: (fps: number) => void;
     isPaused?: boolean;
+    onUpdateNameTags?: (tags: { name: string, x: number, y: number, visible: boolean }[]) => void;
 }
 
 const calculatePixelScale = (settings: GameSettings, width: number) => {
@@ -97,7 +98,8 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
     gameState,
     onCardClick,
     onLowPerformance,
-    isPaused = false
+    isPaused = false,
+    onUpdateNameTags
 }) => {
     const containerRef = useRef<HTMLDivElement>(null);
 
@@ -118,7 +120,8 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
         onCardClick,
         onGunClick,
         onLowPerformance,
-        isPaused
+        isPaused,
+        onUpdateNameTags
     });
 
     useEffect(() => {
@@ -139,9 +142,10 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
             onCardClick,
             onGunClick,
             onLowPerformance,
-            isPaused
+            isPaused,
+            onUpdateNameTags
         };
-    }, [isSawed, isChokeActive, isPlayerCuffed, aimTarget, cameraView, animState, turnOwner, settings, knownShell, isHardMode, player, dealer, gameState, onCardClick, onGunClick, onLowPerformance, isPaused]);
+    }, [isSawed, isChokeActive, isPlayerCuffed, aimTarget, cameraView, animState, turnOwner, settings, knownShell, isHardMode, player, dealer, gameState, onCardClick, onGunClick, onLowPerformance, isPaused, onUpdateNameTags]);
 
     const sceneRef = useRef<SceneContext | null>(null);
 
@@ -295,6 +299,36 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
             time += delta;
 
             updateScene(sceneRef.current, propsRef.current, time, delta);
+
+            // Project 3D positions of heads to HTML coordinates for crisp overlays
+            if (sceneRef.current && propsRef.current.onUpdateNameTags) {
+                const { scene, camera } = sceneRef.current;
+                const tempV = new THREE.Vector3();
+                const tags: { name: string; x: number; y: number; visible: boolean }[] = [];
+
+                scene.traverse((obj) => {
+                    if (obj.name.startsWith('PLAYER_')) {
+                        const name = obj.name.replace('PLAYER_', '');
+                        const head = obj.getObjectByName('HEAD');
+                        if (head) {
+                            tempV.setFromMatrixPosition(head.matrixWorld);
+                            // Position slightly above the head
+                            tempV.y += 2.2;
+                            tempV.project(camera);
+
+                            const x = (tempV.x * 0.5 + 0.5) * 100;
+                            const y = (tempV.y * -0.5 + 0.5) * 100;
+
+                            // Visible if in front of screen plane
+                            const visible = tempV.z <= 1.0;
+
+                            tags.push({ name, x, y, visible });
+                        }
+                    }
+                });
+
+                propsRef.current.onUpdateNameTags(tags);
+            }
         };
 
         const updateCameraResponsive = () => {

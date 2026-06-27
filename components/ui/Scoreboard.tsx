@@ -47,8 +47,8 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ onClose }) => {
             <div className="w-full max-w-xl max-h-[85vh] bg-stone-950/40 backdrop-blur-2xl border border-stone-800/50 shadow-[0_40px_100px_rgba(0,0,0,0.8)] flex flex-col relative overflow-hidden rounded-2xl ring-1 ring-white/5">
 
                 {/* Decorative Elements */}
-                <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-yellow-500/20 to-transparent" />
-                <div className="absolute -top-24 -right-24 w-48 h-48 bg-yellow-500/5 blur-[80px] rounded-full" />
+                <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-yellow-500/20 to-transparent pointer-events-none" />
+                <div className="absolute -top-24 -right-24 w-48 h-48 bg-yellow-500/5 blur-[80px] rounded-full pointer-events-none" />
 
                 {/* Header */}
                 <div className="p-6 border-b border-stone-800/50 flex justify-between items-center bg-stone-950/20 backdrop-blur-md">

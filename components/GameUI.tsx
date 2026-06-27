@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { GameState, PlayerState, LogEntry, TurnOwner, ItemType, AimTarget, ShellType, CameraView, GameSettings, ChatMessage } from '../types';
 import { Settings as SettingsIcon, Skull } from 'lucide-react';
 import { audioManager } from '../utils/audioManager';
@@ -114,6 +114,24 @@ export const GameUI: React.FC<GameUIProps> = ({
 }) => {
     const [inputName, setInputName] = useState(playerName || '');
     const [isChatMinimized, setIsChatMinimized] = useState(false);
+    const [unreadCount, setUnreadCount] = useState(0);
+    const prevMsgLength = useRef(messages.length);
+
+    useEffect(() => {
+        if (isChatMinimized && messages.length > prevMsgLength.current) {
+            const newMsgs = messages.slice(prevMsgLength.current).filter(m => m.sender !== 'SYSTEM' && !m.text.startsWith('SYSTEM:'));
+            if (newMsgs.length > 0) {
+                setUnreadCount(prev => prev + newMsgs.length);
+            }
+        }
+        prevMsgLength.current = messages.length;
+    }, [messages, isChatMinimized]);
+
+    useEffect(() => {
+        if (!isChatMinimized) {
+            setUnreadCount(0);
+        }
+    }, [isChatMinimized]);
 
     useEffect(() => { if (playerName) setInputName(playerName); }, [playerName]);
 
@@ -621,15 +639,30 @@ export const GameUI: React.FC<GameUIProps> = ({
             {/* Global Chat Overlay - Visible whenever game is active (Multiplayer only) */}
             {isMultiplayer && gameState.phase !== 'INTRO' && gameState.phase !== 'BOOT' && (
                 isChatMinimized ? (
-                    <div className="absolute bottom-4 left-4 z-[100] pointer-events-auto">
+                    <div className="absolute bottom-4 left-4 z-[100] pointer-events-auto select-none">
                         <button
                             onClick={() => {
                                 audioManager.playSound('click');
                                 setIsChatMinimized(false);
                             }}
-                            className="bg-black/90 border border-white/10 hover:border-cyan-500/50 rounded-xl px-4 py-2 text-[9px] sm:text-[10px] font-black tracking-[0.2em] uppercase text-stone-400 hover:text-cyan-400 backdrop-blur-md shadow-lg transition-all active:scale-95 cursor-pointer flex items-center gap-1.5"
+                            className="relative bg-stone-950/90 border border-cyan-500/30 hover:border-cyan-400 rounded-xl px-4 py-2.5 text-[9px] sm:text-[10px] font-black tracking-[0.2em] uppercase text-cyan-500 hover:text-cyan-400 backdrop-blur-md shadow-[0_0_20px_rgba(6,182,212,0.15)] hover:shadow-[0_0_30px_rgba(6,182,212,0.3)] transition-all duration-300 active:scale-95 cursor-pointer flex items-center gap-2 group"
                         >
-                            💬 Expand Chat
+                            {/* Pulse background decoration */}
+                            <span className="absolute inset-0 rounded-xl border border-cyan-500/20 animate-ping opacity-75 pointer-events-none group-hover:animate-none" />
+                            
+                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="animate-pulse">
+                                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                            </svg>
+                            <span>EXPAND LINK</span>
+
+                            {unreadCount > 0 && (
+                                <span className="absolute -top-1.5 -right-1.5 flex h-4 w-4">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-4 w-4 bg-red-500 text-[8px] font-black text-white items-center justify-center leading-none">
+                                        {unreadCount}
+                                    </span>
+                                </span>
+                            )}
                         </button>
                     </div>
                 ) : (
