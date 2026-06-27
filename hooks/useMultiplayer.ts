@@ -73,19 +73,11 @@ export function useMultiplayer() {
         setConnectionStatus('ESTABLISHING LINK...');
         connectionAttemptsRef.current = 0;
 
-        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-        let socketUrl = '';
+        let socketUrl = SERVER_URL;
         let socketPath = '/socket.io';
-
-        if (isLocal) {
-            socketUrl = 'http://localhost:3001';
-            socketPath = '/socket.io';
-        } else if (isDiscord) {
-            socketUrl = window.location.origin;
+        if (SERVER_URL.endsWith('/server')) {
+            socketUrl = SERVER_URL.substring(0, SERVER_URL.length - 7);
             socketPath = '/server/socket.io';
-        } else {
-            socketUrl = 'https://yoakatsuki-buckshot.hf.space';
-            socketPath = '/socket.io';
         }
 
         const newSocket = io(socketUrl, {

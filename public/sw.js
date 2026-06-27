@@ -26,7 +26,7 @@ self.addEventListener('fetch', (event) => {
     const url = new URL(event.request.url);
 
     // Cache First for Images, Audio, Fonts, Scripts
-    if (url.pathname.match(/\.(png|jpg|jpeg|gif|svg|mp3|wav|ogg|glb|gltf|js|css|woff2)$/)) {
+    if (url.pathname.match(/\.(png|jpg|jpeg|gif|webp|svg|mp3|wav|ogg|glb|gltf|js|css|woff2)$/)) {
         event.respondWith(
             caches.match(event.request).then((cachedResponse) => {
                 if (cachedResponse) {

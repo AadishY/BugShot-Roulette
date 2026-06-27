@@ -46,23 +46,42 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = ({
         setWarningText(randomWarning);
     }, []);
 
-    // Progress Timer Effect
+    // Store onComplete in a ref to avoid resetting the tick effect on parent re-renders
+    const onCompleteRef = React.useRef(onComplete);
+    useEffect(() => {
+        onCompleteRef.current = onComplete;
+    }, [onComplete]);
+
+    // Progress Timer Effect with fixed frame-based increments (resilient to thread freezes)
     useEffect(() => {
         if (error) return; 
-        const startTime = Date.now();
-        const interval = setInterval(() => {
-            const elapsed = Date.now() - startTime;
-            const prog = Math.min((elapsed / duration) * 100, 100);
-            setProgress(prog);
+        
+        let currentProgress = 0;
+        let active = true;
 
-            if (prog >= 100) {
-                clearInterval(interval);
-                setTimeout(onComplete, 500);
+        const tick = () => {
+            if (!active) return;
+            // Target duration is e.g. 1200ms. At 60fps, that's 72 frames.
+            // We increment by a stable frame-based step.
+            const frameIncrement = 100 / (duration / 16.67);
+            currentProgress = Math.min(currentProgress + frameIncrement, 100);
+            setProgress(currentProgress);
+
+            if (currentProgress >= 100) {
+                setTimeout(() => {
+                    if (active) onCompleteRef.current();
+                }, 300);
+            } else {
+                requestAnimationFrame(tick);
             }
-        }, 30);
+        };
 
-        return () => clearInterval(interval);
-    }, [duration, onComplete, error]);
+        requestAnimationFrame(tick);
+
+        return () => {
+            active = false;
+        };
+    }, [duration, error]);
 
     // Terminal Lines Effect
     useEffect(() => {

@@ -679,7 +679,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                     <span className="text-cyan-400 font-black text-xs sm:text-sm tracking-wider uppercase">MULTIPLAYER IS OUT!</span>
                                 </div>
                                 <p className="leading-relaxed text-stone-300 text-[11px] sm:text-xs">
-                                    Lobby matches, item steals, tarot card draws, cuffed sequences, and real-time interactive game synchronization are fully live! Challenge opponents on mobile and desktop devices.
+                                    Lobby matches, FOR NOW ONLY 1v1, and real-time interactive game synchronization are fully live! Challenge opponents on mobile and desktop devices.
                                 </p>
                             </div>
 
@@ -687,6 +687,10 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                             <div className="space-y-2.5 bg-stone-950 border border-stone-900/60 p-3.5 sm:p-5 rounded-lg">
                                 <span className="text-stone-200 font-black block border-b border-stone-900 pb-1 text-[11px] sm:text-xs md:text-sm tracking-wider">[June 27, 2026 - Performance profiles & Turn Keeping fixes (v1.4.3)]</span>
                                 <ul className="list-none space-y-2 pl-0.5">
+                                    <li className="flex items-start gap-2.5">
+                                        <span className="px-1.5 py-0.5 bg-cyan-950/50 border border-cyan-800/40 text-cyan-400 text-[8px] font-black rounded-md uppercase tracking-widest shrink-0 select-none">ADDED</span>
+                                        <span className="leading-relaxed">Tactical Stickers: Send animated WebP/GIF stickers in the lobby and inline chat. Pinned jackpot immunity sticker is automatically triggered and displayed during gameplay.</span>
+                                    </li>
                                     <li className="flex items-start gap-2.5">
                                         <span className="px-1.5 py-0.5 bg-cyan-950/50 border border-cyan-800/40 text-cyan-400 text-[8px] font-black rounded-md uppercase tracking-widest shrink-0 select-none">ADDED</span>
                                         <span className="leading-relaxed">GPU Thermal Throttling: Automatically caps rendering to 24 FPS in all menu and lobby states, and utilizes Linear Tone Mapping in Balanced performance modes to decrease mobile device heat.</span>

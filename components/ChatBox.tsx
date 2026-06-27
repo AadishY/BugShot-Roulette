@@ -157,7 +157,7 @@ export const ChatBox: React.FC<ChatBoxProps> = ({ messages, onSendMessage, playe
                         />
                         <div className="absolute bottom-16 sm:bottom-20 right-3 z-50 p-2 sm:p-3 bg-stone-950/95 border border-stone-900 rounded-xl shadow-[0_0_20px_rgba(6,182,212,0.15)] flex flex-col gap-1.5 w-48 sm:w-56 backdrop-blur-md animate-in fade-in slide-in-from-bottom-2 duration-200">
                             <span className="text-[7px] sm:text-[8px] font-black text-stone-550 tracking-[0.2em] border-b border-stone-900/60 pb-1 uppercase select-none block">
-                                Tactical Stickers
+                                Stickers
                             </span>
                             <div className="grid grid-cols-4 gap-1.5 overflow-y-auto max-h-48 custom-scrollbar pr-0.5">
                                 {stickers.map((stk) => (

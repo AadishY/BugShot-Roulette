@@ -273,9 +273,11 @@ export default function App() {
 
   const [isHardModeSelected, setIsHardModeSelected] = useState(false);
 
-  // Global dynamic stickers list preloaded at startup
+  // Global dynamic stickers list preloaded on multiplayer selection entry
   const [stickersList, setStickersList] = useState<string[]>([]);
   useEffect(() => {
+    if (appState !== 'LOADING_MP') return;
+
     const preloadStickers = async () => {
       const found: string[] = [];
       let i = 1;
@@ -314,7 +316,7 @@ export default function App() {
       setStickersList(found);
     };
     preloadStickers();
-  }, []);
+  }, [appState]);
 
   // Dealer AI only for singleplayer
   useDealerAI({
@@ -403,9 +405,14 @@ export default function App() {
         deckCards = shuffled.slice(0, 6);
       } else if (item === 'JACKPOT') {
         const rand = Math.random();
-        if (rand < 0.20) jackpotOutcome = 'JACKPOT';
-        else if (rand < 0.50) jackpotOutcome = 'NORMAL';
-        else jackpotOutcome = 'LOSE';
+        if (rand < 0.20) {
+          jackpotOutcome = 'JACKPOT';
+          mp.sendMessage(mp.room.id, '[STICKER]:sticker9.gif');
+        } else if (rand < 0.50) {
+          jackpotOutcome = 'NORMAL';
+        } else {
+          jackpotOutcome = 'LOSE';
+        }
       } else if (item === 'CRUSHER') {
         if (spGame.dealer.items.length > 0) {
           crushIndex = Math.floor(Math.random() * spGame.dealer.items.length);
@@ -686,8 +693,8 @@ export default function App() {
           initialTurnOwner = iAmHost ? 'DEALER' : 'PLAYER';
         }
 
-        // 1. Transition state FIRST to mount components
-        setAppState('GAME');
+        // Transition to LOADING_GAME first so the user sees a smooth cyber-noir loading screen
+        setAppState('LOADING_GAME');
 
         // 2. Delay game logic slightly to ensure UI is ready for messages/animations
         setTimeout(() => {

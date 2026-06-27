@@ -124,6 +124,12 @@ export const GameUI: React.FC<GameUIProps> = ({
     const lastStickerMsgIndex = useRef(-1);
     const stickerTimeoutsRef = useRef<any[]>([]);
 
+    const getOpponentName = () => {
+        if (!mpGameState) return 'DEALER';
+        const opp = mpGameState.players.find((p: any) => p.id !== mpMyPlayerId);
+        return opp ? opp.name : 'DEALER';
+    };
+
     // Cleanup active timeout references on unmount
     useEffect(() => {
         return () => {
@@ -164,7 +170,7 @@ export const GameUI: React.FC<GameUIProps> = ({
 
     useEffect(() => {
         if (isChatMinimized && messages.length > prevMsgLength.current) {
-            const newMsgs = messages.slice(prevMsgLength.current).filter(m => m.sender !== 'SYSTEM' && !m.text.startsWith('SYSTEM:'));
+            const newMsgs = messages.slice(prevMsgLength.current).filter(m => m.sender !== 'SYSTEM' && m.text && !m.text.startsWith('SYSTEM:') && !m.text.startsWith('[STICKER]:'));
             if (newMsgs.length > 0) {
                 setUnreadCount(prev => prev + newMsgs.length);
             }
@@ -870,7 +876,7 @@ export const GameUI: React.FC<GameUIProps> = ({
                 </div>
             )}
 
-            {/* Transparent Active Stickers Overlay - rendered on left side, auto fades after 5s, max 3 limit */}
+            {/* Transparent Active Stickers Overlay - rendered on left side, auto fades after 8s, max 3 limit */}
             {isMultiplayer && gameState.phase !== 'INTRO' && gameState.phase !== 'BOOT' && activeStickers.length > 0 && (
                 <div className="absolute top-[320px] left-4 z-[100] pointer-events-none space-y-3 select-none flex flex-col items-start bg-transparent">
                     {activeStickers.map((stk) => (
@@ -884,6 +890,32 @@ export const GameUI: React.FC<GameUIProps> = ({
                         </div>
                     ))}
                 </div>
+            )}
+
+            {/* Pinned Jackpot Sticker (Immunity Active) - shown in both singleplayer & multiplayer */}
+            {gameState.phase !== 'INTRO' && gameState.phase !== 'BOOT' && (
+                <>
+                    {player.jackpotImmunityShots > 0 && (
+                        <div className="absolute top-[200px] left-4 z-[100] pointer-events-none flex flex-col items-start bg-transparent animate-pulse select-none">
+                            <span className="font-extrabold uppercase text-[7px] tracking-widest text-amber-400 drop-shadow-[0_1.5px_2px_rgba(0,0,0,0.95)]">
+                                {playerName} IMMUNITY ({player.jackpotImmunityShots})
+                            </span>
+                            <div className="w-[70px] h-[70px] sm:w-[90px] sm:h-[90px] object-contain drop-shadow-[0_3px_6px_rgba(0,0,0,0.85)] mt-0.5 bg-transparent border border-amber-500/40 rounded-lg p-1 bg-amber-950/20">
+                                <img src="/sticker/sticker9.gif" alt="Jackpot Pinned" className="w-full h-full object-contain bg-transparent" />
+                            </div>
+                        </div>
+                    )}
+                    {dealer.jackpotImmunityShots > 0 && (
+                        <div className="absolute top-[200px] left-28 sm:left-32 z-[100] pointer-events-none flex flex-col items-start bg-transparent animate-pulse select-none">
+                            <span className="font-extrabold uppercase text-[7px] tracking-widest text-stone-400 drop-shadow-[0_1.5px_2px_rgba(0,0,0,0.95)]">
+                                {isMultiplayer ? getOpponentName() : 'DEALER'} IMMUNITY ({dealer.jackpotImmunityShots})
+                            </span>
+                            <div className="w-[70px] h-[70px] sm:w-[90px] sm:h-[90px] object-contain drop-shadow-[0_3px_6px_rgba(0,0,0,0.85)] mt-0.5 bg-transparent border border-stone-500/40 rounded-lg p-1 bg-stone-950/20">
+                                <img src="/sticker/sticker9.gif" alt="Jackpot Pinned" className="w-full h-full object-contain bg-transparent" />
+                            </div>
+                        </div>
+                    )}
+                </>
             )}
         </>
     );
