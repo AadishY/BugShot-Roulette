@@ -207,7 +207,7 @@ export const handleBeer = async (
     setOverlayText: StateSetter<string | null>,
     addLog: (text: string, type: LogEntry['type']) => void,
     startRound: () => void,
-    onBatchEnd?: () => void
+    onBatchEnd?: (keepTurn: boolean) => void
 ): Promise<boolean> => {
     setTriggerDrink(p => p + 1); // Visual cue
     await wait(1500); // Wait for drinking animation
@@ -242,7 +242,8 @@ export const handleBeer = async (
     if (gameState.currentShellIndex + 1 >= gameState.chamber.length) {
         if (gameState.isMultiplayer) {
             if (onBatchEnd) {
-                onBatchEnd();
+                // Beer discards a shell but doesn't grant a free turn — treat like a turn-ending action
+                onBatchEnd(false);
             } else {
                 setOverlayText("WAITING FOR HOST...");
             }

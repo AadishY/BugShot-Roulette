@@ -722,17 +722,19 @@ export default function App() {
   // Sync subsequent rounds
   useEffect(() => {
     if (spGame.gameState.isMultiplayer && mp.room) {
-      spGame.setOnBatchEnd(() => {
+      spGame.setOnBatchEnd((keepTurn: boolean) => {
         if (mp.playerId === mp.room.hostId) {
-          console.log("Batch end detected (HOST) - Generating new batch...");
+          console.log("Batch end detected (HOST) - Generating new batch... keepTurn:", keepTurn);
           const settings = mp.room.settings || { rounds: 3, hp: 2, itemsPerShipment: 2 };
           const playerCount = mp.room?.players?.length || 2;
           const hostCharms = spGame.player.luckycharmsUsed || 0;
           const clientCharms = spGame.dealer.luckycharmsUsed || 0;
           const { chamber, hostItems, clientItems, lives, blanks } = generateMPBatch(settings, playerCount, hostCharms, clientCharms);
 
+          // If the last shot was a blank self-shot (keepTurn=true), the same player keeps the turn.
+          // Otherwise alternate normally.
           const lastWasHost = spGame.gameState.turnOwner === 'PLAYER';
-          const nextStarts = !lastWasHost;
+          const nextStarts = keepTurn ? lastWasHost : !lastWasHost;
 
           const currentTotalWins = (spGame.gameState.multiModeState?.playerWins || 0) + (spGame.gameState.multiModeState?.opponentWins || 0);
           const isNewRound = currentTotalWins > lastTotalWins.current;

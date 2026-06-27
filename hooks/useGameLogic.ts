@@ -12,7 +12,7 @@ export const useGameLogic = () => {
   // --- State ---
   const [playerName, setPlayerName] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
-  const onBatchEndRef = useRef<(() => void) | null>(null);
+  const onBatchEndRef = useRef<((keepTurn: boolean) => void) | null>(null);
 
   const [gameState, setGameState] = useState<GameState>({
     phase: 'BOOT',
@@ -1637,7 +1637,7 @@ export const useGameLogic = () => {
     setGamePhase,
     setOverlayText,
     matchStats: matchStatsRef.current,
-    setOnBatchEnd: (cb: () => void) => { onBatchEndRef.current = cb; },
+    setOnBatchEnd: (cb: (keepTurn: boolean) => void) => { onBatchEndRef.current = cb; },
     startRound,
     handleHardModeRoundEnd,
     handleMPRoundEnd,

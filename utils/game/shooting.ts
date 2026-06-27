@@ -30,7 +30,7 @@ interface ShootingContext {
     handleMPRoundEnd?: (winner: TurnOwner) => void;
     handleNormalModeRoundEnd?: (winner: TurnOwner) => void;
     opponentName: string;
-    onBatchEnd?: () => void;
+    onBatchEnd?: (keepTurn: boolean) => void;
 }
 
 export const performShot = async (
@@ -56,7 +56,8 @@ export const performShot = async (
         console.log("CHAMBER EMPTY - SYNCING...");
         if (gameState.isMultiplayer) {
             if (onBatchEnd) {
-                onBatchEnd();
+                // Chamber was empty before firing – no shot happened, so no "keep turn" bonus
+                onBatchEnd(false);
             } else {
                 addLog("WAITING FOR REPLENISHMENT...", 'info');
                 setOverlayText("WAITING FOR HOST...");
@@ -504,9 +505,11 @@ export const performShot = async (
     if (remaining === 0) {
         setGameState(prev => ({ ...prev, phase: 'RESOLVING' })); // Mark as resolving while waiting
         console.log("NO SHELLS REMAINING - SYNCING...");
+        // Determine if the shooter keeps the turn (shot self + blank = no damage)
+        const lastShotKeepsTurn = target === shooter && damage === 0;
         if (gameState.isMultiplayer) {
             if (onBatchEnd) {
-                onBatchEnd();
+                onBatchEnd(lastShotKeepsTurn);
             } else {
                 addLog("WAITING FOR REPLENISHMENT...", 'info');
                 setOverlayText("WAITING FOR HOST...");
