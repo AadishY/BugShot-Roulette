@@ -250,11 +250,14 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
                 return;
             }
 
+            const phase = propsRef.current.gameState?.phase;
+            const isInMenu = phase === 'BOOT' || phase === 'INTRO' || phase === 'LOAD';
+
             const isUltra = !!propsRef.current.settings?.ultraPerformance;
             const isBalanced = !!propsRef.current.settings?.balancedPerformance;
-            const currentTargetFPS = isUltra ? 30 : (isBalanced ? 45 : (isMobile && (isAndroid || window.devicePixelRatio < 2) ? 40 : 60));
+            const currentTargetFPS = isInMenu ? 24 : (isUltra ? 30 : (isBalanced ? 45 : (isMobile && (isAndroid || window.devicePixelRatio < 2) ? 40 : 60)));
             const currentFrameInterval = 1000 / currentTargetFPS;
-            const shouldLimitFrame = isUltra || isBalanced || (isMobile && (isAndroid || window.devicePixelRatio < 2));
+            const shouldLimitFrame = isInMenu || isUltra || isBalanced || (isMobile && (isAndroid || window.devicePixelRatio < 2));
 
             // Frame Limiting Logic (Enforce based on performance settings to save battery/thermal)
             if (shouldLimitFrame) {

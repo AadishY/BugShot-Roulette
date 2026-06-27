@@ -408,9 +408,32 @@ export const useGameLogic = () => {
     }
 
     // Reset HP only if it's a NEW Stage (resetItems=true usually implies new stage in this logic flow)
-    if (resetItems) {
-      setPlayer(p => ({ ...p, isHandcuffed: false, isSawedActive: false, items: [], hp: startingHp, maxHp: startingHp, luckycharmsUsed: 0, isFlashbanged: false, jackpotImmunityShots: 0 }));
-      setDealer(d => ({ ...d, isHandcuffed: false, isSawedActive: false, items: [], hp: startingHp, maxHp: startingHp, luckycharmsUsed: 0, isFlashbanged: false, jackpotImmunityShots: 0 }));
+    if (resetItems || hpOverride !== undefined) {
+      const targetHp = hpOverride || startingHp;
+      setPlayer(p => ({ 
+        ...p, 
+        isHandcuffed: false, 
+        isSawedActive: false, 
+        isChokeActive: false,
+        isFlashbanged: false, 
+        luckycharmsUsed: 0, 
+        jackpotImmunityShots: 0,
+        hp: targetHp, 
+        maxHp: targetHp,
+        ...(resetItems ? { items: [] } : {})
+      }));
+      setDealer(d => ({ 
+        ...d, 
+        isHandcuffed: false, 
+        isSawedActive: false, 
+        isChokeActive: false,
+        isFlashbanged: false, 
+        luckycharmsUsed: 0, 
+        jackpotImmunityShots: 0,
+        hp: targetHp, 
+        maxHp: targetHp,
+        ...(resetItems ? { items: [] } : {})
+      }));
     } else {
       // Just reset status effects
       setPlayer(p => ({ ...p, isHandcuffed: false, isSawedActive: false, isChokeActive: false, isFlashbanged: false }));

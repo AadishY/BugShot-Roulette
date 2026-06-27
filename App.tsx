@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { RotateCw } from 'lucide-react';
 import { ThreeScene } from './components/ThreeScene';
 import { GameUI } from './components/GameUI';
@@ -48,6 +48,7 @@ export default function App() {
     return params.get('room');
   });
   const [mobileActiveTab, setMobileActiveTab] = useState<'LOBBY' | 'CHAT'>('LOBBY');
+  const lastTotalWins = useRef(0);
 
   // Ping the server to wake it up in case it's asleep on Hugging Face
   useEffect(() => {
@@ -322,8 +323,8 @@ export default function App() {
     const isMobile = window.matchMedia('(pointer: coarse)').matches;
     const intendedAim = target === 'DEALER' ? 'OPPONENT' : 'SELF';
 
-    // On mobile, the first tap only aims (points) the gun, and the second tap fires
-    if (isMobile && spGame.aimTarget === 'CHOOSING') {
+    // On mobile, the tap only aims (points) the gun if it is not already pointed at the selected target. A second tap on the same target fires it.
+    if (isMobile && spGame.aimTarget !== intendedAim) {
       spGame.setAimTarget(intendedAim);
       spGame.setCameraView('GUN');
       
@@ -529,12 +530,12 @@ export default function App() {
               break;
             case 'SYNC_ROUND':
               const iAmHost = mp.playerId === (mp.room?.hostId || '');
-              spGame.setOverlayText('RELOADING NEW BATCH...');
+              spGame.setOverlayText(action.resetItems ? `ROUND ${(action.roundNum || 1)}` : 'RELOADING NEW BATCH...');
               const pItems = iAmHost ? action.hostItems : action.clientItems;
               const dItems = iAmHost ? action.clientItems : action.hostItems;
               const clientNextTurn = action.nextTurnOwner === 'PLAYER' ? 'DEALER' : 'PLAYER';
               // @ts-ignore
-              spGame.startRound(false, false, undefined, action.chamber, pItems, dItems, clientNextTurn);
+              spGame.startRound(action.resetItems || false, false, undefined, action.chamber, pItems, dItems, clientNextTurn, action.hp);
               break;
             case 'DEBUG_SYNC_PLAYER':
               spGame.setDealer(action.player);
@@ -651,6 +652,7 @@ export default function App() {
       // Handle Game Reset/Play Again from Server
       mp.socket?.on('matchReset', () => {
         console.log('Multiplayer match reset by host, returning to lobby...');
+        lastTotalWins.current = 0;
         spGame.resetGame(true); // Reset game states cleanly
         setAppState('LOBBY');   // Route back to lobby view
       });
@@ -712,6 +714,7 @@ export default function App() {
         hpOverride: hpVal
       };
 
+      lastTotalWins.current = 0;
       mp.startGame(mp.room.id, gameData);
     }
   };
@@ -730,18 +733,28 @@ export default function App() {
 
           const lastWasHost = spGame.gameState.turnOwner === 'PLAYER';
           const nextStarts = !lastWasHost;
+
+          const currentTotalWins = (spGame.gameState.multiModeState?.playerWins || 0) + (spGame.gameState.multiModeState?.opponentWins || 0);
+          const isNewRound = currentTotalWins > lastTotalWins.current;
+          lastTotalWins.current = currentTotalWins;
+
+          const hpVal = isNewRound ? (settings.hp === 9 ? randomInt(2, 8) : settings.hp) : undefined;
+
           const syncAction = {
             type: 'SYNC_ROUND',
             chamber,
             hostItems,
             clientItems,
-            nextTurnOwner: nextStarts ? 'PLAYER' : 'DEALER'
+            nextTurnOwner: nextStarts ? 'PLAYER' : 'DEALER',
+            resetItems: isNewRound,
+            hp: hpVal,
+            roundNum: currentTotalWins + 1
           };
 
           mp.sendAction(mp.room.id, syncAction);
-          mp.sendMessage(mp.room.id, `SYSTEM: NEW BATCH REPLENISHED - ${lives} LIVE, ${blanks} BLANK`);
-          spGame.setOverlayText('RELOADING NEW BATCH...');
-          spGame.startRound(false, false, undefined, chamber, hostItems, clientItems, nextStarts ? 'PLAYER' : 'DEALER');
+          mp.sendMessage(mp.room.id, isNewRound ? `SYSTEM: ROUND ${currentTotalWins + 1} STARTED!` : `SYSTEM: NEW BATCH REPLENISHED - ${lives} LIVE, ${blanks} BLANK`);
+          spGame.setOverlayText(isNewRound ? `ROUND ${currentTotalWins + 1}` : 'RELOADING NEW BATCH...');
+          spGame.startRound(isNewRound, false, undefined, chamber, hostItems, clientItems, nextStarts ? 'PLAYER' : 'DEALER', hpVal);
         } else {
           console.log("Batch end detected (CLIENT) - Waiting for host sync...");
           spGame.setOverlayText('WAITING FOR HOST...');

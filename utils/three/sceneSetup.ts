@@ -139,9 +139,11 @@ export const initThreeScene = (container: HTMLElement, props: any): SceneContext
 
 
 
-    // Tone mapping
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.9;
+    // Tone mapping - Use LinearToneMapping in performance profiles to save mobile GPU fragment cycles
+    renderer.toneMapping = (props.settings.ultraPerformance || props.settings.balancedPerformance)
+        ? THREE.LinearToneMapping
+        : THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = (props.settings.ultraPerformance || props.settings.balancedPerformance) ? 1.0 : 1.9;
 
     scene.userData.isMobile = isMobile;
     scene.userData.isAndroid = isAndroid;
