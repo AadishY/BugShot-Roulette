@@ -115,6 +115,12 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
             const xOffset = isMobile ? swayX * 0.5 : swayX;
             targets.targetPos.set(xOffset, swayY, 8);
             targets.targetRot.set(swayY * 0.5, Math.PI + xOffset * 0.5, 0);
+        } else if (aimTarget === 'LEFT') {
+            targets.targetPos.set(-2.5, 0.5, 5);
+            targets.targetRot.set(0.1, Math.PI + 1.25, 0.1);
+        } else if (aimTarget === 'RIGHT') {
+            targets.targetPos.set(2.5, 0.5, 5);
+            targets.targetRot.set(0.1, Math.PI - 1.25, -0.1);
         } else if (aimTarget === 'SELF') {
             // Visceral face-to-barrel close-up coordinates (offset Z dynamically by barrel length to keep tip at Z=8.5)
             const yOffset = isMobile ? 1.55 : 1.8;
@@ -140,25 +146,112 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
             targets.targetPos.set(0, -0.8, 2);
             targets.targetRot.set(0, Math.PI / 2, 0);
         }
-    } else {
-        if (aimTarget === 'SELF') {
-            // Dealer Goal: Shoot Self
-            targets.targetPos.set(0, 3.8, 0.0);
-            targets.targetRot.set(-0.25, Math.PI, 0);
+    } else if (turnOwner === 'PLAYER3') {
+        const isSelfTarget = aimTarget === 'LEFT';
+        const isPlayerTarget = aimTarget === 'SELF';
+        const isDealerTarget = aimTarget === 'OPPONENT';
+        const isPlayer4Target = aimTarget === 'RIGHT';
+
+        if (isSelfTarget) {
+            targets.targetPos.set(-5.5, 1.2, -2);
+            targets.targetRot.set(0.2, Math.PI / 2 + Math.PI, 0);
             targetGunLightIntensity = 5.0;
-        } else if (aimTarget === 'OPPONENT') {
-            // Dealer Goal: Shoot Player
-            targets.targetPos.set(0, 2, -10);
-            targets.targetRot.set(0, 0, 0);
+        } else if (isDealerTarget) {
+            targets.targetPos.set(-4, 0.8, -5);
+            targets.targetRot.set(0.15, Math.PI + Math.PI / 3, 0);
             targetGunLightIntensity = 5.0;
-        } else if (cameraView === 'DEALER_GUN') {
-            // Holding gun, but not aimed yet
-            targets.targetPos.set(0, 1.2, -6);
+        } else if (isPlayerTarget) {
+            targets.targetPos.set(-3, 0.8, 3);
+            targets.targetRot.set(0.08, Math.PI / 6 + Math.PI / 2, 0);
+            targetGunLightIntensity = 5.0;
+        } else if (isPlayer4Target) {
+            targets.targetPos.set(0, 0.8, -2);
+            targets.targetRot.set(0.1, Math.PI / 2, 0);
+            targetGunLightIntensity = 5.0;
+        } else if (cameraView === 'PLAYER3_GUN') {
+            targets.targetPos.set(-6, 0.8, -2);
             targets.targetRot.set(0, Math.PI / 2, Math.PI / 2);
         } else {
-            // Dealer Idle / Thinking / Table
-            targets.targetPos.set(0, -0.7, -2.5);
+            targets.targetPos.set(-6, -0.6, -2);
             targets.targetRot.set(0, Math.PI / 2, Math.PI / 2);
+        }
+    } else if (turnOwner === 'PLAYER4') {
+        const isSelfTarget = aimTarget === 'RIGHT';
+        const isPlayerTarget = aimTarget === 'SELF';
+        const isDealerTarget = aimTarget === 'OPPONENT';
+        const isPlayer3Target = aimTarget === 'LEFT';
+
+        if (isSelfTarget) {
+            targets.targetPos.set(5.5, 1.2, -2);
+            targets.targetRot.set(0.2, -Math.PI / 2 + Math.PI, 0);
+            targetGunLightIntensity = 5.0;
+        } else if (isDealerTarget) {
+            targets.targetPos.set(4, 0.8, -5);
+            targets.targetRot.set(0.15, Math.PI - Math.PI / 3, 0);
+            targetGunLightIntensity = 5.0;
+        } else if (isPlayerTarget) {
+            targets.targetPos.set(3, 0.8, 3);
+            targets.targetRot.set(0.08, -Math.PI / 6 - Math.PI / 2, 0);
+            targetGunLightIntensity = 5.0;
+        } else if (isPlayer3Target) {
+            targets.targetPos.set(0, 0.8, -2);
+            targets.targetRot.set(0.1, -Math.PI / 2, 0);
+            targetGunLightIntensity = 5.0;
+        } else if (cameraView === 'PLAYER4_GUN') {
+            targets.targetPos.set(6, 0.8, -2);
+            targets.targetRot.set(0, -Math.PI / 2, Math.PI / 2);
+        } else {
+            targets.targetPos.set(6, -0.6, -2);
+            targets.targetRot.set(0, -Math.PI / 2, Math.PI / 2);
+        }
+    } else {
+        const isMP = gameState?.isMultiplayer;
+        if (isMP) {
+            if (aimTarget === 'SELF') {
+                targets.targetPos.set(0, 2.0, -6.5);
+                targets.targetRot.set(-0.25, Math.PI, 0);
+                targetGunLightIntensity = 5.0;
+            } else if (aimTarget === 'OPPONENT') {
+                targets.targetPos.set(0, 0.8, -5.5);
+                targets.targetRot.set(0, 0, 0);
+                targetGunLightIntensity = 5.0;
+            } else if (aimTarget === 'LEFT' || aimTarget === 'RIGHT') {
+                const sidePos = scene.userData.player3Side || 'left';
+                const sideX = sidePos === 'left' ? -3.0 : 3.0;
+                const sideRot = sidePos === 'left' ? Math.PI / 4 : -Math.PI / 4;
+                targets.targetPos.set(sideX, 0.8, -4.5);
+                targets.targetRot.set(-0.15, Math.PI + sideRot, 0);
+                targetGunLightIntensity = 5.0;
+            } else if (cameraView === 'DEALER_GUN') {
+                targets.targetPos.set(0, 0.8, -6.0);
+                targets.targetRot.set(0, Math.PI / 2, Math.PI / 2);
+            } else {
+                targets.targetPos.set(0, -0.6, -5.5);
+                targets.targetRot.set(0, Math.PI / 2, Math.PI / 2);
+            }
+        } else {
+            if (aimTarget === 'SELF') {
+                targets.targetPos.set(0, 3.8, 0.0);
+                targets.targetRot.set(-0.25, Math.PI, 0);
+                targetGunLightIntensity = 5.0;
+            } else if (aimTarget === 'OPPONENT') {
+                targets.targetPos.set(0, 2, -10);
+                targets.targetRot.set(0, 0, 0);
+                targetGunLightIntensity = 5.0;
+            } else if (aimTarget === 'LEFT' || aimTarget === 'RIGHT') {
+                const sidePos = scene.userData.player3Side || 'left';
+                const sideX = sidePos === 'left' ? -3.0 : 3.0;
+                const sideRot = sidePos === 'left' ? Math.PI / 4 : -Math.PI / 4;
+                targets.targetPos.set(sideX, 2.0, -5.0);
+                targets.targetRot.set(-0.15, Math.PI + sideRot, 0);
+                targetGunLightIntensity = 5.0;
+            } else if (cameraView === 'DEALER_GUN') {
+                targets.targetPos.set(0, 1.2, -6);
+                targets.targetRot.set(0, Math.PI / 2, Math.PI / 2);
+            } else {
+                targets.targetPos.set(0, -0.7, -2.5);
+                targets.targetRot.set(0, Math.PI / 2, Math.PI / 2);
+            }
         }
     }
 
@@ -334,11 +427,21 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
         } else {
             targetCamPos.set(pSwayX, 4 + pSwayY, 11);
         }
+    } else if (turnOwner === 'PLAYER3') {
+        const sidePos = scene.userData.player3Side || 'left';
+        const sideX = sidePos === 'left' ? -3 : 3;
+        targetCamPos.set(sideX, 3.0 + pSwayY * 0.1, 5);
+    } else if (turnOwner === 'PLAYER4') {
+        targetCamPos.set(3, 3.0 + pSwayY * 0.1, 5);
     } else if (turnOwner === 'PLAYER') {
         if (aimTarget === 'SELF') {
             targetCamPos.set(0, 2.3, 10.2 - heartbeatPulse * 0.25);
         } else if (aimTarget === 'OPPONENT') {
             targetCamPos.set(2.5 + pSwayX * 0.1, 3.0 + pSwayY * 0.1, 9); // Lower, closer shoulder
+        } else if (aimTarget === 'LEFT') {
+            targetCamPos.set(2.0, 3.0, 8.5); // Look Left
+        } else if (aimTarget === 'RIGHT') {
+            targetCamPos.set(-2.0, 3.0, 8.5); // Look Right
         } else {
             targetCamPos.set(pSwayX * 0.5, 3.8 + pSwayY, 12); // Closer to table
         }
@@ -354,6 +457,12 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
         lookAtPos.set(0, 0, 0);
     } else if (cameraView === 'DEALER_GUN') {
         lookAtPos.set(-0.5, 2, -6); // Look at dealer's chest/gun area
+    } else if (cameraView === 'PLAYER3_GUN') {
+        const sidePos = scene.userData.player3Side || 'left';
+        const sideX = sidePos === 'left' ? -8 : 8;
+        lookAtPos.set(sideX, 2, -2);
+    } else if (cameraView === 'PLAYER4_GUN') {
+        lookAtPos.set(8, 2, -2);
     } else if (phase === 'LOAD' || phase === 'LOOTING') {
         // Force player's lookAt target during load/looting
         lookAtPos.set(0, 1.5, -2);
@@ -363,6 +472,12 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
         } else {
             lookAtPos.set(0, 2, -14);
         }
+    } else if (turnOwner === 'PLAYER3') {
+        const sidePos = scene.userData.player3Side || 'left';
+        const sideX = sidePos === 'left' ? -8 : 8;
+        lookAtPos.set(sideX, 1.5, -2);
+    } else if (turnOwner === 'PLAYER4') {
+        lookAtPos.set(8, 1.5, -2);
     } else if (turnOwner === 'PLAYER') {
         if (aimTarget === 'SELF') {
             const shakeX = (Math.sin(time * 45) * 0.015) * (1.0 + heartbeatPulse * 3.0);
@@ -370,6 +485,10 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
             lookAtPos.set(shakeX, 1.8 + shakeY, 8.5); // Focus directly on gun barrel at Z=8.5 with jitter
         } else if (aimTarget === 'OPPONENT') {
             lookAtPos.set(0, 1.5, -14); // Look at dealer chest/barrel
+        } else if (aimTarget === 'LEFT') {
+            lookAtPos.set(-8, 1.5, -2); // Look at left player
+        } else if (aimTarget === 'RIGHT') {
+            lookAtPos.set(8, 1.5, -2); // Look at right player
         } else {
             lookAtPos.set(0, 1.5, -2);
         }
@@ -503,6 +622,64 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
     const dealerDamping = 1 - Math.exp(-dealerSpeed * dt);
     dealerGroup.position.y += (dealerTargetY - dealerGroup.position.y) * dealerDamping;
 
+    const player3Group = scene.getObjectByName('PLAYER3');
+    if (player3Group) {
+        const p3BaseY = -4.5;
+        let p3TargetY = p3BaseY;
+        if (animState.player3Hit) {
+            p3TargetY = -8.0;
+        } else if (animState.player3Recovering) {
+            const wobble = Math.sin(time * 4) * 0.15;
+            if (!scene.userData.player3RecoveryStart) {
+                scene.userData.player3RecoveryStart = time;
+            }
+            const recoveryProgress = Math.min(1, (time - scene.userData.player3RecoveryStart) / 1.5);
+            p3TargetY = p3BaseY + wobble * (1 - recoveryProgress);
+        } else {
+            scene.userData.player3RecoveryStart = null;
+            p3TargetY = p3BaseY + Math.sin(time * 0.9) * 0.05;
+        }
+
+        const p3Speed = animState.player3Recovering ? 4.0 : 12.0;
+        const p3Damping = 1 - Math.exp(-p3Speed * dt);
+        player3Group.position.y += (p3TargetY - player3Group.position.y) * p3Damping;
+
+        const p3Head = player3Group.getObjectByName("HEAD");
+        if (p3Head) {
+            p3Head.rotation.y = THREE.MathUtils.lerp(p3Head.rotation.y, -mouse.x * 0.2, 1 - Math.exp(-3.1 * dt));
+            p3Head.rotation.x = THREE.MathUtils.lerp(p3Head.rotation.x, mouse.y * 0.1, 1 - Math.exp(-3.1 * dt));
+        }
+    }
+
+    const player4Group = scene.getObjectByName('PLAYER4');
+    if (player4Group) {
+        const p4BaseY = -4.5;
+        let p4TargetY = p4BaseY;
+        if (animState.player4Hit) {
+            p4TargetY = -8.0;
+        } else if (animState.player4Recovering) {
+            const wobble = Math.sin(time * 4) * 0.15;
+            if (!scene.userData.player4RecoveryStart) {
+                scene.userData.player4RecoveryStart = time;
+            }
+            const recoveryProgress = Math.min(1, (time - scene.userData.player4RecoveryStart) / 1.5);
+            p4TargetY = p4BaseY + wobble * (1 - recoveryProgress);
+        } else {
+            scene.userData.player4RecoveryStart = null;
+            p4TargetY = p4BaseY + Math.sin(time * 0.9) * 0.05;
+        }
+
+        const p4Speed = animState.player4Recovering ? 4.0 : 12.0;
+        const p4Damping = 1 - Math.exp(-p4Speed * dt);
+        player4Group.position.y += (p4TargetY - player4Group.position.y) * p4Damping;
+
+        const p4Head = player4Group.getObjectByName("HEAD");
+        if (p4Head) {
+            p4Head.rotation.y = THREE.MathUtils.lerp(p4Head.rotation.y, -mouse.x * 0.2, 1 - Math.exp(-3.1 * dt));
+            p4Head.rotation.x = THREE.MathUtils.lerp(p4Head.rotation.x, mouse.y * 0.1, 1 - Math.exp(-3.1 * dt));
+        }
+    }
+
     if (!scene.userData.cachedHeadGroup) scene.userData.cachedHeadGroup = dealerGroup.getObjectByName("HEAD");
     const headGroup = scene.userData.cachedHeadGroup;
     if (headGroup) {
@@ -549,8 +726,9 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
     // Blood Spawn (Dealer Hit or Player Hit)
     const isDealerHit = animState.dealerHit;
     const isPlayerHit = animState.playerHit;
+    const isPlayer3Hit = animState.player3Hit;
 
-    if ((isDealerHit || isPlayerHit) && (!scene.userData.isLowEndDevice || Math.random() > 0.5)) {
+    if ((isDealerHit || isPlayerHit || isPlayer3Hit) && (!scene.userData.isLowEndDevice || Math.random() > 0.5)) {
         const bPos = bloodParticles.geometry.attributes.position.array as Float32Array;
         const bVel = bloodParticles.geometry.attributes.velocity.array as Float32Array;
         // Increase spawn rate for more "splash"
@@ -573,7 +751,7 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
                     bVel[i * 3] = (Math.random() - 0.5) * 8.0;
                     bVel[i * 3 + 1] = Math.random() * 5.0 + 2.0;
                     bVel[i * 3 + 2] = Math.random() * 8.0 + 2.0; // Towards player
-                } else {
+                } else if (isPlayerHit) {
                     // Player Hit (near camera)
                     bPos[i * 3] = (Math.random() - 0.5) * 2.0;
                     bPos[i * 3 + 1] = 2.0 + (Math.random() - 0.5) * 1.0;
@@ -582,6 +760,16 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
                     bVel[i * 3] = (Math.random() - 0.5) * 5.0;
                     bVel[i * 3 + 1] = Math.random() * 4.0;
                     bVel[i * 3 + 2] = -Math.random() * 5.0; // Away from camera? Or towards? Mostly just down/messy
+                } else if (isPlayer3Hit) {
+                    const sidePos = scene.userData.player3Side || 'left';
+                    const sideX = sidePos === 'left' ? -8 : 8;
+                    bPos[i * 3] = sideX + (Math.random() - 0.5) * 1.5;
+                    bPos[i * 3 + 1] = 3.0 + (Math.random() - 0.5) * 1.5;
+                    bPos[i * 3 + 2] = -2.0 + (Math.random() - 0.5) * 1.0;
+
+                    bVel[i * 3] = (sidePos === 'left' ? 1 : -1) * (Math.random() * 5.0 + 2.0);
+                    bVel[i * 3 + 1] = Math.random() * 5.0 + 2.0;
+                    bVel[i * 3 + 2] = (Math.random() - 0.5) * 5.0;
                 }
 
                 spawnCount++;
@@ -630,7 +818,7 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
 
     updateBlood(bloodParticles, dt);
 
-    if (animState.playerHit || animState.dealerHit) {
+    if (animState.playerHit || animState.dealerHit || animState.player3Hit) {
         bloodParticles.visible = true;
     }
 

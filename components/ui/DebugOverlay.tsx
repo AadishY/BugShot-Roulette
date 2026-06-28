@@ -7,22 +7,30 @@ interface DebugOverlayProps {
     gameState: GameState;
     player: PlayerState;
     dealer: PlayerState;
+    player3?: PlayerState;
+    player4?: PlayerState;
     setPlayer: React.Dispatch<React.SetStateAction<PlayerState>>;
     setDealer: React.Dispatch<React.SetStateAction<PlayerState>>;
+    setPlayer3?: React.Dispatch<React.SetStateAction<PlayerState>>;
+    setPlayer4?: React.Dispatch<React.SetStateAction<PlayerState>>;
     setGameState: React.Dispatch<React.SetStateAction<GameState>>;
     selectTarotCard?: (index: number) => Promise<void>;
     setCameraView?: (view: any) => void;
     onClose?: () => void;
     processItemEffect?: (user: TurnOwner, item: ItemType) => Promise<boolean>;
-    onSyncDebugState?: (type: 'PLAYER' | 'DEALER' | 'GAMESTATE', state: any) => void;
+    onSyncDebugState?: (type: 'PLAYER' | 'DEALER' | 'PLAYER3' | 'PLAYER4' | 'GAMESTATE', state: any) => void;
 }
 
 export const DebugOverlay: React.FC<DebugOverlayProps> = ({
     gameState,
     player,
     dealer,
+    player3,
+    player4,
     setPlayer,
     setDealer,
+    setPlayer3,
+    setPlayer4,
     setGameState,
     selectTarotCard,
     setCameraView,
@@ -36,6 +44,8 @@ export const DebugOverlay: React.FC<DebugOverlayProps> = ({
     // Resolve player names / User IDs for developer debug menu
     let playerDisplayName = 'PLAYER';
     let dealerDisplayName = 'DEALER';
+    let player3DisplayName = 'PLAYER3';
+    let player4DisplayName = 'PLAYER4';
 
     try {
         const loggedInUser = localStorage.getItem('aadish_roulette_logged_in_user');
@@ -48,7 +58,20 @@ export const DebugOverlay: React.FC<DebugOverlayProps> = ({
     } catch (e) {}
 
     if (gameState.isMultiplayer) {
+        const size = gameState.isFourPlayer ? 4 : (gameState.isThreePlayer ? 3 : 2);
         dealerDisplayName = (gameState.opponentName || 'OPPONENT').toUpperCase();
+
+        const players = gameState.multiplayerState?.players || [];
+        const myId = gameState.localPlayerId || '';
+        const myIndex = players.findIndex((p: any) => p.id === myId);
+        if (myIndex !== -1 && size >= 3) {
+            const sideOpponent = players[(myIndex + 1) % size];
+            if (sideOpponent) player3DisplayName = sideOpponent.name.toUpperCase();
+            if (size >= 4) {
+                const rightOpponent = players[(myIndex + 3) % size];
+                if (rightOpponent) player4DisplayName = rightOpponent.name.toUpperCase();
+            }
+        }
     }
 
     // Mark the game as using debug features
@@ -110,21 +133,21 @@ export const DebugOverlay: React.FC<DebugOverlayProps> = ({
     };
 
     // --- Item Cheats ---
-    const addItem = (target: 'player' | 'dealer', item: ItemType) => {
-        const setter = target === 'player' ? setPlayer : setDealer;
+    const addItem = (target: 'player' | 'dealer' | 'player3' | 'player4', item: ItemType) => {
+        const setter = target === 'player' ? setPlayer : (target === 'player3' && setPlayer3 ? setPlayer3 : (target === 'player4' && setPlayer4 ? setPlayer4 : setDealer));
         setter(prev => {
-            if (prev.items.length >= 8) return prev; // Limit to 8
+            if (prev.items.length >= 8) return prev;
             const next = {
                 ...prev,
                 items: [...prev.items, item]
             };
-            if (onSyncDebugState) onSyncDebugState(target === 'player' ? 'PLAYER' : 'DEALER', next);
+            if (onSyncDebugState) onSyncDebugState(target === 'player' ? 'PLAYER' : (target === 'player3' ? 'PLAYER3' : (target === 'player4' ? 'PLAYER4' : 'DEALER')), next);
             return next;
         });
     };
 
-    const removeItem = (target: 'player' | 'dealer', index: number) => {
-        const setter = target === 'player' ? setPlayer : setDealer;
+    const removeItem = (target: 'player' | 'dealer' | 'player3' | 'player4', index: number) => {
+        const setter = target === 'player' ? setPlayer : (target === 'player3' && setPlayer3 ? setPlayer3 : (target === 'player4' && setPlayer4 ? setPlayer4 : setDealer));
         setter(prev => {
             const newItems = [...prev.items];
             newItems.splice(index, 1);
@@ -132,26 +155,26 @@ export const DebugOverlay: React.FC<DebugOverlayProps> = ({
                 ...prev,
                 items: newItems
             };
-            if (onSyncDebugState) onSyncDebugState(target === 'player' ? 'PLAYER' : 'DEALER', next);
+            if (onSyncDebugState) onSyncDebugState(target === 'player' ? 'PLAYER' : (target === 'player3' ? 'PLAYER3' : (target === 'player4' ? 'PLAYER4' : 'DEALER')), next);
             return next;
         });
     };
 
-    const clearItems = (target: 'player' | 'dealer') => {
-        const setter = target === 'player' ? setPlayer : setDealer;
+    const clearItems = (target: 'player' | 'dealer' | 'player3' | 'player4') => {
+        const setter = target === 'player' ? setPlayer : (target === 'player3' && setPlayer3 ? setPlayer3 : (target === 'player4' && setPlayer4 ? setPlayer4 : setDealer));
         setter(prev => {
             const next = { ...prev, items: [] };
-            if (onSyncDebugState) onSyncDebugState(target === 'player' ? 'PLAYER' : 'DEALER', next);
+            if (onSyncDebugState) onSyncDebugState(target === 'player' ? 'PLAYER' : (target === 'player3' ? 'PLAYER3' : (target === 'player4' ? 'PLAYER4' : 'DEALER')), next);
             return next;
         });
     };
 
     // --- Health Cheats ---
-    const adjustHp = (target: 'player' | 'dealer', amount: number) => {
-        const setter = target === 'player' ? setPlayer : setDealer;
+    const adjustHp = (target: 'player' | 'dealer' | 'player3' | 'player4', amount: number) => {
+        const setter = target === 'player' ? setPlayer : (target === 'player3' && setPlayer3 ? setPlayer3 : (target === 'player4' && setPlayer4 ? setPlayer4 : setDealer));
         setter(prev => {
             const newHp = Math.min(prev.maxHp, Math.max(0, prev.hp + amount));
-            if (newHp === 0) {
+            if (newHp === 0 && !gameState.isThreePlayer && !gameState.isFourPlayer) {
                 setGameState(g => {
                     const nextG = {
                         ...g,
@@ -166,13 +189,13 @@ export const DebugOverlay: React.FC<DebugOverlayProps> = ({
                 ...prev,
                 hp: newHp
             };
-            if (onSyncDebugState) onSyncDebugState(target === 'player' ? 'PLAYER' : 'DEALER', next);
+            if (onSyncDebugState) onSyncDebugState(target === 'player' ? 'PLAYER' : (target === 'player3' ? 'PLAYER3' : (target === 'player4' ? 'PLAYER4' : 'DEALER')), next);
             return next;
         });
     };
 
-    const setMaxHp = (target: 'player' | 'dealer', amount: number) => {
-        const setter = target === 'player' ? setPlayer : setDealer;
+    const setMaxHp = (target: 'player' | 'dealer' | 'player3' | 'player4', amount: number) => {
+        const setter = target === 'player' ? setPlayer : (target === 'player3' && setPlayer3 ? setPlayer3 : (target === 'player4' && setPlayer4 ? setPlayer4 : setDealer));
         setter(prev => {
             const newMax = Math.max(1, prev.maxHp + amount);
             const newHp = Math.min(newMax, prev.hp);
@@ -181,7 +204,7 @@ export const DebugOverlay: React.FC<DebugOverlayProps> = ({
                 maxHp: newMax,
                 hp: newHp
             };
-            if (onSyncDebugState) onSyncDebugState(target === 'player' ? 'PLAYER' : 'DEALER', next);
+            if (onSyncDebugState) onSyncDebugState(target === 'player' ? 'PLAYER' : (target === 'player3' ? 'PLAYER3' : (target === 'player4' ? 'PLAYER4' : 'DEALER')), next);
             return next;
         });
     };
@@ -357,9 +380,9 @@ export const DebugOverlay: React.FC<DebugOverlayProps> = ({
                 {activeTab === 'items' && (
                     <div className="space-y-3 md:space-y-4">
                         {/* Target selection */}
-                        {['player', 'dealer'].map((target) => {
-                            const state = target === 'player' ? player : dealer;
-                            const targetName = target === 'player' ? playerDisplayName : dealerDisplayName;
+                        {['player', 'dealer', ...(gameState.isThreePlayer && player3 ? ['player3'] : [])].map((target) => {
+                            const state = target === 'player' ? player : (target === 'player3' ? player3! : dealer);
+                            const targetName = target === 'player' ? playerDisplayName : (target === 'player3' ? player3DisplayName : dealerDisplayName);
                             return (
                                 <div key={target} className="space-y-1.5 md:space-y-2 border-b border-stone-900 pb-2.5 md:pb-3 last:border-0 last:pb-0">
                                     <div className="flex justify-between items-center">
@@ -421,9 +444,9 @@ export const DebugOverlay: React.FC<DebugOverlayProps> = ({
                         {/* Health settings */}
                         <div className="space-y-2 md:space-y-3">
                             <span className="font-extrabold tracking-widest text-stone-500 uppercase text-[7.5px] md:text-[9px] block">Health Editor</span>
-                            {['player', 'dealer'].map((target) => {
-                                const state = target === 'player' ? player : dealer;
-                                const targetName = target === 'player' ? playerDisplayName : dealerDisplayName;
+                            {['player', 'dealer', ...(gameState.isThreePlayer && player3 ? ['player3'] : [])].map((target) => {
+                                const state = target === 'player' ? player : (target === 'player3' ? player3! : dealer);
+                                const targetName = target === 'player' ? playerDisplayName : (target === 'player3' ? player3DisplayName : dealerDisplayName);
                                 return (
                                     <div key={target} className="flex justify-between items-center bg-stone-900/50 p-1 md:p-2 border border-stone-900 rounded-lg">
                                         <span className="font-bold text-[8.5px] md:text-[10px] uppercase text-stone-400">{targetName} HP:</span>

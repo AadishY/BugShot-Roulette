@@ -446,7 +446,7 @@ export const performShot = async (
 
                     // Hurt and recovery animation
                     setOverlayColor('red');
-                    setAnim(prev => ({ ...prev, dealerHit: false, dealerRecovering: true }));
+                    setAnim(prev => ({ ...prev, dealerHit: false, dealerDropping: false, dealerRecovering: true }));
                     await wait(2200);
                     setAnim(prev => ({ ...prev, dealerRecovering: false }));
                     setOverlayColor('none');

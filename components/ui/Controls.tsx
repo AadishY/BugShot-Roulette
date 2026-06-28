@@ -24,6 +24,7 @@ interface ControlsProps {
     onHoverTarget: (target: AimTarget) => void;
     currentAimTarget?: AimTarget;
     isMultiplayer?: boolean;
+    isThreePlayer?: boolean;
     mpGameState?: GameStateData | null;
     mpMyPlayerId?: string | null;
     onMpShoot?: (targetId: string) => void;
@@ -39,6 +40,7 @@ const ControlsComponent: React.FC<ControlsProps> = ({
     onHoverTarget,
     currentAimTarget = 'IDLE',
     isMultiplayer = false,
+    isThreePlayer = false,
     mpGameState,
     mpMyPlayerId,
     onMpShoot,
@@ -94,67 +96,179 @@ const ControlsComponent: React.FC<ControlsProps> = ({
                 {/* Shooting */}
                 {isGunHeld && (
                     <>
-                        {isMultiplayer && mpOpponents.length > 0 ? (
-                            mpOpponents.map((opp) => {
-                                let oppBtnClass = "";
-                                if (isPotato) {
-                                    oppBtnClass = "bg-neutral-900 border border-red-800 px-5 py-3 lg:px-6 lg:py-4 text-red-500 font-black text-xs lg:text-lg hover:bg-neutral-850 hover:text-white tracking-wide flex items-center gap-1 lg:gap-2 disabled:opacity-50";
-                                } else {
-                                    oppBtnClass = `bg-black/90 border border-red-800 px-5 py-3 lg:px-6 lg:py-4 text-red-500 font-black text-xs lg:text-lg hover:bg-red-900 hover:text-white transition-all active:scale-95 tracking-wide flex items-center gap-1 lg:gap-2 disabled:opacity-50 ${isBalanced ? '' : 'shadow-lg'}`;
+                        {isThreePlayer ? (() => {
+                            if (!mpGameState || !Array.isArray((mpGameState as any).players)) return null;
+                            const players = (mpGameState as any).players;
+                            const myIndex = players.findIndex((p: any) => p.id === mpMyPlayerId);
+                            if (myIndex === -1 || players.length < 3) return null;
+                            const frontOpponent = players[(myIndex + 2) % 3];
+                            const sideOpponent = players[(myIndex + 1) % 3];
+                            if (!frontOpponent || !sideOpponent) return null;
+                            const sidePos = myIndex === 1 ? 'right' : 'left';
+
+                            const isMobile = window.matchMedia('(pointer: coarse)').matches;
+
+                            const handleChooseOpponent = (relTarget: TurnOwner, intendedAim: AimTarget, oppId: string) => {
+                                if (isMobile && currentAimTarget !== intendedAim) {
+                                    onHoverTarget(intendedAim);
+                                    return;
                                 }
-                                return (
+                                onFireShot(relTarget, oppId);
+                            };
+
+                            const handleChooseSelf = () => {
+                                if (isMobile && currentAimTarget !== 'SELF') {
+                                    onHoverTarget('SELF');
+                                    return;
+                                }
+                                onFireShot('PLAYER');
+                            };
+
+                            let shootFrontBtnClass = isPotato
+                                ? "bg-neutral-900 border border-red-800 px-4 py-2 text-red-500 font-black text-xs hover:bg-neutral-850 hover:text-white tracking-wide flex items-center gap-1 disabled:opacity-50"
+                                : "bg-black/90 border border-red-800 px-4 py-2.5 text-red-500 font-black text-xs hover:bg-red-900 hover:text-white transition-all active:scale-95 tracking-wide flex items-center gap-1.5 disabled:opacity-50 shadow-lg rounded-lg";
+
+                            let shootSelfBtnClass = isPotato
+                                ? "bg-neutral-900 border border-stone-850 px-4 py-2 text-stone-400 font-black text-xs hover:bg-neutral-850 hover:text-white tracking-wide flex items-center gap-1 disabled:opacity-50"
+                                : "bg-black/90 border border-stone-700 px-4 py-2.5 text-stone-400 font-black text-xs hover:bg-stone-800 hover:text-white transition-all active:scale-95 tracking-wide flex items-center gap-1.5 disabled:opacity-50 shadow-lg rounded-lg";
+
+                            return (
+                                <div className="grid grid-cols-3 gap-3 max-w-md w-full justify-center items-center">
+                                    {/* Row 1: Front Player */}
+                                    <div className="col-start-2 flex justify-center">
+                                        <button
+                                            onClick={() => {
+                                                audioManager.playSound('click');
+                                                handleChooseOpponent('DEALER', 'OPPONENT', frontOpponent.id);
+                                            }}
+                                            disabled={isProcessing}
+                                            onMouseEnter={() => !isMobile && !isProcessing && onHoverTarget('OPPONENT')}
+                                            onMouseLeave={() => !isMobile && !isProcessing && onHoverTarget('CHOOSING')}
+                                            className={`${shootFrontBtnClass} w-full justify-center`}
+                                        >
+                                            <Target size={14} />
+                                            {frontOpponent.name.toUpperCase()}
+                                        </button>
+                                    </div>
+
+                                    {/* Row 2: Left Player, Self, Right Player */}
+                                    <div className="col-start-1 row-start-2 flex justify-center">
+                                        {sidePos === 'left' && (
+                                            <button
+                                                onClick={() => {
+                                                    audioManager.playSound('click');
+                                                    handleChooseOpponent('PLAYER3', 'LEFT', sideOpponent.id);
+                                                }}
+                                                disabled={isProcessing}
+                                                onMouseEnter={() => !isMobile && !isProcessing && onHoverTarget('LEFT')}
+                                                onMouseLeave={() => !isMobile && !isProcessing && onHoverTarget('CHOOSING')}
+                                                className={`${shootFrontBtnClass} w-full justify-center`}
+                                            >
+                                                <Target size={14} />
+                                                {sideOpponent.name.toUpperCase()}
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    <div className="col-start-2 row-start-2 flex justify-center">
+                                        <button
+                                            onClick={() => {
+                                                audioManager.playSound('click');
+                                                handleChooseSelf();
+                                            }}
+                                            disabled={isProcessing}
+                                            onMouseEnter={() => !isMobile && !isProcessing && onHoverTarget('SELF')}
+                                            onMouseLeave={() => !isMobile && !isProcessing && onHoverTarget('CHOOSING')}
+                                            className={`${shootSelfBtnClass} w-full justify-center`}
+                                        >
+                                            <User size={14} />
+                                            SELF
+                                        </button>
+                                    </div>
+
+                                    <div className="col-start-3 row-start-2 flex justify-center">
+                                        {sidePos === 'right' && (
+                                            <button
+                                                onClick={() => {
+                                                    audioManager.playSound('click');
+                                                    handleChooseOpponent('PLAYER3', 'RIGHT', sideOpponent.id);
+                                                }}
+                                                disabled={isProcessing}
+                                                onMouseEnter={() => !isMobile && !isProcessing && onHoverTarget('RIGHT')}
+                                                onMouseLeave={() => !isMobile && !isProcessing && onHoverTarget('CHOOSING')}
+                                                className={`${shootFrontBtnClass} w-full justify-center`}
+                                            >
+                                                <Target size={14} />
+                                                {sideOpponent.name.toUpperCase()}
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })() : (
+                            <>
+                                {isMultiplayer && mpOpponents.length > 0 ? (
+                                    mpOpponents.map((opp) => {
+                                        let oppBtnClass = "";
+                                        if (isPotato) {
+                                            oppBtnClass = "bg-neutral-900 border border-red-800 px-5 py-3 lg:px-6 lg:py-4 text-red-500 font-black text-xs lg:text-lg hover:bg-neutral-850 hover:text-white tracking-wide flex items-center gap-1 lg:gap-2 disabled:opacity-50";
+                                        } else {
+                                            oppBtnClass = `bg-black/90 border border-red-800 px-5 py-3 lg:px-6 lg:py-4 text-red-500 font-black text-xs lg:text-lg hover:bg-red-900 hover:text-white transition-all active:scale-95 tracking-wide flex items-center gap-1 lg:gap-2 disabled:opacity-50 ${isBalanced ? '' : 'shadow-lg'}`;
+                                        }
+                                        return (
+                                            <button
+                                                key={opp.id}
+                                                onClick={() => {
+                                                    audioManager.playSound('click');
+                                                    handleShootOpponent(opp.id);
+                                                }}
+                                                disabled={isProcessing}
+                                                onMouseEnter={() => window.matchMedia('(hover: hover)').matches && !isProcessing && onHoverTarget('OPPONENT')}
+                                                onMouseLeave={() => window.matchMedia('(hover: hover)').matches && !isProcessing && onHoverTarget('CHOOSING')}
+                                                className={oppBtnClass}
+                                            >
+                                                <Target size={18} className="lg:w-5 lg:h-5" />
+                                                {opp.name}
+                                            </button>
+                                        );
+                                    })
+                                ) : (
                                     <button
-                                        key={opp.id}
                                         onClick={() => {
                                             audioManager.playSound('click');
-                                            handleShootOpponent(opp.id);
+                                            handleShootOpponent();
                                         }}
                                         disabled={isProcessing}
                                         onMouseEnter={() => window.matchMedia('(hover: hover)').matches && !isProcessing && onHoverTarget('OPPONENT')}
                                         onMouseLeave={() => window.matchMedia('(hover: hover)').matches && !isProcessing && onHoverTarget('CHOOSING')}
-                                        className={oppBtnClass}
+                                        className={isPotato
+                                            ? "bg-neutral-900 border border-red-800 px-5 py-3 lg:px-8 lg:py-5 text-red-500 font-black text-xs lg:text-xl hover:bg-neutral-850 hover:text-white tracking-wide flex items-center gap-2 disabled:opacity-50"
+                                            : `bg-black/90 border border-red-800 px-5 py-3 lg:px-8 lg:py-5 text-red-500 font-black text-xs lg:text-xl hover:bg-red-900 hover:text-white transition-all active:scale-95 tracking-wide flex items-center gap-2 disabled:opacity-50 ${isBalanced ? '' : 'shadow-lg'}`
+                                        }
                                     >
-                                        <Target size={18} className="lg:w-5 lg:h-5" />
-                                        {opp.name}
+                                        <Target size={18} className="lg:w-6 lg:h-6" />
+                                        {isMultiplayer ? 'SHOOT OPPONENT' : 'SHOOT DEALER'}
                                     </button>
-                                );
-                            })
-                        ) : (
-                            <button
-                                onClick={() => {
-                                    audioManager.playSound('click');
-                                    handleShootOpponent();
-                                }}
-                                disabled={isProcessing}
-                                onMouseEnter={() => window.matchMedia('(hover: hover)').matches && !isProcessing && onHoverTarget('OPPONENT')}
-                                onMouseLeave={() => window.matchMedia('(hover: hover)').matches && !isProcessing && onHoverTarget('CHOOSING')}
-                                className={isPotato
-                                    ? "bg-neutral-900 border border-red-800 px-5 py-3 lg:px-8 lg:py-5 text-red-500 font-black text-xs lg:text-xl hover:bg-neutral-850 hover:text-white tracking-wide flex items-center gap-2 disabled:opacity-50"
-                                    : `bg-black/90 border border-red-800 px-5 py-3 lg:px-8 lg:py-5 text-red-500 font-black text-xs lg:text-xl hover:bg-red-900 hover:text-white transition-all active:scale-95 tracking-wide flex items-center gap-2 disabled:opacity-50 ${isBalanced ? '' : 'shadow-lg'}`
-                                }
-                            >
-                                <Target size={18} className="lg:w-6 lg:h-6" />
-                                {isMultiplayer ? 'SHOOT OPPONENT' : 'SHOOT DEALER'}
-                            </button>
-                        )}
+                                )}
 
-                        <button
-                            onClick={() => {
-                                audioManager.playSound('click');
-                                handleShootSelf();
-                            }}
-                            disabled={isProcessing}
-                            // Prevent hover events on touch devices to avoid ghost inputs (auto-aiming at self)
-                            onMouseEnter={() => window.matchMedia('(hover: hover)').matches && !isProcessing && onHoverTarget('SELF')}
-                            onMouseLeave={() => window.matchMedia('(hover: hover)').matches && !isProcessing && onHoverTarget('CHOOSING')}
-                            className={isPotato
-                                ? "bg-neutral-900 border border-stone-850 px-5 py-3 lg:px-8 lg:py-5 text-stone-400 font-black text-xs lg:text-xl hover:bg-neutral-850 hover:text-white tracking-wide flex items-center gap-2 disabled:opacity-50"
-                                : `bg-black/90 border border-stone-700 px-5 py-3 lg:px-8 lg:py-5 text-stone-400 font-black text-xs lg:text-xl hover:bg-stone-800 hover:text-white transition-all active:scale-95 tracking-wide flex items-center gap-2 disabled:opacity-50 ${isBalanced ? '' : 'shadow-lg'}`
-                            }
-                        >
-                            <User size={18} className="lg:w-6 lg:h-6" />
-                            SHOOT SELF
-                        </button>
+                                <button
+                                    onClick={() => {
+                                        audioManager.playSound('click');
+                                        handleShootSelf();
+                                    }}
+                                    disabled={isProcessing}
+                                    onMouseEnter={() => window.matchMedia('(hover: hover)').matches && !isProcessing && onHoverTarget('SELF')}
+                                    onMouseLeave={() => window.matchMedia('(hover: hover)').matches && !isProcessing && onHoverTarget('CHOOSING')}
+                                    className={isPotato
+                                        ? "bg-neutral-900 border border-stone-850 px-5 py-3 lg:px-8 lg:py-5 text-stone-400 font-black text-xs lg:text-xl hover:bg-neutral-850 hover:text-white tracking-wide flex items-center gap-2 disabled:opacity-50"
+                                        : `bg-black/90 border border-stone-700 px-5 py-3 lg:px-8 lg:py-5 text-stone-400 font-black text-xs lg:text-xl hover:bg-stone-800 hover:text-white transition-all active:scale-95 tracking-wide flex items-center gap-2 disabled:opacity-50 ${isBalanced ? '' : 'shadow-lg'}`
+                                    }
+                                >
+                                    <User size={18} className="lg:w-6 lg:h-6" />
+                                    SHOOT SELF
+                                </button>
+                            </>
+                        )}
                     </>
                 )}
             </div>

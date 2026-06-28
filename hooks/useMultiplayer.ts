@@ -138,6 +138,7 @@ export function useMultiplayer() {
             setError('You were kicked from the room.');
             setRoom(null);
             setPlayerId(null);
+            newSocket.disconnect();
         });
 
         newSocket.on('error', (err: string) => {

@@ -216,9 +216,64 @@ export const initThreeScene = (container: HTMLElement, props: any): SceneContext
 
     // Multiplayer vs Singleplayer representation
     const isMP = props.gameState?.isMultiplayer;
+    const isThreePlayer = props.gameState?.isThreePlayer;
+    const isFourPlayer = props.gameState?.isFourPlayer;
     let dealerGroup: THREE.Group;
+    let player3Group: THREE.Group | undefined;
+    let player4Group: THREE.Group | undefined;
 
-    if (isMP) {
+    if (isFourPlayer && props.gameState?.multiplayerState?.players) {
+        const players = props.gameState.multiplayerState.players;
+        const myId = props.gameState.localPlayerId || '';
+        const myIndex = players.findIndex((p: any) => p.id === myId);
+
+        if (myIndex !== -1) {
+            const frontOpponent = players[(myIndex + 2) % 4];
+            const leftOpponent = players[(myIndex + 1) % 4];
+            const rightOpponent = players[(myIndex + 3) % 4];
+
+            // Front player -> DEALER
+            dealerGroup = createPlayerAvatar(scene, new THREE.Vector3(0, -4.5, -8), Math.PI, frontOpponent ? frontOpponent.name : 'OPPONENT 1');
+            dealerGroup.name = 'DEALER';
+
+            // Left player -> PLAYER3
+            player3Group = createPlayerAvatar(scene, new THREE.Vector3(-8, -4.5, -2), Math.PI / 2, leftOpponent ? leftOpponent.name : 'OPPONENT 2');
+            player3Group.name = 'PLAYER3';
+            scene.userData.player3Side = 'left';
+
+            // Right player -> PLAYER4
+            player4Group = createPlayerAvatar(scene, new THREE.Vector3(8, -4.5, -2), -Math.PI / 2, rightOpponent ? rightOpponent.name : 'OPPONENT 3');
+            player4Group.name = 'PLAYER4';
+            scene.userData.player4Side = 'right';
+        } else {
+            dealerGroup = createPlayerAvatar(scene, new THREE.Vector3(0, -4.5, -8), Math.PI, 'OPPONENT 1');
+            dealerGroup.name = 'DEALER';
+        }
+    } else if (isThreePlayer && props.gameState?.multiplayerState?.players) {
+        const players = props.gameState.multiplayerState.players;
+        const myId = props.gameState.localPlayerId || '';
+        const myIndex = players.findIndex((p: any) => p.id === myId);
+
+        if (myIndex !== -1) {
+            const frontOpponent = players[(myIndex + 2) % 3];
+            const sideOpponent = players[(myIndex + 1) % 3];
+            const sidePos = myIndex === 1 ? 'right' : 'left';
+
+            // Front player -> DEALER
+            dealerGroup = createPlayerAvatar(scene, new THREE.Vector3(0, -4.5, -8), Math.PI, frontOpponent.name);
+            dealerGroup.name = 'DEALER';
+
+            // Side player -> PLAYER3
+            const sideX = sidePos === 'left' ? -8 : 8;
+            const sideRot = sidePos === 'left' ? Math.PI / 2 : -Math.PI / 2;
+            player3Group = createPlayerAvatar(scene, new THREE.Vector3(sideX, -4.5, -2), sideRot, sideOpponent.name);
+            player3Group.name = 'PLAYER3';
+            scene.userData.player3Side = sidePos;
+        } else {
+            dealerGroup = createPlayerAvatar(scene, new THREE.Vector3(0, -4.5, -8), Math.PI, 'OPPONENT 1');
+            dealerGroup.name = 'DEALER';
+        }
+    } else if (isMP) {
         // Opponent is another player
         const opponentName = props.gameState?.opponentName || 'OPPONENT';
         // Positioned lower so head aligns with dealer head height

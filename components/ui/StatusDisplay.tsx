@@ -5,14 +5,59 @@ import { Icons } from './Icons';
 interface StatusDisplayProps {
     player: PlayerState;
     dealer: PlayerState;
+    player3?: PlayerState;
     playerName: string;
     gameState: GameState;
     settings?: GameSettings;
 }
 
-const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, playerName, gameState, settings }) => {
+const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, player3, playerName, gameState, settings }) => {
     const isBalanced = !!settings?.balancedPerformance || !!settings?.ultraPerformance;
     const isPotato = !!settings?.ultraPerformance;
+
+    const getPlayer3Name = () => {
+        if (!gameState.isThreePlayer || !gameState.multiplayerState?.players) return 'OPPONENT 2';
+        const players = gameState.multiplayerState.players;
+        const myId = gameState.localPlayerId || '';
+        const myIndex = players.findIndex((p: any) => p.id === myId);
+        if (myIndex !== -1) {
+            const sideOpponent = players[(myIndex + 1) % 3];
+            return sideOpponent ? sideOpponent.name : 'OPPONENT 2';
+        }
+        return 'OPPONENT 2';
+    };
+
+    const renderItems = (items: import('../../types').ItemType[]) => {
+        return (
+            <div className="flex gap-1 flex-wrap justify-end max-w-[150px] md:max-w-[200px] mt-1.5">
+                {items.map((item, i) => (
+                    <div key={i} className="w-3.5 h-3.5 md:w-8 md:h-8 bg-stone-900/60 backdrop-blur-sm border border-stone-800 group hover:border-white/20 transition-all rounded flex items-center justify-center p-0.5 shadow-inner overflow-hidden">
+                        <div className="transform transition-transform group-hover:scale-110">
+                            {item === 'BEER' && <Icons.Beer size={16} className="w-2 md:w-4 text-amber-500/80" />}
+                            {item === 'CIGS' && <Icons.Cigs size={16} className="w-2 md:w-4 text-red-500/80" />}
+                            {item === 'GLASS' && <Icons.Glass size={16} className="w-2 md:w-4 text-cyan-500/80" />}
+                            {item === 'CUFFS' && <Icons.Cuffs size={16} className="w-2 md:w-4 text-stone-400" />}
+                            {item === 'SAW' && <Icons.Saw size={16} className="w-2 md:w-4 text-orange-600/80" />}
+                            {item === 'PHONE' && <Icons.Phone size={16} className="w-2 md:w-4 text-blue-300/80" />}
+                            {item === 'INVERTER' && <Icons.Inverter size={16} className="w-2 md:w-4 text-green-400/80" />}
+                            {item === 'ADRENALINE' && <Icons.Adrenaline size={16} className="w-2 md:w-4 text-pink-500/80" />}
+                            {item === 'CHOKE' && <Icons.Choke size={16} className="w-2 md:w-4 text-stone-300" />}
+                            {item === 'REMOTE' && <Icons.Remote size={16} className="w-2 md:w-4 text-red-500/80" />}
+                            {item === 'BIG_INVERTER' && <Icons.BigInverter size={16} className="w-2 md:w-4 text-orange-500/80" />}
+                            {item === 'CONTRACT' && <Icons.Contract size={16} className="w-2 md:w-4 text-red-750/80" />}
+                            {item === 'LUCKYCHARM' && <Icons.Luckycharm size={16} className="w-2 md:w-4 text-emerald-500/80" />}
+                            {item === 'FLASHBANG' && <Icons.Flashbang size={16} className="w-2 md:w-4 text-zinc-300" />}
+                            {item === 'CRUSHER' && <Icons.Crusher size={16} className="w-2 md:w-4 text-amber-600/80" />}
+                            {item === 'TOTEM' && <Icons.Totem size={16} className="w-2 md:w-4 text-amber-500/80 animate-pulse" />}
+                            {item === 'MIRROR' && <Icons.Mirror size={16} className="w-2 md:w-4 text-indigo-400" />}
+                            {item === 'DECK_CARD' && <Icons.DeckCard size={16} className="w-2 md:w-4 text-purple-400" />}
+                            {item === 'JACKPOT' && <Icons.Jackpot size={16} className="w-2 md:w-4 text-yellow-500/80" />}
+                        </div>
+                    </div>
+                ))}
+            </div>
+        );
+    };
 
     return (
         <div className="flex justify-between items-start w-full pointer-events-none px-1 md:px-2 py-2 md:py-4">
@@ -58,7 +103,7 @@ const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, 
                     {player.jackpotImmunityShots !== undefined && player.jackpotImmunityShots > 0 && (
                         <div className="mt-2.5 flex items-center gap-1.5 bg-yellow-950/50 border border-yellow-500/30 px-2.5 py-1 rounded-lg text-[9px] md:text-[11px] font-black text-yellow-400 tracking-wider uppercase animate-pulse shadow-[0_0_15px_rgba(234,179,8,0.25)]">
                             <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 animate-ping" />
-                            <span>JACKPOT: {player.jackpotImmunityShots} SHOTS LEFT</span>
+                            <span>JACKPOT: {player.jackpotImmunityShots}</span>
                         </div>
                     )}
                 </div>
@@ -88,7 +133,6 @@ const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, 
                     ? 'bg-green-950/10 border-green-500/20'
                     : 'bg-red-950/10 border-red-500/20'
                     }`}>
-                    {/* Pulsing light behind turn indicator */}
                     {!isBalanced && (
                         <div className={`absolute inset-0 blur-2xl opacity-20 -z-10 animate-pulse ${gameState.turnOwner === 'PLAYER' ? 'bg-green-500' : 'bg-red-600'
                             }`} />
@@ -98,7 +142,7 @@ const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, 
                         ? `text-green-500 ${isBalanced ? '' : 'drop-shadow-[0_0_15px_rgba(34,197,94,0.5)]'}`
                         : `text-red-600 ${isBalanced ? '' : 'drop-shadow-[0_0_15px_rgba(220,38,38,0.5)]'}`
                         } ${gameState.isHardMode && gameState.turnOwner === 'DEALER' && !isPotato ? 'animate-[chromatic_0.2s_infinite]' : ''}`}>
-                        {gameState.turnOwner === 'PLAYER' ? 'YOUR TURN' : (gameState.opponentName?.toUpperCase() || "DEALER") + "'S TURN"}
+                        {gameState.turnOwner === 'PLAYER' ? 'YOUR TURN' : (gameState.turnOwner === 'PLAYER3' ? getPlayer3Name().toUpperCase() + "'S TURN" : (gameState.opponentName?.toUpperCase() || "DEALER") + "'S TURN")}
                     </div>
                 </div>
 
@@ -115,73 +159,90 @@ const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, 
                 </div>
             </div>
 
-            {/* Dealer Side */}
-            <div className="flex flex-col items-end min-w-[80px] md:w-1/3 animate-in slide-in-from-right duration-700">
+            {/* Dealer & Opponent Side (Right aligned stack) */}
+            <div className="flex flex-col gap-4 md:gap-6 items-end min-w-[80px] md:w-1/3 animate-in slide-in-from-right duration-700">
+                {/* Opponent 1 (Dealer / Front) */}
                 <div className="flex flex-col items-end">
-                    <span className="text-[10px] md:text-sm font-black tracking-[0.2em] md:tracking-[0.4em] text-stone-500 mb-1 uppercase flex items-center gap-1">
-                        {gameState.isMultiplayer ? (gameState.opponentName || 'OPPONENT') : 'DEALER'}
-                        {dealer.isFlashbanged && <span className="text-red-500 animate-pulse text-[8px] md:text-xs font-black">⚡ BLINDED</span>}
-                    </span>
-                    <div className="flex gap-1 md:gap-2">
-                        {[...Array(dealer.maxHp)].map((_, i) => {
-                            const isActive = i < dealer.hp;
-                            
-                            let hpClass = '';
-                            if (isActive) {
-                                if (isPotato) {
-                                    hpClass = 'bg-red-650 border-red-750';
+                    <div className="flex flex-col items-end">
+                        <span className="text-[10px] md:text-sm font-black tracking-[0.2em] md:tracking-[0.4em] text-stone-500 mb-1 uppercase flex items-center gap-1">
+                            {gameState.isMultiplayer ? (gameState.opponentName || 'OPPONENT') : 'DEALER'}
+                            {dealer.isFlashbanged && <span className="text-red-500 animate-pulse text-[8px] md:text-xs font-black">⚡ BLINDED</span>}
+                        </span>
+                        <div className="flex gap-1 md:gap-2">
+                            {[...Array(dealer.maxHp)].map((_, i) => {
+                                const isActive = i < dealer.hp;
+                                
+                                let hpClass = '';
+                                if (isActive) {
+                                    if (isPotato) {
+                                        hpClass = 'bg-red-650 border-red-750';
+                                    } else {
+                                        hpClass = `bg-gradient-to-t from-red-950/80 via-red-600/60 to-red-500/40 border-red-500/50 ${isBalanced ? '' : 'shadow-[0_0_25px_rgba(239,68,68,0.3)]'}`;
+                                    }
                                 } else {
-                                    hpClass = `bg-gradient-to-t from-red-950/80 via-red-600/60 to-red-500/40 border-red-500/50 ${isBalanced ? '' : 'shadow-[0_0_25px_rgba(239,68,68,0.3)]'}`;
+                                    if (isPotato) {
+                                        hpClass = 'bg-neutral-900 border-neutral-850 opacity-20';
+                                    } else {
+                                        hpClass = 'bg-stone-950 border-stone-800/40 opacity-10';
+                                    }
                                 }
-                            } else {
-                                if (isPotato) {
-                                    hpClass = 'bg-neutral-900 border-neutral-850 opacity-20';
-                                } else {
-                                    hpClass = 'bg-stone-950 border-stone-800/40 opacity-10';
-                                }
-                            }
 
-                            return (
-                                <div key={i} className={`relative group w-2 h-6 md:w-6 md:h-20 border rounded-sm transition-all duration-1000 ${hpClass}`}>
-                                    {isActive && !isPotato && (
-                                        <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_0%,rgba(255,255,255,0.1)_50%,transparent_100%)] animate-[scanline_3s_linear_infinite]" />
-                                    )}
-                                </div>
-                            );
-                        })}
+                                return (
+                                    <div key={i} className={`relative group w-1.5 h-4 md:w-5 md:h-12 border rounded-sm transition-all duration-1000 ${hpClass}`}>
+                                        {isActive && !isPotato && (
+                                            <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_0%,rgba(255,255,255,0.1)_50%,transparent_100%)] animate-[scanline_3s_linear_infinite]" />
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
                     </div>
+                    {renderItems(dealer.items)}
                 </div>
 
-                {/* Dealer Items Quick-View */}
-                <div className="flex gap-1.5 flex-wrap justify-end max-w-[200px]">
-                    {dealer.items.map((item, i) => (
-                        <div key={i} className="w-4 h-4 md:w-9 md:h-9 bg-stone-900/60 backdrop-blur-sm border border-stone-800 group hover:border-white/20 transition-all rounded-lg flex items-center justify-center p-1 shadow-inner overflow-hidden">
-                            <div className="transform transition-transform group-hover:scale-110">
-                                {item === 'BEER' && <Icons.Beer size={20} className="w-2.5 h-2.5 md:w-5 md:h-5 text-amber-500/80" />}
-                                {item === 'CIGS' && <Icons.Cigs size={20} className="w-2.5 h-2.5 md:w-5 md:h-5 text-red-500/80" />}
-                                {item === 'GLASS' && <Icons.Glass size={20} className="w-2.5 h-2.5 md:w-5 md:h-5 text-cyan-500/80" />}
-                                {item === 'CUFFS' && <Icons.Cuffs size={20} className="w-2.5 h-2.5 md:w-5 md:h-5 text-stone-400" />}
-                                {item === 'SAW' && <Icons.Saw size={20} className="w-2.5 h-2.5 md:w-5 md:h-5 text-orange-600/80" />}
-                                {item === 'PHONE' && <Icons.Phone size={20} className="w-2.5 h-2.5 md:w-5 md:h-5 text-blue-300/80" />}
-                                {item === 'INVERTER' && <Icons.Inverter size={20} className="w-2.5 h-2.5 md:w-5 md:h-5 text-green-400/80" />}
-                                {item === 'ADRENALINE' && <Icons.Adrenaline size={20} className="w-2.5 h-2.5 md:w-5 md:h-5 text-pink-500/80" />}
-                                {item === 'CHOKE' && <Icons.Choke size={20} className="w-2.5 h-2.5 md:w-5 md:h-5 text-stone-300" />}
-                                {item === 'REMOTE' && <Icons.Remote size={20} className="w-2.5 h-2.5 md:w-5 md:h-5 text-red-500/80" />}
-                                {item === 'BIG_INVERTER' && <Icons.BigInverter size={20} className="w-2.5 h-2.5 md:w-5 md:h-5 text-orange-500/80" />}
-                                {item === 'CONTRACT' && <Icons.Contract size={20} className="w-2.5 h-2.5 md:w-5 md:h-5 text-red-750/80" />}
-                                {item === 'LUCKYCHARM' && <Icons.Luckycharm size={20} className="w-2.5 h-2.5 md:w-5 md:h-5 text-emerald-500/80" />}
-                                {item === 'FLASHBANG' && <Icons.Flashbang size={20} className="w-2.5 h-2.5 md:w-5 md:h-5 text-zinc-300" />}
-                                {item === 'CRUSHER' && <Icons.Crusher size={20} className="w-2.5 h-2.5 md:w-5 md:h-5 text-amber-600/80" />}
-                                {item === 'TOTEM' && <Icons.Totem size={20} className="w-2.5 h-2.5 md:w-5 md:h-5 text-amber-500/80 animate-pulse" />}
-                                {item === 'MIRROR' && <Icons.Mirror size={20} className="w-2.5 h-2.5 md:w-5 md:h-5 text-indigo-400" />}
-                                {item === 'DECK_CARD' && <Icons.DeckCard size={20} className="w-2.5 h-2.5 md:w-5 md:h-5 text-purple-400" />}
-                                {item === 'JACKPOT' && <Icons.Jackpot size={20} className="w-2.5 h-2.5 md:w-5 md:h-5 text-yellow-500/80" />}
+                {/* Opponent 2 (Player 3 / Side) */}
+                {gameState.isThreePlayer && player3 && (
+                    <div className="flex flex-col items-end border-t border-stone-800/40 pt-3 md:pt-4 w-full">
+                        <div className="flex flex-col items-end">
+                            <span className="text-[10px] md:text-sm font-black tracking-[0.2em] md:tracking-[0.4em] text-stone-500 mb-1 uppercase flex items-center gap-1">
+                                {getPlayer3Name()}
+                                {player3.isFlashbanged && <span className="text-red-500 animate-pulse text-[8px] md:text-xs font-black">⚡ BLINDED</span>}
+                            </span>
+                            <div className="flex gap-1 md:gap-2">
+                                {[...Array(player3.maxHp)].map((_, i) => {
+                                    const isActive = i < player3.hp;
+                                    
+                                    let hpClass = '';
+                                    if (isActive) {
+                                        if (isPotato) {
+                                            hpClass = 'bg-red-650 border-red-750';
+                                        } else {
+                                            hpClass = `bg-gradient-to-t from-red-950/80 via-red-600/60 to-red-500/40 border-red-500/50 ${isBalanced ? '' : 'shadow-[0_0_25px_rgba(239,68,68,0.3)]'}`;
+                                        }
+                                    } else {
+                                        if (isPotato) {
+                                            hpClass = 'bg-neutral-900 border-neutral-850 opacity-20';
+                                        } else {
+                                            hpClass = 'bg-stone-950 border-stone-800/40 opacity-10';
+                                        }
+                                    }
+
+                                    return (
+                                        <div key={i} className={`relative group w-1.5 h-4 md:w-5 md:h-12 border rounded-sm transition-all duration-1000 ${hpClass}`}>
+                                            {isActive && !isPotato && (
+                                                <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_0%,rgba(255,255,255,0.1)_50%,transparent_100%)] animate-[scanline_3s_linear_infinite]" />
+                                            )}
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </div>
-                    ))}
-                </div>
+                        {renderItems(player3.items)}
+                    </div>
+                )}
             </div>
         </div>
     );
 };
+
 export const StatusDisplay = React.memo(StatusDisplayComponent);

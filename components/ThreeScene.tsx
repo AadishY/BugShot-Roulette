@@ -19,6 +19,8 @@ interface ThreeSceneProps {
     isHardMode?: boolean;
     player: PlayerState;
     dealer: PlayerState;
+    player3?: PlayerState;
+    player4?: PlayerState;
     gameState: GameState;
     onCardClick?: (index: number) => void;
     onLowPerformance?: (fps: number) => void;
@@ -95,6 +97,8 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
     isHardMode,
     player,
     dealer,
+    player3,
+    player4,
     gameState,
     onCardClick,
     onLowPerformance,
@@ -116,6 +120,8 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
         isHardMode: isHardMode || false,
         player,
         dealer,
+        player3,
+        player4,
         gameState,
         onCardClick,
         onGunClick,
@@ -138,6 +144,8 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
             isHardMode: isHardMode || false,
             player,
             dealer,
+            player3,
+            player4,
             gameState,
             onCardClick,
             onGunClick,
@@ -145,7 +153,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
             isPaused,
             onUpdateNameTags
         };
-    }, [isSawed, isChokeActive, isPlayerCuffed, aimTarget, cameraView, animState, turnOwner, settings, knownShell, isHardMode, player, dealer, gameState, onCardClick, onGunClick, onLowPerformance, isPaused, onUpdateNameTags]);
+    }, [isSawed, isChokeActive, isPlayerCuffed, aimTarget, cameraView, animState, turnOwner, settings, knownShell, isHardMode, player, dealer, player3, player4, gameState, onCardClick, onGunClick, onLowPerformance, isPaused, onUpdateNameTags]);
 
     const sceneRef = useRef<SceneContext | null>(null);
 
@@ -315,7 +323,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
                 const tempV = new THREE.Vector3();
                 const tagsList: { name: string, x: number, y: number, visible: boolean }[] = [];
 
-                scene.traverse((obj) => {
+                 scene.traverse((obj) => {
                     if (obj.name === 'DEALER') {
                         const head = obj.getObjectByName('HEAD');
                         if (head) {
@@ -332,6 +340,61 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
 
                             tagsList.push({
                                 name: propsRef.current.gameState.opponentName || 'OPPONENT',
+                                x,
+                                y,
+                                visible
+                            });
+                        }
+                    } else if (obj.name === 'PLAYER3') {
+                        const head = obj.getObjectByName('HEAD');
+                        if (head) {
+                            tempV.setFromMatrixPosition(head.matrixWorld);
+                            tempV.y += 2.4;
+                            tempV.project(camera);
+
+                            const x = (tempV.x * 0.5 + 0.5) * 100;
+                            const y = (tempV.y * -0.5 + 0.5) * 100;
+                            const visible = tempV.z <= 1.0;
+
+                            const players = propsRef.current.gameState.multiplayerState?.players || [];
+                            const myId = propsRef.current.gameState.localPlayerId || '';
+                            const myIndex = players.findIndex((p: any) => p.id === myId);
+                            let player3Name = 'OPPONENT 2';
+                            if (myIndex !== -1) {
+                                const size = players.length >= 4 ? 4 : 3;
+                                const sideOpponent = players[(myIndex + 1) % size];
+                                if (sideOpponent) player3Name = sideOpponent.name;
+                            }
+
+                            tagsList.push({
+                                name: player3Name,
+                                x,
+                                y,
+                                visible
+                            });
+                        }
+                    } else if (obj.name === 'PLAYER4') {
+                        const head = obj.getObjectByName('HEAD');
+                        if (head) {
+                            tempV.setFromMatrixPosition(head.matrixWorld);
+                            tempV.y += 2.4;
+                            tempV.project(camera);
+
+                            const x = (tempV.x * 0.5 + 0.5) * 100;
+                            const y = (tempV.y * -0.5 + 0.5) * 100;
+                            const visible = tempV.z <= 1.0;
+
+                            const players = propsRef.current.gameState.multiplayerState?.players || [];
+                            const myId = propsRef.current.gameState.localPlayerId || '';
+                            const myIndex = players.findIndex((p: any) => p.id === myId);
+                            let player4Name = 'OPPONENT 3';
+                            if (myIndex !== -1 && players.length >= 4) {
+                                const rightOpponent = players[(myIndex + 3) % 4];
+                                if (rightOpponent) player4Name = rightOpponent.name;
+                            }
+
+                            tagsList.push({
+                                name: player4Name,
                                 x,
                                 y,
                                 visible
@@ -496,7 +559,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
             }
             if (containerRef.current) containerRef.current.innerHTML = '';
         };
-    }, [gameState.isMultiplayer, settings.ultraPerformance, settings.balancedPerformance, isPaused]); // Rebuild scene when switching SP/MP, toggling performance profiles, or unpausing the game
+    }, [gameState.isMultiplayer, gameState.isThreePlayer, gameState.multiplayerState?.players?.map(p => p.id).join(','), settings.ultraPerformance, settings.balancedPerformance, isPaused]); // Rebuild scene when switching SP/MP, toggling performance profiles, or unpausing the game
 
     // Separate effect for Pixel Scale / Resolution updates (No Rebuild)
     useEffect(() => {

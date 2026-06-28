@@ -19,6 +19,8 @@ interface GameUIProps {
     gameState: GameState;
     player: PlayerState;
     dealer: PlayerState;
+    player3?: PlayerState;
+    player4?: PlayerState;
     logs: LogEntry[];
     overlayText: string | null;
     overlayColor: 'none' | 'red' | 'green' | 'scan';
@@ -39,7 +41,7 @@ interface GameUIProps {
     onStartGame: (name: string, hardMode?: boolean) => void;
     onResetGame: (toMenu: boolean) => void;
     onFireShot: (target: TurnOwner) => void;
-    onUseItem: (index: number) => void;
+    onUseItem: (index: number, targetPlayerId?: string) => void;
     onHoverTarget: (target: AimTarget) => void;
     onPickupGun: () => void;
     onOpenSettings: () => void;
@@ -112,11 +114,14 @@ export const GameUI: React.FC<GameUIProps> = ({
     onSendMessage,
     mpGameState,
     mpMyPlayerId,
-    stickers = []
+    stickers = [],
+    player3,
+    player4
 }) => {
     const [inputName, setInputName] = useState(playerName || '');
     const [isChatMinimized, setIsChatMinimized] = useState(true);
     const [unreadCount, setUnreadCount] = useState(0);
+    const [pendingItemIndex, setPendingItemIndex] = useState<number | null>(null);
     const prevMsgLength = useRef(messages.length);
 
     const [isStickersOpen, setIsStickersOpen] = useState(false);
@@ -222,7 +227,7 @@ export const GameUI: React.FC<GameUIProps> = ({
         }
     }, [triggerDrink]);
 
-    const isGunHeld = cameraView === 'GUN' || aimTarget === 'CHOOSING' || aimTarget === 'OPPONENT' || aimTarget === 'SELF';
+    const isGunHeld = cameraView === 'GUN' || cameraView === 'PLAYER3_GUN' || cameraView === 'DEALER_GUN' || aimTarget === 'CHOOSING' || aimTarget === 'OPPONENT' || aimTarget === 'SELF' || aimTarget === 'LEFT' || aimTarget === 'RIGHT';
     const isMyTurn = (gameState.turnOwner === 'PLAYER' && (gameState.phase === 'PLAYER_TURN' || gameState.phase === 'LOOTING'));
 
     // Robust UI Scaling: Scale the UI container while keeping it centered and contained
@@ -469,16 +474,23 @@ export const GameUI: React.FC<GameUIProps> = ({
 
                             {/* Extraction Grid */}
                             <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-4 md:gap-8 w-full max-w-6xl mx-auto">
-                                {dealer.items.length === 0 ? (
-                                    <div className="col-span-full py-32 text-center bg-black/40 rounded-3xl border border-white/5 backdrop-blur-xl">
-                                        <div className="mb-4 inline-block p-4 rounded-full bg-stone-900/60 border border-white/10">
-                                            <Icons.Adrenaline size={48} className="text-stone-700 opacity-50" />
-                                        </div>
-                                        <p className="text-stone-500 font-black tracking-[0.4em] uppercase italic text-2xl">Vault Empty</p>
-                                        <p className="text-stone-700 text-sm mt-2 font-bold tracking-widest uppercase truncate px-4">Subject Has No Extractable Assets</p>
-                                    </div>
-                                ) : (
-                                    dealer.items.map((item, idx) => {
+                                {(() => {
+                                    const targetItems = (gameState.isThreePlayer && gameState.adrenalineTargetOwner === 'PLAYER3' && player3)
+                                        ? player3.items
+                                        : dealer.items;
+
+                                    if (targetItems.length === 0) {
+                                        return (
+                                            <div className="col-span-full py-32 text-center bg-black/40 rounded-3xl border border-white/5 backdrop-blur-xl">
+                                                <div className="mb-4 inline-block p-4 rounded-full bg-stone-900/60 border border-white/10">
+                                                    <Icons.Adrenaline size={48} className="text-stone-700 opacity-50" />
+                                                </div>
+                                                <p className="text-stone-500 font-black tracking-[0.4em] uppercase italic text-2xl">Vault Empty</p>
+                                                <p className="text-stone-700 text-sm mt-2 font-bold tracking-widest uppercase truncate px-4">Subject Has No Extractable Assets</p>
+                                            </div>
+                                        );
+                                    }
+                                    return targetItems.map((item, idx) => {
                                         const isAdrenaline = item === 'ADRENALINE';
                                         const isTotemLocked = item === 'TOTEM';
                                         const isStealLocked = isAdrenaline || isTotemLocked;
@@ -569,8 +581,8 @@ export const GameUI: React.FC<GameUIProps> = ({
                                                 )}
                                             </button>
                                         );
-                                    })
-                                )}
+                                    });
+                                })()}
                             </div>
 
                             <div className="mt-16 text-stone-600 text-[10px] font-bold tracking-[0.5em] uppercase flex items-center gap-6">
@@ -613,7 +625,7 @@ export const GameUI: React.FC<GameUIProps> = ({
 
                         {/* Top Bar */}
                         <div className="flex justify-between items-start gap-2">
-                            <StatusDisplay player={player} dealer={dealer} playerName={playerName} gameState={gameState} settings={settings} />
+                            <StatusDisplay player={player} dealer={dealer} player3={player3} playerName={playerName} gameState={gameState} settings={settings} />
                             <button onClick={() => {
                                 audioManager.playSound('click');
                                 onOpenSettings();
@@ -636,6 +648,7 @@ export const GameUI: React.FC<GameUIProps> = ({
                                         onHoverTarget={onHoverTarget}
                                         currentAimTarget={aimTarget}
                                         isMultiplayer={isMultiplayer}
+                                        isThreePlayer={gameState.isThreePlayer}
                                         mpGameState={mpGameState}
                                         mpMyPlayerId={mpMyPlayerId}
                                         settings={settings}
@@ -668,7 +681,13 @@ export const GameUI: React.FC<GameUIProps> = ({
                                         isProcessing={isProcessing}
                                         onUseItem={(idx) => {
                                             audioManager.playSound('grab');
-                                            onUseItem(idx);
+                                            const item = player.items[idx];
+                                            const targetedItems = ['CUFFS', 'ADRENALINE', 'CRUSHER', 'FLASHBANG'];
+                                            if (gameState.isThreePlayer && targetedItems.includes(item)) {
+                                                setPendingItemIndex(idx);
+                                            } else {
+                                                onUseItem(idx);
+                                            }
                                         }}
                                         disabled={false}
                                         isGunHeld={isGunHeld}
@@ -916,6 +935,63 @@ export const GameUI: React.FC<GameUIProps> = ({
                         </div>
                     )}
                 </>
+            )}
+            {pendingItemIndex !== null && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[250] flex flex-col items-center justify-center pointer-events-auto animate-in fade-in duration-300">
+                    <div className="bg-stone-900 border-2 border-stone-800 p-6 md:p-10 rounded-2xl max-w-md w-full mx-4 shadow-[0_0_50px_rgba(0,0,0,0.8)] border-y-white/10 text-center">
+                        <h2 className="text-2xl md:text-3xl font-black text-white tracking-widest uppercase mb-2">SELECT TARGET</h2>
+                        <p className="text-stone-400 text-xs md:text-sm font-bold tracking-wider uppercase mb-8">
+                            Select who to target with {player.items[pendingItemIndex].replace('_', ' ')}
+                        </p>
+                        <div className="flex flex-col gap-4">
+                            {gameState.multiplayerState?.players
+                                .filter((p: any) => p.id !== gameState.localPlayerId)
+                                .map((targetPlayer: any) => {
+                                    // Target relative owner check to determine HP
+                                    const playersList = gameState.multiplayerState?.players || [];
+                                    const myId = gameState.localPlayerId || '';
+                                    const myIndex = playersList.findIndex((p: any) => p.id === myId);
+                                    let targetHp = 1;
+                                    if (myIndex !== -1) {
+                                        const frontOpponent = playersList[(myIndex + 2) % 3];
+                                        const sideOpponent = playersList[(myIndex + 1) % 3];
+                                        if (frontOpponent && targetPlayer.id === frontOpponent.id) targetHp = dealer.hp;
+                                        else if (sideOpponent && targetPlayer.id === sideOpponent.id && player3) targetHp = player3.hp;
+                                        else targetHp = player.hp;
+                                    }
+                                    const isTargetDead = targetHp <= 0;
+                                    
+                                    return (
+                                        <button
+                                            key={targetPlayer.id}
+                                            disabled={isTargetDead}
+                                            onClick={() => {
+                                                audioManager.playSound('click');
+                                                onUseItem(pendingItemIndex, targetPlayer.id);
+                                                setPendingItemIndex(null);
+                                            }}
+                                            className={`w-full py-4 px-6 border-2 font-black tracking-widest text-lg uppercase rounded-xl transition-all duration-300 ${
+                                                isTargetDead
+                                                    ? 'bg-stone-950/50 border-stone-900/60 text-stone-600 cursor-not-allowed italic'
+                                                    : 'bg-stone-950 border-stone-800 text-stone-200 hover:border-white hover:bg-stone-100 hover:text-stone-950 active:scale-95'
+                                            }`}
+                                        >
+                                            {targetPlayer.name} {isTargetDead && '(KNOCKED OUT)'}
+                                        </button>
+                                    );
+                                })}
+                        </div>
+                        <button
+                            onClick={() => {
+                                audioManager.playSound('click');
+                                setPendingItemIndex(null);
+                            }}
+                            className="mt-8 text-xs font-black tracking-widest text-stone-500 hover:text-white uppercase transition-colors"
+                        >
+                            [ CANCEL ]
+                        </button>
+                    </div>
+                </div>
             )}
         </>
     );

@@ -6,12 +6,13 @@ export interface TarotCard {
 
 export type ItemType = 'GLASS' | 'BEER' | 'CIGS' | 'CUFFS' | 'SAW' | 'PHONE' | 'INVERTER' | 'ADRENALINE' | 'CHOKE' | 'REMOTE' | 'BIG_INVERTER' | 'CONTRACT' | 'LUCKYCHARM' | 'FLASHBANG' | 'CRUSHER' | 'TOTEM' | 'MIRROR' | 'DECK_CARD' | 'JACKPOT';
 export type ShellType = 'LIVE' | 'BLANK';
-export type TurnOwner = 'PLAYER' | 'DEALER';
-export type CameraView = 'PLAYER' | 'DEALER' | 'GUN' | 'TABLE' | 'STEAL_UI' | 'DEALER_GUN'; // Added DEALER_GUN
-export type AimTarget = 'OPPONENT' | 'SELF' | 'IDLE' | 'CHOOSING';
+export type TurnOwner = 'PLAYER' | 'DEALER' | 'PLAYER3' | 'PLAYER4';
+export type CameraView = 'PLAYER' | 'DEALER' | 'GUN' | 'TABLE' | 'STEAL_UI' | 'DEALER_GUN' | 'PLAYER3_GUN' | 'PLAYER4_GUN';
+export type AimTarget = 'OPPONENT' | 'SELF' | 'IDLE' | 'CHOOSING' | 'LEFT' | 'RIGHT';
 
 export interface GameState {
-  phase: 'BOOT' | 'INTRO' | 'LOAD' | 'PLAYER_TURN' | 'DEALER_TURN' | 'RESOLVING' | 'GAME_OVER' | 'LOOTING' | 'STEALING' | 'CARD_SELECT'; // Added CARD_SELECT
+  phase: 'BOOT' | 'INTRO' | 'LOAD' | 'PLAYER_TURN' | 'DEALER_TURN' | 'PLAYER3_TURN' | 'PLAYER4_TURN' | 'RESOLVING' | 'GAME_OVER' | 'LOOTING' | 'STEALING' | 'CARD_SELECT';
+
   turnOwner: TurnOwner;
   winner: TurnOwner | null;
   chamber: ShellType[];
@@ -22,7 +23,10 @@ export interface GameState {
   roundCount: number;
   isHardMode: boolean;
   isMultiplayer?: boolean;
+  isThreePlayer?: boolean;
+  isFourPlayer?: boolean;
   opponentName?: string;
+  localPlayerId?: string;
   multiplayerState?: MultiplayerGameState;
   hardModeState?: {
     round: number;
@@ -42,6 +46,10 @@ export interface GameState {
   isDebugUsed?: boolean; // Added
   deckCards?: TarotCard[]; // Selected 6 cards
   selectedCardIndex?: number | null; // Chosen card index
+  adrenalineTargetOwner?: TurnOwner;
+  winnerId?: string;
+  threePlayerWins?: number[];
+  fourPlayerWins?: number[];
 }
 
 export interface MultiplayerGameState {
@@ -131,6 +139,12 @@ export interface AnimationState {
   playerHit: boolean;
   playerRecovering: boolean; // Player is standing back up after being knocked
   dealerRecovering: boolean; // Dealer is standing back up after being knocked
+  player3Hit?: boolean;
+  player3Dropping?: boolean;
+  player3Recovering?: boolean;
+  player4Hit?: boolean;
+  player4Dropping?: boolean;
+  player4Recovering?: boolean;
 }
 
 export interface GameSettings {
