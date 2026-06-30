@@ -148,6 +148,16 @@ class AudioManager {
         // Clone for polyphony (multiple overlapping sounds)
         // Optimization: For mobile, limit concurrent sounds if needed, but modern devices handle 5-10 fine.
         const sound = original.cloneNode() as HTMLAudioElement;
+        sound.preload = 'auto';
+        sound.muted = false;
+        if (sound.readyState < 2) {
+            try {
+                sound.load();
+            } catch (e) {
+                // Some browsers may reject load on cloned objects.
+            }
+        }
+        sound.currentTime = 0;
 
         // BOOST specific sounds
         const boostMap: { [key: string]: number } = {

@@ -114,6 +114,8 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
     const containerRef = useRef<HTMLDivElement>(null);
     // Pre-allocated reusable vectors — avoids GC allocations inside gun-fire effects
     const _recoilFwd = useRef(new THREE.Vector3());
+    const _muzzleFlashDir = useRef(new THREE.Vector3());
+    const _sparkSpread = useRef(new THREE.Vector3());
 
     const propsRef = useRef({
         isSawed,
@@ -167,6 +169,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
 
     const sceneRef = useRef<SceneContext | null>(null);
     const tagProjectionVec = useRef(new THREE.Vector3());
+    const worldPositionVec = useRef(new THREE.Vector3());
 
 
 
@@ -231,8 +234,6 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
         let time = 0;
         let lastTime = performance.now();
         const isLowEndMobile = isMobile && (isAndroid || window.devicePixelRatio < 2);
-        const targetFPS = isLowEndMobile ? 30 : 60; // Unlock 60FPS for high-end mobile
-        const frameInterval = 1000 / targetFPS;
         let lastFrameTime = performance.now();
         let isTabVisible = true;
 
@@ -240,6 +241,8 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
         let fpsTimeStart = performance.now();
         let fpsAverages: number[] = [];
         let hasShownPerfWarning = false;
+        let nameTagFrameCounter = 0;
+        const nameTagUpdateInterval = 3;
 
         const handleVisibilityChange = () => {
             if (document.hidden || document.visibilityState !== 'visible') {
@@ -329,23 +332,31 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
             updateScene(sceneRef.current, propsRef.current, time, delta);
 
             if (sceneRef.current && propsRef.current.onUpdateNameTags) {
-                const { scene, camera } = sceneRef.current;
-                const tempV = tagProjectionVec.current;
+                if (++nameTagFrameCounter % nameTagUpdateInterval !== 0) {
+                    return;
+                }
+
+                const { scene, camera, dealerGroup } = sceneRef.current;
+                const worldPos = worldPositionVec.current;
                 const tagsList: { name: string, x: number, y: number, visible: boolean }[] = [];
 
-                const addHeadTag = (parentName: string, label: string) => {
-                    const parent = scene.getObjectByName(parentName);
-                    if (!parent) return;
-                    const head = parent.getObjectByName('HEAD');
+                const getCachedHead = (cacheKey: string, groupName: string) => {
+                    if (scene.userData[cacheKey] === undefined) {
+                        const group = scene.getObjectByName(groupName);
+                        scene.userData[cacheKey] = group?.getObjectByName('HEAD') || null;
+                    }
+                    return scene.userData[cacheKey] as THREE.Object3D | null;
+                };
+
+                const addHeadTag = (head: THREE.Object3D | null, label: string) => {
                     if (!head) return;
+                    head.getWorldPosition(worldPos);
+                    worldPos.y += 2.4;
+                    worldPos.project(camera);
 
-                    tempV.setFromMatrixPosition(head.matrixWorld);
-                    tempV.y += 2.4;
-                    tempV.project(camera);
-
-                    const x = (tempV.x * 0.5 + 0.5) * 100;
-                    const y = (tempV.y * -0.5 + 0.5) * 100;
-                    const visible = tempV.z <= 1.0;
+                    const x = (worldPos.x * 0.5 + 0.5) * 100;
+                    const y = (worldPos.y * -0.5 + 0.5) * 100;
+                    const visible = worldPos.z <= 1.0;
 
                     tagsList.push({ name: label, x, y, visible });
                 };
@@ -354,23 +365,27 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
                 const myId = propsRef.current.gameState.localPlayerId || '';
                 const myIndex = players.findIndex((p: any) => p.id === myId);
 
-                addHeadTag('DEALER', propsRef.current.gameState.opponentName || 'OPPONENT');
+                const dealerHead = scene.userData.cachedDealerHead || dealerGroup.getObjectByName('HEAD');
+                if (!scene.userData.cachedDealerHead) scene.userData.cachedDealerHead = dealerHead;
+                addHeadTag(dealerHead, propsRef.current.gameState.opponentName || 'OPPONENT');
 
+                const player3Head = getCachedHead('cachedPlayer3Head', 'PLAYER3');
                 let player3Name = 'OPPONENT 2';
                 if (myIndex !== -1) {
                     const size = players.length >= 4 ? 4 : 3;
                     const sideOpponent = players[(myIndex + 1) % size];
                     if (sideOpponent) player3Name = sideOpponent.name;
                 }
-                addHeadTag('PLAYER3', player3Name);
+                addHeadTag(player3Head, player3Name);
 
                 if (players.length >= 4) {
+                    const player4Head = getCachedHead('cachedPlayer4Head', 'PLAYER4');
                     let player4Name = 'OPPONENT 3';
                     if (myIndex !== -1) {
                         const rightOpponent = players[(myIndex + 3) % 4];
                         if (rightOpponent) player4Name = rightOpponent.name;
                     }
-                    addHeadTag('PLAYER4', player4Name);
+                    addHeadTag(player4Head, player4Name);
                 }
 
                 propsRef.current.onUpdateNameTags(tagsList);
@@ -678,18 +693,22 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
                 const pos = sparkParticles.geometry.attributes.position.array as Float32Array;
                 const vel = sparkParticles.geometry.attributes.velocity.array as Float32Array;
                 const count = pos.length / 3;
-                for (let i = 0; i < count; i++) {
-                    if (i < 60) {
-                        const idx = i * 3;
-                        pos[idx] = muzzleLight.position.x + (Math.random() - 0.5) * 0.3;
-                        pos[idx + 1] = muzzleLight.position.y + (Math.random() - 0.5) * 0.3;
-                        pos[idx + 2] = muzzleLight.position.z + (Math.random() - 0.5) * 0.3;
-                        const spread = new THREE.Vector3((Math.random() - 0.5) * 2, (Math.random() - 0.5) * 2, (Math.random() - 0.5) * 2).multiplyScalar(0.5);
-                        const blast = dir.clone().multiplyScalar(1.0 + Math.random() * 2.0);
-                        vel[idx] = blast.x + spread.x;
-                        vel[idx + 1] = blast.y + spread.y;
-                        vel[idx + 2] = blast.z + spread.z;
-                    }
+                const spread = _sparkSpread.current;
+                const blastBase = dir.clone();
+                for (let i = 0; i < count && i < 60; i++) {
+                    const idx = i * 3;
+                    pos[idx] = muzzleLight.position.x + (Math.random() - 0.5) * 0.3;
+                    pos[idx + 1] = muzzleLight.position.y + (Math.random() - 0.5) * 0.3;
+                    pos[idx + 2] = muzzleLight.position.z + (Math.random() - 0.5) * 0.3;
+                    spread.set(
+                        (Math.random() - 0.5) * 1.0,
+                        (Math.random() - 0.5) * 1.0,
+                        (Math.random() - 0.5) * 1.0,
+                    );
+                    const blast = blastBase.multiplyScalar(1.0 + Math.random() * 2.0);
+                    vel[idx] = blast.x + spread.x;
+                    vel[idx + 1] = blast.y + spread.y;
+                    vel[idx + 2] = blast.z + spread.z;
                 }
                 sparkParticles.geometry.attributes.position.needsUpdate = true;
             } else {

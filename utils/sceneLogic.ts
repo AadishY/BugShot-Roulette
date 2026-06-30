@@ -158,11 +158,11 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
 
         if (isSelfTarget) {
             targets.targetPos.set(-5.5, 1.2, -2);
-            targets.targetRot.set(0.2, Math.PI / 2 + Math.PI, 0);
+            targets.targetRot.set(0.2, Math.PI / 2, 0);
             targetGunLightIntensity = 5.0;
         } else if (isDealerTarget) {
             targets.targetPos.set(-4, 0.8, -5);
-            targets.targetRot.set(0.15, Math.PI + Math.PI / 3, 0);
+            targets.targetRot.set(0.15, Math.PI / 3, 0);
             targetGunLightIntensity = 5.0;
         } else if (isPlayerTarget) {
             targets.targetPos.set(-3, 0.8, 3);
@@ -187,11 +187,11 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
 
         if (isSelfTarget) {
             targets.targetPos.set(5.5, 1.2, -2);
-            targets.targetRot.set(0.2, -Math.PI / 2 + Math.PI, 0);
+            targets.targetRot.set(0.2, -Math.PI / 2, 0);
             targetGunLightIntensity = 5.0;
         } else if (isDealerTarget) {
             targets.targetPos.set(4, 0.8, -5);
-            targets.targetRot.set(0.15, Math.PI - Math.PI / 3, 0);
+            targets.targetRot.set(0.15, -Math.PI / 3, 0);
             targetGunLightIntensity = 5.0;
         } else if (isPlayerTarget) {
             targets.targetPos.set(3, 0.8, 3);
@@ -203,10 +203,10 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
             targetGunLightIntensity = 5.0;
         } else if (cameraView === 'PLAYER4_GUN') {
             targets.targetPos.set(6, 0.8, -2);
-            targets.targetRot.set(0, -Math.PI / 2, Math.PI / 2);
+            targets.targetRot.set(0, -Math.PI / 2, -Math.PI / 2);
         } else {
             targets.targetPos.set(6, -0.6, -2);
-            targets.targetRot.set(0, -Math.PI / 2, Math.PI / 2);
+            targets.targetRot.set(0, -Math.PI / 2, -Math.PI / 2);
         }
     } else {
         const isMP = gameState?.isMultiplayer;
@@ -626,7 +626,8 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
     const dealerDamping = 1 - Math.exp(-dealerSpeed * dt);
     dealerGroup.position.y += (dealerTargetY - dealerGroup.position.y) * dealerDamping;
 
-    const player3Group = scene.getObjectByName('PLAYER3');
+    const player3Group = scene.userData.cachedPlayer3Group || scene.getObjectByName('PLAYER3');
+    if (!scene.userData.cachedPlayer3Group) scene.userData.cachedPlayer3Group = player3Group;
     if (player3Group) {
         const p3BaseY = -4.5;
         let p3TargetY = p3BaseY;
@@ -648,14 +649,16 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
         const p3Damping = 1 - Math.exp(-p3Speed * dt);
         player3Group.position.y += (p3TargetY - player3Group.position.y) * p3Damping;
 
-        const p3Head = player3Group.getObjectByName("HEAD");
+        const p3Head = scene.userData.cachedPlayer3Head || player3Group.getObjectByName("HEAD");
+        if (!scene.userData.cachedPlayer3Head) scene.userData.cachedPlayer3Head = p3Head;
         if (p3Head) {
             p3Head.rotation.y = THREE.MathUtils.lerp(p3Head.rotation.y, -mouse.x * 0.2, 1 - Math.exp(-3.1 * dt));
             p3Head.rotation.x = THREE.MathUtils.lerp(p3Head.rotation.x, mouse.y * 0.1, 1 - Math.exp(-3.1 * dt));
         }
     }
 
-    const player4Group = scene.getObjectByName('PLAYER4');
+    const player4Group = scene.userData.cachedPlayer4Group || scene.getObjectByName('PLAYER4');
+    if (!scene.userData.cachedPlayer4Group) scene.userData.cachedPlayer4Group = player4Group;
     if (player4Group) {
         const p4BaseY = -4.5;
         let p4TargetY = p4BaseY;
@@ -677,7 +680,8 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
         const p4Damping = 1 - Math.exp(-p4Speed * dt);
         player4Group.position.y += (p4TargetY - player4Group.position.y) * p4Damping;
 
-        const p4Head = player4Group.getObjectByName("HEAD");
+        const p4Head = scene.userData.cachedPlayer4Head || player4Group.getObjectByName("HEAD");
+        if (!scene.userData.cachedPlayer4Head) scene.userData.cachedPlayer4Head = p4Head;
         if (p4Head) {
             p4Head.rotation.y = THREE.MathUtils.lerp(p4Head.rotation.y, -mouse.x * 0.2, 1 - Math.exp(-3.1 * dt));
             p4Head.rotation.x = THREE.MathUtils.lerp(p4Head.rotation.x, mouse.y * 0.1, 1 - Math.exp(-3.1 * dt));

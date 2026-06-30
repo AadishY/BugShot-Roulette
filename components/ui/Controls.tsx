@@ -21,7 +21,7 @@ interface ControlsProps {
     isRecovering?: boolean; // Whether player/dealer is knocked and recovering
     onPickupGun: () => void;
     onFireShot: (target: TurnOwner, targetId?: string) => void;
-    onHoverTarget: (target: AimTarget) => void;
+    onHoverTarget: (target: AimTarget, targetId?: string) => void;
     currentAimTarget?: AimTarget;
     isMultiplayer?: boolean;
     isThreePlayer?: boolean;
@@ -114,7 +114,7 @@ const ControlsComponent: React.FC<ControlsProps> = ({
 
                             const handleChooseOpponent = (relTarget: TurnOwner, intendedAim: AimTarget, oppId: string) => {
                                 if (isMobile && currentAimTarget !== intendedAim) {
-                                    onHoverTarget(intendedAim);
+                                    onHoverTarget(intendedAim, oppId);
                                     return;
                                 }
                                 onFireShot(relTarget, oppId);
@@ -122,7 +122,7 @@ const ControlsComponent: React.FC<ControlsProps> = ({
 
                             const handleChooseSelf = () => {
                                 if (isMobile && currentAimTarget !== 'SELF') {
-                                    onHoverTarget('SELF');
+                                    onHoverTarget('SELF', mpMyPlayerId || undefined);
                                     return;
                                 }
                                 onFireShot('PLAYER');
@@ -147,7 +147,7 @@ const ControlsComponent: React.FC<ControlsProps> = ({
                                                     handleChooseOpponent('DEALER', 'OPPONENT', frontOpponent.id);
                                                 }}
                                                 disabled={isProcessing}
-                                                onMouseEnter={() => !isMobile && !isProcessing && onHoverTarget('OPPONENT')}
+                                                onMouseEnter={() => !isMobile && !isProcessing && onHoverTarget('OPPONENT', frontOpponent.id)}
                                                 onMouseLeave={() => !isMobile && !isProcessing && onHoverTarget('CHOOSING')}
                                                 className={`${shootFrontBtnClass} w-full justify-center`}
                                             >
@@ -166,7 +166,7 @@ const ControlsComponent: React.FC<ControlsProps> = ({
                                                     handleChooseOpponent('PLAYER3', 'LEFT', (size === 4 ? leftOpponent! : sideOpponent).id);
                                                 }}
                                                 disabled={isProcessing}
-                                                onMouseEnter={() => !isMobile && !isProcessing && onHoverTarget('LEFT')}
+                                                onMouseEnter={() => !isMobile && !isProcessing && onHoverTarget('LEFT', (size === 4 ? leftOpponent! : sideOpponent).id)}
                                                 onMouseLeave={() => !isMobile && !isProcessing && onHoverTarget('CHOOSING')}
                                                 className={`${shootFrontBtnClass} w-full justify-center`}
                                             >
@@ -200,7 +200,7 @@ const ControlsComponent: React.FC<ControlsProps> = ({
                                                     handleChooseOpponent(size === 4 ? 'PLAYER4' : 'PLAYER3', 'RIGHT', (size === 4 ? rightOpponent! : sideOpponent).id);
                                                 }}
                                                 disabled={isProcessing}
-                                                onMouseEnter={() => !isMobile && !isProcessing && onHoverTarget('RIGHT')}
+                                                onMouseEnter={() => !isMobile && !isProcessing && onHoverTarget('RIGHT', (size === 4 ? rightOpponent! : sideOpponent).id)}
                                                 onMouseLeave={() => !isMobile && !isProcessing && onHoverTarget('CHOOSING')}
                                                 className={`${shootFrontBtnClass} w-full justify-center`}
                                             >
@@ -229,7 +229,7 @@ const ControlsComponent: React.FC<ControlsProps> = ({
                                                     handleShootOpponent(opp.id);
                                                 }}
                                                 disabled={isProcessing}
-                                                onMouseEnter={() => window.matchMedia('(hover: hover)').matches && !isProcessing && onHoverTarget('OPPONENT')}
+                                                onMouseEnter={() => window.matchMedia('(hover: hover)').matches && !isProcessing && onHoverTarget('OPPONENT', opp.id)}
                                                 onMouseLeave={() => window.matchMedia('(hover: hover)').matches && !isProcessing && onHoverTarget('CHOOSING')}
                                                 className={oppBtnClass}
                                             >
@@ -263,7 +263,7 @@ const ControlsComponent: React.FC<ControlsProps> = ({
                                         handleShootSelf();
                                     }}
                                     disabled={isProcessing}
-                                    onMouseEnter={() => window.matchMedia('(hover: hover)').matches && !isProcessing && onHoverTarget('SELF')}
+                                    onMouseEnter={() => window.matchMedia('(hover: hover)').matches && !isProcessing && onHoverTarget('SELF', mpMyPlayerId || undefined)}
                                     onMouseLeave={() => window.matchMedia('(hover: hover)').matches && !isProcessing && onHoverTarget('CHOOSING')}
                                     className={isPotato
                                         ? "bg-neutral-900 border border-stone-850 px-5 py-3 lg:px-8 lg:py-5 text-stone-400 font-black text-xs lg:text-xl hover:bg-neutral-850 hover:text-white tracking-wide flex items-center gap-2 disabled:opacity-50"

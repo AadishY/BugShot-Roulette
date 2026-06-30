@@ -834,16 +834,17 @@ export const useGameLogic = () => {
 
   const getPlayerNameByOwner = (owner: TurnOwner) => {
     if (owner === 'PLAYER') return playerName || 'PLAYER';
-    if (gameStateRef.current.isThreePlayer && gameStateRef.current.multiplayerState?.players) {
-        const players = gameStateRef.current.multiplayerState.players;
-        const myId = gameStateRef.current.localPlayerId || '';
-        const myIndex = players.findIndex(p => p.id === myId);
-        if (myIndex !== -1) {
-            const frontOpponent = players[(myIndex + 2) % 3];
-            const sideOpponent = players[(myIndex + 1) % 3];
-            if (owner === 'DEALER') return frontOpponent?.name || 'OPPONENT 1';
-            if (owner === 'PLAYER3') return sideOpponent?.name || 'OPPONENT 2';
-        }
+    const players = gameStateRef.current.multiplayerState?.players || [];
+    const myId = gameStateRef.current.localPlayerId || '';
+    const myIndex = players.findIndex(p => p.id === myId);
+    if (myIndex !== -1 && players.length >= 3) {
+      const size = players.length;
+      const frontOpponent = players[(myIndex + 2) % size];
+      const sideOpponent = players[(myIndex + 1) % size];
+      const rightOpponent = size >= 4 ? players[(myIndex + 3) % size] : null;
+      if (owner === 'DEALER') return frontOpponent?.name || 'OPPONENT 1';
+      if (owner === 'PLAYER3') return sideOpponent?.name || 'OPPONENT 2';
+      if (owner === 'PLAYER4') return rightOpponent?.name || 'OPPONENT 3';
     }
     return owner === 'DEALER' ? (gameStateRef.current.opponentName || 'OPPONENT') : 'OPPONENT 2';
   };
@@ -851,29 +852,46 @@ export const useGameLogic = () => {
   const resolveTargetOwner = (targetPlayerId: string, localPlayerId: string, players: any[]): TurnOwner => {
     if (!targetPlayerId) return 'DEALER';
     if (targetPlayerId === localPlayerId) return 'PLAYER';
-    if (!gameStateRef.current.isThreePlayer) return 'DEALER';
-    
+
+    const size = players?.length || 0;
+    const myIndex = players ? players.findIndex(p => p.id === localPlayerId) : -1;
+    if (myIndex === -1 || size < 2) return 'DEALER';
+
     let absoluteId = targetPlayerId;
-    if (targetPlayerId === 'PLAYER' || targetPlayerId === 'PLAYER3' || targetPlayerId === 'DEALER') {
-      let absoluteIndex = 0;
-      if (targetPlayerId === 'PLAYER3') absoluteIndex = 1;
-      else if (targetPlayerId === 'DEALER') absoluteIndex = 2;
-      
-      if (players && players[absoluteIndex]) {
-        absoluteId = players[absoluteIndex].id;
+    if (['PLAYER', 'PLAYER3', 'PLAYER4', 'DEALER'].includes(targetPlayerId)) {
+      if (targetPlayerId === 'PLAYER') {
+        absoluteId = localPlayerId;
+      } else if (targetPlayerId === 'DEALER') {
+        absoluteId = players[(myIndex + 2) % size]?.id || localPlayerId;
+      } else if (targetPlayerId === 'PLAYER3') {
+        absoluteId = players[(myIndex + 1) % size]?.id || localPlayerId;
+      } else if (targetPlayerId === 'PLAYER4') {
+        absoluteId = players[(myIndex + (size === 4 ? 3 : 1)) % size]?.id || localPlayerId;
       }
     }
 
     if (absoluteId === localPlayerId) return 'PLAYER';
-    const myIndex = players ? players.findIndex(p => p.id === localPlayerId) : -1;
-    if (myIndex === -1) return 'DEALER';
-    
-    const frontOpponent = players[(myIndex + 2) % 3];
-    const sideOpponent = players[(myIndex + 1) % 3];
-    
-    if (frontOpponent && absoluteId === frontOpponent.id) return 'DEALER';
-    if (sideOpponent && absoluteId === sideOpponent.id) return 'PLAYER3';
-    return 'DEALER'; // fallback
+    const targetIndex = players.findIndex(p => p.id === absoluteId);
+    if (targetIndex === -1) return 'DEALER';
+
+    if (size === 2) {
+      return 'DEALER';
+    }
+
+    if (size === 3) {
+      if (targetIndex === (myIndex + 2) % 3) return 'DEALER';
+      if (targetIndex === (myIndex + 1) % 3) return 'PLAYER3';
+      return 'DEALER';
+    }
+
+    if (size >= 4) {
+      if (targetIndex === (myIndex + 2) % size) return 'DEALER';
+      if (targetIndex === (myIndex + 1) % size) return 'PLAYER3';
+      if (targetIndex === (myIndex + 3) % size) return 'PLAYER4';
+      return 'DEALER';
+    }
+
+    return 'DEALER';
   };
 
   const fireShot = async (shooter: TurnOwner, target: TurnOwner) => {
@@ -2233,10 +2251,15 @@ export const useGameLogic = () => {
         const lieProb = remaining > 2 ? 0.0 : (remaining === 2 ? 0.10 : 0.25);
         const isLying = Math.random() < lieProb;
         const displayedShell = isLying ? (actualShell === 'LIVE' ? 'BLANK' : 'LIVE') : actualShell;
-        
+
         const displayText = `🃏 THE FOOL: ${positionText} IS ${displayedShell}`;
         addLog(`Tarot reveal: ${positionText} is ${displayedShell}`, 'info');
-        setOverlayText(displayText);
+
+        if (turnOwner === 'PLAYER') {
+          setOverlayText(displayText);
+        } else {
+          setOverlayText(`🃏 THE FOOL: ${userName.toUpperCase()} IS SEEING THE FUTURE...`);
+        }
         break;
       }
       

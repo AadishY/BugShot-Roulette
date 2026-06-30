@@ -40,9 +40,9 @@ interface GameUIProps {
     settings: GameSettings;
     onStartGame: (name: string, hardMode?: boolean) => void;
     onResetGame: (toMenu: boolean) => void;
-    onFireShot: (target: TurnOwner) => void;
+    onFireShot: (target: TurnOwner, targetId?: string) => void;
     onUseItem: (index: number, targetPlayerId?: string) => void;
-    onHoverTarget: (target: AimTarget) => void;
+    onHoverTarget: (target: AimTarget, targetId?: string) => void;
     onPickupGun: () => void;
     onOpenSettings: () => void;
     onOpenGuide: () => void;

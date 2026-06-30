@@ -184,9 +184,9 @@ const InventoryComponent: React.FC<InventoryProps> = ({ player, dealer, gameStat
         'JACKPOT': 'JACKPOT'
     };
 
-    let containerClass = "relative flex gap-1 md:gap-3 p-2 md:p-4 bg-gradient-to-t from-black/95 to-black/70 border-t border-l border-r border-white/10 backdrop-blur-3xl min-h-[40px] md:min-h-[140px] items-end overflow-x-auto md:overflow-visible max-w-full [&::-webkit-scrollbar]:hidden [scrollbar-width:none] rounded-t-[2rem]";
+    let containerClass = "relative flex gap-1 md:gap-3 p-2 md:p-4 bg-gradient-to-t from-black/95 to-black/70 border-t border-l border-r border-white/10 backdrop-blur-3xl min-h-[40px] md:min-h-[100px] items-end overflow-x-auto overflow-y-visible md:overflow-visible max-w-full [&::-webkit-scrollbar]:hidden [scrollbar-width:none] rounded-t-[2rem]";
     if (isPotato) {
-        containerClass = "relative flex gap-1 md:gap-3 p-2 md:p-3 bg-neutral-950 border-t border-neutral-800 min-h-[40px] md:min-h-[120px] items-end overflow-x-auto md:overflow-visible max-w-full [&::-webkit-scrollbar]:hidden [scrollbar-width:none] rounded-none";
+        containerClass = "relative flex gap-1 md:gap-3 p-2 md:p-3 bg-neutral-950 border-t border-neutral-800 min-h-[40px] md:min-h-[100px] items-end overflow-x-auto overflow-y-visible md:overflow-visible max-w-full [&::-webkit-scrollbar]:hidden [scrollbar-width:none] rounded-none";
     } else if (isBalanced) {
         containerClass += " shadow-none";
     } else {
@@ -194,7 +194,9 @@ const InventoryComponent: React.FC<InventoryProps> = ({ player, dealer, gameStat
     }
 
     const hoveredItem = hoveredIdx !== null ? player.items[hoveredIdx] : null;
-    const isHoveredCuffDisabled = hoveredItem === 'CUFFS' && dealer.isHandcuffed;
+    const selectedItem = selectedIdx !== null ? player.items[selectedIdx] : null;
+    const mobileTooltipItem = isMobileView ? hoveredItem ?? selectedItem : hoveredItem;
+    const isHoveredCuffDisabled = (hoveredItem ?? selectedItem) === 'CUFFS' && dealer.isHandcuffed;
 
     return (
         <div className="flex-1 flex justify-center gap-1 pointer-events-auto h-full items-end relative w-full">
@@ -208,13 +210,13 @@ const InventoryComponent: React.FC<InventoryProps> = ({ player, dealer, gameStat
             )}
 
             {/* Center-aligned mobile description banner when holding/hovering an item on mobile */}
-            {isMobileView && hoveredIdx !== null && hoveredItem && (
-                <div className="absolute bottom-[115%] left-1/2 -translate-x-1/2 w-[92%] max-w-xs bg-black/95 border border-red-500/20 rounded-xl p-3 text-center pointer-events-none z-[120] text-stone-300 shadow-[0_15px_30px_rgba(0,0,0,0.95)] animate-in fade-in slide-in-from-bottom-2 duration-150">
+            {isMobileView && mobileTooltipItem && (
+                <div className="fixed bottom-[100px] left-1/2 -translate-x-1/2 w-[92%] max-w-xs bg-black/95 border border-red-500/20 rounded-xl p-3 text-center pointer-events-none z-[999] text-stone-300 shadow-[0_15px_30px_rgba(0,0,0,0.95)] animate-in fade-in slide-in-from-bottom-2 duration-150">
                     <div className="font-black text-red-500 mb-1 tracking-widest text-[11px] uppercase border-b border-red-950/20 pb-1">
-                        {ITEM_NAMES[hoveredItem]}
+                        {ITEM_NAMES[mobileTooltipItem]}
                     </div>
                     <div className="text-stone-400 text-[10px] leading-relaxed">
-                        {ITEM_DESCRIPTIONS[hoveredItem]}
+                        {ITEM_DESCRIPTIONS[mobileTooltipItem]}
                     </div>
                     {isHoveredCuffDisabled && (
                         <div className="text-red-500 mt-1.5 font-bold border-t border-red-950/30 pt-1 tracking-wider uppercase text-[8px]">ALREADY CUFFED</div>
@@ -263,9 +265,9 @@ const InventoryComponent: React.FC<InventoryProps> = ({ player, dealer, gameStat
 
                     let btnClass = "";
                     if (isPotato) {
-                        btnClass = `w-14 h-18 md:w-22 md:h-30 bg-neutral-900 border ${isCuffDisabled ? 'border-red-900 bg-red-950/30' : 'border-stone-850'} flex flex-col items-center justify-center hover:bg-neutral-850 disabled:opacity-25 disabled:cursor-not-allowed relative overflow-hidden rounded-md transition-all duration-150`;
+                        btnClass = `w-14 h-16 md:w-24 md:h-24 bg-neutral-900 border ${isCuffDisabled ? 'border-red-900 bg-red-950/30' : 'border-stone-850'} flex flex-col items-center justify-center hover:bg-neutral-850 disabled:opacity-25 disabled:cursor-not-allowed relative overflow-hidden rounded-md transition-all duration-150`;
                     } else {
-                        btnClass = `w-14 h-18 md:w-24 md:h-32 bg-zinc-950/60 border-2 ${isCuffDisabled ? 'border-red-900/50 bg-red-950/10' : BORDER_COLORS[item]} flex flex-col items-center justify-center hover:bg-stone-900/40 disabled:opacity-20 disabled:cursor-not-allowed transition-all duration-300 relative overflow-hidden rounded-xl ${isBalanced ? '' : 'shadow-[0_10px_30px_rgba(0,0,0,0.5)]'}`;
+                        btnClass = `w-10 h-16 md:w-24 md:h-24 bg-zinc-950/60 border-2 ${isCuffDisabled ? 'border-red-900/50 bg-red-950/10' : BORDER_COLORS[item]} flex flex-col items-center justify-center hover:bg-stone-900/40 disabled:opacity-20 disabled:cursor-not-allowed transition-all duration-300 relative overflow-hidden rounded-xl ${isBalanced ? '' : 'shadow-[0_10px_30px_rgba(0,0,0,0.5)]'}`;
                     }
 
                     if (isSelected) {
@@ -279,7 +281,7 @@ const InventoryComponent: React.FC<InventoryProps> = ({ player, dealer, gameStat
                     return (
                         <div
                             key={idx}
-                            className="group relative shrink-0"
+                            className="group relative shrink-0 overflow-visible"
                             onMouseEnter={() => {
                                 setHoveredIdx(idx);
                                 if (!isUsageDisabled) audioManager.playSound('click');
@@ -390,9 +392,9 @@ const InventoryComponent: React.FC<InventoryProps> = ({ player, dealer, gameStat
                             </button>
 
                             <div className={`${isPotato 
-                                ? "absolute bottom-[190%] md:bottom-[115%] left-1/2 -translate-x-1/2 w-48 bg-black border border-stone-800 p-2 text-[10px] text-center pointer-events-none z-[100] text-stone-300 shadow-md"
-                                : "absolute bottom-[190%] md:bottom-[115%] left-1/2 -translate-x-1/2 w-48 bg-stone-950/98 border border-stone-800 rounded-lg p-2.5 text-[10px] text-center pointer-events-none z-[100] text-stone-300 shadow-[0_15px_30px_rgba(0,0,0,0.9)] animate-in fade-in zoom-in-95 duration-150"
-                            } ${showTooltip ? 'md:block' : 'hidden'} hidden`}>
+                                ? 'absolute left-full top-1/2 -translate-y-1/2 ml-3 w-48 bg-black border border-stone-800 p-2 text-[10px] text-left pointer-events-none z-[100] text-stone-300 shadow-md'
+                                : 'absolute left-full top-1/2 -translate-y-1/2 ml-3 w-48 bg-stone-950/98 border border-stone-800 rounded-lg p-2.5 text-[10px] text-left pointer-events-none z-[100] text-stone-300 shadow-[0_15px_30px_rgba(0,0,0,0.9)] animate-in fade-in zoom-in-95 duration-150'
+                            } ${showTooltip ? 'md:block' : 'hidden'} z-[150]`}>
                                 <div className="font-black text-white mb-1.5 tracking-widest text-[11px] uppercase border-b border-white/5 pb-1">
                                     {ITEM_NAMES[item]}
                                 </div>
