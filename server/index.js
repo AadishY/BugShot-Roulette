@@ -173,8 +173,15 @@ const io = new Server(httpServer, {
     cookie: false,             // Avoid parsing session cookies to preserve packet header bandwidth
     transports: ['websocket', 'polling'], // Prefer native ultra-speed WebSockets
     allowEIO3: true,           // Backwards compatibility layer support fallback
-    maxHttpBufferSize: 1e6     // Hard ceiling packet capacity threshold at 1MB to protect against buffer exploits
+    maxHttpBufferSize: 1e6,    // Hard ceiling packet capacity threshold at 1MB to protect against buffer exploits
+    perMessageDeflate: { threshold: 512 } // Compress large sync payloads without taxing small action packets
 });
+
+const RECONNECT_GRACE_MS = 15000;
+const THROTTLE_EXEMPT_ACTIONS = new Set([
+    'SHOOT', 'SYNC_STATE', 'SYNC_THREE_PLAYER_STATE',
+    'SYNC_ROUND', 'SYNC_THREE_PLAYER_ROUND'
+]);
 
 // --- ENGINE RADAR TERMINAL PAGE ---
 // Accessing the root server URL parses a high-contrast industrial diagnostic dark dashboard
@@ -455,8 +462,59 @@ const createRoomObject = (roomId, hostId, hostName, settings) => {
     };
 };
 
+const finalizeMidGameAbort = (room, roomId, disconnectedName) => {
+    room.gameState = null;
+    room.players.forEach(p => {
+        if (p.disconnectTimer) clearTimeout(p.disconnectTimer);
+        p.ready = false;
+        p.items = [];
+        p.isHandcuffed = false;
+        p.isSawedActive = false;
+        p.disconnected = false;
+        delete p.disconnectTimer;
+    });
+    io.to(roomId).emit('matchAborted', { abortedBy: disconnectedName });
+    io.to(roomId).emit('roomUpdated', room);
+};
+
 const joinSocketToRoom = (socket, room, playerName, authId) => {
-    if (room.players.length >= 4) {
+    const newPlayerName = playerName ? playerName.trim().substring(0, 14) : `Player ${room.players.length + 1}`;
+    const cleanAuthId = authId ? authId.trim().toLowerCase() : null;
+
+    // Mid-game reconnect for logged-in players within grace window
+    if (room.gameState && cleanAuthId) {
+        const pendingIndex = room.players.findIndex(p => p.disconnected && p.authId === cleanAuthId);
+        if (pendingIndex !== -1) {
+            const returning = room.players[pendingIndex];
+            if (returning.disconnectTimer) clearTimeout(returning.disconnectTimer);
+            returning.id = socket.id;
+            returning.disconnected = false;
+            returning.name = newPlayerName;
+            delete returning.disconnectTimer;
+            room.lastActivity = Date.now();
+            socket.join(room.id);
+
+            const reconnectMessage = {
+                sender: 'SYSTEM',
+                color: '#737373',
+                text: `${returning.name} reconnected to the match.`,
+                timestamp: Date.now()
+            };
+            room.messages.push(reconnectMessage);
+            if (room.messages.length > 50) room.messages.shift();
+
+            io.to(room.id).emit('roomUpdated', room);
+            socket.emit('joinedRoom', { room, playerId: socket.id, reconnected: true });
+            io.to(room.id).emit('chatMessageReceived', reconnectMessage);
+            io.to(room.id).emit('requestFullSync', { forPlayerId: socket.id });
+            console.log(`[MID-GAME RECONNECT] ${returning.name} restored in room ${room.id}`);
+            return;
+        }
+        socket.emit('error', 'Match is already in progress in this room.');
+        return;
+    }
+
+    if (room.players.filter(p => !p.disconnected).length >= 4) {
         socket.emit('error', 'Lobby is full (Max 4 players allowed).');
         return;
     }
@@ -465,12 +523,9 @@ const joinSocketToRoom = (socket, room, playerName, authId) => {
         return;
     }
 
-    const newPlayerName = playerName ? playerName.trim().substring(0, 14) : `Player ${room.players.length + 1}`;
-    const cleanAuthId = authId ? authId.trim().toLowerCase() : null;
-
     // Reconnection: Only reconnect if both the existing and joining player share the same authId (logged-in account)
     if (cleanAuthId) {
-        const existingPlayerIndex = room.players.findIndex(p => p.authId && p.authId === cleanAuthId);
+        const existingPlayerIndex = room.players.findIndex(p => p.authId && p.authId === cleanAuthId && !p.disconnected);
         if (existingPlayerIndex !== -1) {
             const oldPlayer = room.players[existingPlayerIndex];
             console.log(`[RECONNECT] Player ${oldPlayer.name} (authId: ${cleanAuthId}) reconnected. Updating socket ID from ${oldPlayer.id} to ${socket.id}`);
@@ -554,145 +609,13 @@ const joinSocketToRoom = (socket, room, playerName, authId) => {
 io.on('connection', (socket) => {
     activeConnectionsCount++;
     let requestPacketCounter = 0;
+    let hoverPacketCounter = 0;
     let lastThrottleReset = Date.now();
     
-    // Antiflood state packet counter validation
-    const throttleCheck = () => {
-        const now = Date.now();
-        if (now - lastThrottleReset > 1000) {
-            requestPacketCounter = 0;
-            lastThrottleReset = now;
-        }
-        requestPacketCounter++;
-        return requestPacketCounter > 50;
-    };
-
-    socket.on('createRoom', ({ playerName, settings, authId }) => {
-        if (throttleCheck()) return;
-        
-        let roomId;
-        let attempts = 0;
-        do {
-            roomId = Math.floor(1000 + Math.random() * 9000).toString();
-            attempts++;
-        } while (rooms.has(roomId) && attempts < 100);
-
-        if (rooms.has(roomId)) {
-            socket.emit('error', 'Failed to generate a unique room code. Try again.');
-            return;
-        }
-
-        const hostName = playerName ? playerName.trim().substring(0, 14) : 'Host';
-        const room = createRoomObject(roomId, socket.id, hostName, settings);
-        rooms.set(roomId, room);
-
-        joinSocketToRoom(socket, room, playerName, authId);
-    });
-
-    socket.on('joinRoom', ({ roomId, playerName, authId }) => {
-        if (throttleCheck()) return;
-        const room = rooms.get(roomId);
-
-        if (!room) {
-            socket.emit('error', 'Room not found.');
-            return;
-        }
-
-        joinSocketToRoom(socket, room, playerName, authId);
-    });
-
-    socket.on('quickJoin', ({ playerName, settings, authId }) => {
-        if (throttleCheck()) return;
-        
-        let availableRoom = null;
-        for (const room of rooms.values()) {
-            if (room.players.length < 4 && !room.gameState && !room.settings?.isPrivate) {
-                availableRoom = room;
-                break;
-            }
-        }
-
-        if (availableRoom) {
-            joinSocketToRoom(socket, availableRoom, playerName, authId);
-        } else {
-            let roomId;
-            let attempts = 0;
-            do {
-                roomId = Math.floor(1000 + Math.random() * 9000).toString();
-                attempts++;
-            } while (rooms.has(roomId) && attempts < 100);
-
-            const hostName = playerName ? playerName.trim().substring(0, 14) : 'Host';
-            const room = createRoomObject(roomId, socket.id, hostName, settings);
-            rooms.set(roomId, room);
-
-            joinSocketToRoom(socket, room, playerName, authId);
-        }
-    });
-
-    socket.on('updateSettings', ({ roomId, settings }) => {
-        if (throttleCheck()) return;
-        const room = rooms.get(roomId);
-        if (room && room.hostId === socket.id && !room.gameState) {
-            room.settings = {
-                rounds: Math.min(Math.max(parseInt(settings.rounds) || 3, 1), 7),
-                hp: parseHpSetting(settings.hp),
-                itemsPerShipment: parseItemsSetting(settings.itemsPerShipment),
-                isPrivate: !!settings.isPrivate,
-                isAdvanced: !!settings.isAdvanced,
-                itemWeights: settings.itemWeights || null
-            };
-            room.lastActivity = Date.now();
-            io.to(roomId).emit('roomUpdated', room);
-        }
-    });
-
-    socket.on('readyUp', ({ roomId, ready }) => {
-        if (throttleCheck()) return;
-        const room = rooms.get(roomId);
-        if (room) {
-            const player = room.players.find(p => p.id === socket.id);
-            if (player) {
-                player.ready = !!ready;
-                room.lastActivity = Date.now();
-                io.to(roomId).emit('roomUpdated', room);
-            }
-        }
-    });
-
-    socket.on('startGame', ({ roomId, gameData }) => {
-        if (throttleCheck()) return;
-        const room = rooms.get(roomId);
-        if (room && room.hostId === socket.id) {
-            if (room.players.length < 2) {
-                socket.emit('error', 'Need at least 2 players to start.');
-                return;
-            }
-            if (!room.players.every(p => p.ready)) {
-                socket.emit('error', 'All players must be ready.');
-                return;
-            }
-
-            room.gameState = gameData;
-            room.lastActivity = Date.now();
-            globalMatchesPlayed++;
-            
-            // System message arrays removed to prevent structural layout pollution
-            io.to(roomId).emit('gameStarted', { room, gameData });
-        }
-    });
-
-    socket.on('gameAction', ({ roomId, action }) => {
-        if (throttleCheck()) return;
+    const relayGameAction = (roomId, action, player) => {
         const room = rooms.get(roomId);
         if (!room) return;
-        room.lastActivity = Date.now();
 
-        const player = room.players.find(p => p.id === socket.id);
-        if (!player) return;
-
-        // --- DEVELOPMENT HARDENED REINFORCED SECURITY BOUNDARY ---
-        // Completely limits multi-client multiplayer injection vectors to developer configuration profiles
         const containsDebugFlags = action.type?.toUpperCase().includes('DEBUG') || action.isDebug;
         if (containsDebugFlags) {
             if (player.name.toLowerCase() !== 'aadish') {
@@ -721,15 +644,180 @@ io.on('connection', (socket) => {
         }
 
         if (action.type === 'USE_ITEM') {
-            action.playerName = player.name; // Attaches item action trigger origin context directly to payload frame
+            action.playerName = player.name;
         }
 
-        // Relays the state mutation update cleanly to room endpoints without chatting system logs
         socket.to(roomId).emit('gameActionReceived', { playerId: socket.id, action });
+    };
+
+    // Antiflood: exempt latency-critical actions; separate budget for aim hover
+    const shouldThrottle = (action) => {
+        if (!action?.type || THROTTLE_EXEMPT_ACTIONS.has(action.type)) return false;
+
+        const now = Date.now();
+        if (now - lastThrottleReset > 1000) {
+            requestPacketCounter = 0;
+            hoverPacketCounter = 0;
+            lastThrottleReset = now;
+        }
+
+        if (action.type === 'HOVER_TARGET') {
+            hoverPacketCounter++;
+            return hoverPacketCounter > 30;
+        }
+
+        requestPacketCounter++;
+        return requestPacketCounter > 60;
+    };
+
+    socket.on('createRoom', ({ playerName, settings, authId }) => {
+        if (shouldThrottle({ type: 'LOBBY' })) return;
+        
+        let roomId;
+        let attempts = 0;
+        do {
+            roomId = Math.floor(1000 + Math.random() * 9000).toString();
+            attempts++;
+        } while (rooms.has(roomId) && attempts < 100);
+
+        if (rooms.has(roomId)) {
+            socket.emit('error', 'Failed to generate a unique room code. Try again.');
+            return;
+        }
+
+        const hostName = playerName ? playerName.trim().substring(0, 14) : 'Host';
+        const room = createRoomObject(roomId, socket.id, hostName, settings);
+        rooms.set(roomId, room);
+
+        joinSocketToRoom(socket, room, playerName, authId);
+    });
+
+    socket.on('joinRoom', ({ roomId, playerName, authId }) => {
+        if (shouldThrottle({ type: 'LOBBY' })) return;
+        const room = rooms.get(roomId);
+
+        if (!room) {
+            socket.emit('error', 'Room not found.');
+            return;
+        }
+
+        joinSocketToRoom(socket, room, playerName, authId);
+    });
+
+    socket.on('quickJoin', ({ playerName, settings, authId }) => {
+        if (shouldThrottle({ type: 'LOBBY' })) return;
+        
+        let availableRoom = null;
+        for (const room of rooms.values()) {
+            if (room.players.filter(p => !p.disconnected).length < 4 && !room.gameState && !room.settings?.isPrivate) {
+                availableRoom = room;
+                break;
+            }
+        }
+
+        if (availableRoom) {
+            joinSocketToRoom(socket, availableRoom, playerName, authId);
+        } else {
+            let roomId;
+            let attempts = 0;
+            do {
+                roomId = Math.floor(1000 + Math.random() * 9000).toString();
+                attempts++;
+            } while (rooms.has(roomId) && attempts < 100);
+
+            const hostName = playerName ? playerName.trim().substring(0, 14) : 'Host';
+            const room = createRoomObject(roomId, socket.id, hostName, settings);
+            rooms.set(roomId, room);
+
+            joinSocketToRoom(socket, room, playerName, authId);
+        }
+    });
+
+    socket.on('updateSettings', ({ roomId, settings }) => {
+        if (shouldThrottle({ type: 'LOBBY' })) return;
+        const room = rooms.get(roomId);
+        if (room && room.hostId === socket.id && !room.gameState) {
+            room.settings = {
+                rounds: Math.min(Math.max(parseInt(settings.rounds) || 3, 1), 7),
+                hp: parseHpSetting(settings.hp),
+                itemsPerShipment: parseItemsSetting(settings.itemsPerShipment),
+                isPrivate: !!settings.isPrivate,
+                isAdvanced: !!settings.isAdvanced,
+                itemWeights: settings.itemWeights || null
+            };
+            room.lastActivity = Date.now();
+            io.to(roomId).emit('roomUpdated', room);
+        }
+    });
+
+    socket.on('readyUp', ({ roomId, ready }) => {
+        if (shouldThrottle({ type: 'LOBBY' })) return;
+        const room = rooms.get(roomId);
+        if (room) {
+            const player = room.players.find(p => p.id === socket.id);
+            if (player) {
+                player.ready = !!ready;
+                room.lastActivity = Date.now();
+                io.to(roomId).emit('roomUpdated', room);
+            }
+        }
+    });
+
+    socket.on('startGame', ({ roomId, gameData }) => {
+        if (shouldThrottle({ type: 'LOBBY' })) return;
+        const room = rooms.get(roomId);
+        if (room && room.hostId === socket.id) {
+            if (room.players.filter(p => !p.disconnected).length < 2) {
+                socket.emit('error', 'Need at least 2 players to start.');
+                return;
+            }
+            if (!room.players.filter(p => !p.disconnected).every(p => p.ready)) {
+                socket.emit('error', 'All players must be ready.');
+                return;
+            }
+
+            room.gameState = gameData;
+            room.lastActivity = Date.now();
+            globalMatchesPlayed++;
+            
+            // System message arrays removed to prevent structural layout pollution
+            io.to(roomId).emit('gameStarted', { room, gameData });
+        }
+    });
+
+    socket.on('gameAction', ({ roomId, action }) => {
+        if (shouldThrottle(action)) return;
+        const room = rooms.get(roomId);
+        if (!room) return;
+        room.lastActivity = Date.now();
+
+        const player = room.players.find(p => p.id === socket.id);
+        if (!player || player.disconnected) return;
+
+        relayGameAction(roomId, action, player);
+    });
+
+    socket.on('gameActionBatch', ({ actions }) => {
+        if (!Array.isArray(actions) || actions.length === 0) return;
+        const roomId = actions[0]?.data?.roomId;
+        if (!roomId) return;
+        const room = rooms.get(roomId);
+        if (!room) return;
+
+        const player = room.players.find(p => p.id === socket.id);
+        if (!player || player.disconnected) return;
+
+        room.lastActivity = Date.now();
+        for (const entry of actions) {
+            const payload = entry?.data || entry;
+            const action = payload?.action;
+            if (!action || shouldThrottle(action)) continue;
+            relayGameAction(roomId, action, player);
+        }
     });
 
     socket.on('chatMessage', ({ roomId, message }) => {
-        if (throttleCheck()) return;
+        if (shouldThrottle({ type: 'CHAT' })) return;
         const room = rooms.get(roomId);
         if (room) {
             const player = room.players.find(p => p.id === socket.id);
@@ -749,7 +837,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('kickPlayer', ({ roomId, targetPlayerId }) => {
-        if (throttleCheck()) return;
+        if (shouldThrottle({ type: 'LOBBY' })) return;
         const room = rooms.get(roomId);
         if (room && room.hostId === socket.id) {
             const playerIndex = room.players.findIndex(p => p.id === targetPlayerId);
@@ -780,7 +868,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('resetRoomState', ({ roomId }) => {
-        if (throttleCheck()) return;
+        if (shouldThrottle({ type: 'LOBBY' })) return;
         const room = rooms.get(roomId);
         if (room && room.hostId === socket.id) {
             room.gameState = null;
@@ -802,50 +890,84 @@ io.on('connection', (socket) => {
         
         rooms.forEach((room, roomId) => {
             const playerIndex = room.players.findIndex(p => p.id === socket.id);
-            if (playerIndex !== -1) {
-                const disconnectedPlayer = room.players[playerIndex];
-                room.players.splice(playerIndex, 1);
-                console.log(`[DISCONNECT LOOP] User ${disconnectedPlayer.name} abandoned pipeline link lane: ${roomId}`);
+            if (playerIndex === -1) return;
 
-                if (room.players.length === 0) {
-                    rooms.delete(roomId);
-                    console.log(`[GARBAGE COLLECTION] Purged zero-node inactive room cache memory tree: ${roomId}`);
-                } else {
-                    const leaveMessage = {
-                        sender: 'SYSTEM',
-                        color: '#737373',
-                        text: `${disconnectedPlayer.name} has left the bunker.`,
-                        timestamp: Date.now()
-                    };
-                    room.messages.push(leaveMessage);
-                    if (room.messages.length > 50) room.messages.shift();
-                    io.to(roomId).emit('chatMessageReceived', leaveMessage);
+            const disconnectedPlayer = room.players[playerIndex];
+            console.log(`[DISCONNECT LOOP] User ${disconnectedPlayer.name} abandoned pipeline link lane: ${roomId}`);
 
-                    // --- AUTOMATED MID-GAME TRANSITION CRASH PROTECTION MATRIX ---
-                    // Instantly catches mid-game runtime failures/quits. Resets remaining players back to the
-                    // lobby safely with zeroed items/states, preventing frozen interfaces.
-                    if (room.gameState) {
-                        console.log(`[STATE SAFEGUARD INTERVENTION] Thread client disconnected mid-match within room ${roomId}. Dropping active game instance safely.`);
-                        room.gameState = null;
-                        
-                        // Force structural refresh vectors down to surviving connection handles
-                        room.players.forEach(p => { 
-                            p.ready = false; 
-                            p.items = []; 
-                            p.isHandcuffed = false; 
-                            p.isSawedActive = false; 
-                        });
-                        
-                        // Broadcast client recovery crash override hook down to room lanes
-                        io.to(roomId).emit('matchAborted', { abortedBy: disconnectedPlayer.name });
+            if (room.gameState && disconnectedPlayer.authId) {
+                if (room.hostId === socket.id) {
+                    const activeHost = room.players.find(p => p.id !== socket.id && !p.disconnected);
+                    if (activeHost) {
+                        room.hostId = activeHost.id;
+                        console.log(`[AUTHORITY ESCALATION] Temporary host transfer to ${activeHost.name} during grace period`);
                     }
-
-                    if (room.hostId === socket.id) {
-                        room.hostId = room.players[0].id;
-                        console.log(`[AUTHORITY ESCALATION SUCCESS] Allocated room context token to node ${room.players[0].name} for lane ${roomId}`);
-                    }
-                    io.to(roomId).emit('roomUpdated', room);
                 }
+
+                disconnectedPlayer.disconnected = true;
+                disconnectedPlayer.disconnectTimer = setTimeout(() => {
+                    const idx = room.players.findIndex(p => p.authId === disconnectedPlayer.authId && p.disconnected);
+                    if (idx === -1) return;
+                    room.players.splice(idx, 1);
+
+                    if (room.players.filter(p => !p.disconnected).length === 0) {
+                        rooms.delete(roomId);
+                        return;
+                    }
+
+                    if (room.gameState) {
+                        finalizeMidGameAbort(room, roomId, disconnectedPlayer.name);
+                    } else {
+                        io.to(roomId).emit('roomUpdated', room);
+                    }
+                }, RECONNECT_GRACE_MS);
+
+                const graceMessage = {
+                    sender: 'SYSTEM',
+                    color: '#737373',
+                    text: `${disconnectedPlayer.name} lost connection. Waiting ${RECONNECT_GRACE_MS / 1000}s to reconnect...`,
+                    timestamp: Date.now()
+                };
+                room.messages.push(graceMessage);
+                if (room.messages.length > 50) room.messages.shift();
+                io.to(roomId).emit('chatMessageReceived', graceMessage);
+                io.to(roomId).emit('playerTempDisconnected', {
+                    playerName: disconnectedPlayer.name,
+                    graceMs: RECONNECT_GRACE_MS
+                });
+                io.to(roomId).emit('roomUpdated', room);
+                return;
+            }
+
+            room.players.splice(playerIndex, 1);
+
+            if (room.players.length === 0) {
+                rooms.delete(roomId);
+                console.log(`[GARBAGE COLLECTION] Purged zero-node inactive room cache memory tree: ${roomId}`);
+            } else {
+                const leaveMessage = {
+                    sender: 'SYSTEM',
+                    color: '#737373',
+                    text: `${disconnectedPlayer.name} has left the bunker.`,
+                    timestamp: Date.now()
+                };
+                room.messages.push(leaveMessage);
+                if (room.messages.length > 50) room.messages.shift();
+                io.to(roomId).emit('chatMessageReceived', leaveMessage);
+
+                if (room.gameState) {
+                    console.log(`[STATE SAFEGUARD INTERVENTION] Thread client disconnected mid-match within room ${roomId}. Dropping active game instance safely.`);
+                    finalizeMidGameAbort(room, roomId, disconnectedPlayer.name);
+                }
+
+                if (room.hostId === socket.id) {
+                    const activeHost = room.players.find(p => !p.disconnected);
+                    if (activeHost) {
+                        room.hostId = activeHost.id;
+                        console.log(`[AUTHORITY ESCALATION SUCCESS] Allocated room context token to node ${activeHost.name} for lane ${roomId}`);
+                    }
+                }
+                io.to(roomId).emit('roomUpdated', room);
             }
         });
     });

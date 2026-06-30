@@ -49,6 +49,8 @@ export default function App() {
   });
   const [mobileActiveTab, setMobileActiveTab] = useState<'LOBBY' | 'CHAT'>('LOBBY');
   const lastTotalWins = useRef(0);
+  const lastHoverRef = useRef<{ target: AimTarget; targetId?: string; time: number }>({ target: 'OPPONENT', time: 0 });
+  const lastSyncBroadcastRef = useRef(0);
 
   // Ping the server to wake it up in case it's asleep on Hugging Face
   useEffect(() => {
@@ -85,7 +87,7 @@ export default function App() {
       if (loggedInUser && cachedName && cachedName.trim().length > 0) {
         spGame.setPlayerName(cachedName.trim());
         setAppState('LOADING_MP');
-        mp.connect();
+        mp.connect(cachedName.trim());
       }
     }
   }, []);
@@ -356,7 +358,7 @@ export default function App() {
   const handleStartMP = (name: string) => {
     spGame.setPlayerName(name);
     setAppState('LOADING_MP');
-    mp.connect();
+    mp.connect(name);
   };
 
   // Broadcast local actions to server
@@ -620,13 +622,16 @@ export default function App() {
   };
 
   const handleHoverTarget = (target: AimTarget, targetId?: string) => {
+    spGame.setAimTarget(target);
     if (appState === 'GAME' && spGame.gameState.isMultiplayer && mp.room) {
       if (spGame.gameState.turnOwner === 'PLAYER') {
-        // Bypass batcher — aim must arrive with minimal latency
+        const now = Date.now();
+        const last = lastHoverRef.current;
+        if (last.target === target && last.targetId === targetId && now - last.time < 50) return;
+        lastHoverRef.current = { target, targetId, time: now };
         mp.sendImmediateAction(mp.room.id, { type: 'HOVER_TARGET', target, targetId });
       }
     }
-    spGame.setAimTarget(target);
   };
 
   // Listen for remote actions
@@ -1300,7 +1305,7 @@ export default function App() {
               syncAction[`items${i}`] = lootBatches[i];
             }
 
-            mp.sendAction(mp.room.id, syncAction);
+            mp.sendImmediateAction(mp.room.id, syncAction);
             mp.sendMessage(mp.room.id, `SYSTEM: NEW BATCH REPLENISHED - ${lives} LIVE, ${blanks} BLANK`);
             spGame.setOverlayText('RELOADING NEW BATCH...');
 
@@ -1354,7 +1359,7 @@ export default function App() {
             roundNum: currentTotalWins + 1
           };
 
-          mp.sendAction(mp.room.id, syncAction);
+          mp.sendImmediateAction(mp.room.id, syncAction);
           mp.sendMessage(mp.room.id, isNewRound ? `SYSTEM: ROUND ${currentTotalWins + 1} STARTED!` : `SYSTEM: NEW BATCH REPLENISHED - ${lives} LIVE, ${blanks} BLANK`);
           spGame.setOverlayText(isNewRound ? `ROUND ${currentTotalWins + 1}` : 'RELOADING NEW BATCH...');
           spGame.startRound(isNewRound, false, undefined, chamber, hostItems, clientItems, nextStarts ? 'PLAYER' : 'DEALER', hpVal);
@@ -1387,7 +1392,7 @@ export default function App() {
 
           if (nextWins[winnerIndex] >= winsNeeded) {
             if (isHost) {
-              mp.sendAction(room.id, {
+              mp.sendImmediateAction(room.id, {
                 type: 'SYNC_THREE_PLAYER_STATE',
                 playerState: spGame.player,
                 dealerState: spGame.dealer,
@@ -1432,7 +1437,7 @@ export default function App() {
               syncAction[`items${i}`] = lootBatches[i];
             }
 
-            mp.sendAction(room.id, syncAction);
+            mp.sendImmediateAction(room.id, syncAction);
             mp.sendMessage(room.id, `SYSTEM: ROUND ${nextRoundNum} STARTED!`);
 
             const myItems = syncAction[`items${myIndex}`];
@@ -1509,7 +1514,7 @@ export default function App() {
             roundNum: nextRoundNum
           };
 
-          mp.sendAction(mp.room.id, syncAction);
+          mp.sendImmediateAction(mp.room.id, syncAction);
           mp.sendMessage(mp.room.id, `SYSTEM: ROUND ${nextRoundNum} STARTED!`);
 
           spGame.setOverlayText(`ROUND ${nextRoundNum}`);
@@ -1554,52 +1559,56 @@ export default function App() {
 
   // Sync state broadcast from host to keep clients in sync
   // Throttled to at most once per 350ms to prevent spam during rapid item-use chains
-  const lastSyncBroadcastRef = useRef(0);
-  useEffect(() => {
-    if (appState === 'GAME' && spGame.gameState.isMultiplayer && mp.room?.hostId === mp.playerId) {
-      if (!spGame.isProcessing && spGame.gameState.phase !== 'RESOLVING' && spGame.gameState.phase !== 'GAME_OVER') {
-        const now = Date.now();
-        // Throttle: skip if last broadcast was <350ms ago (debug item spamming protection)
-        if (now - lastSyncBroadcastRef.current < 350) return;
-        lastSyncBroadcastRef.current = now;
+  const broadcastHostSync = useCallback((force = false) => {
+    if (appState !== 'GAME' || !spGame.gameState.isMultiplayer || !mp.room || mp.room.hostId !== mp.playerId) return;
+    if (spGame.isProcessing || spGame.gameState.phase === 'RESOLVING' || spGame.gameState.phase === 'GAME_OVER') return;
 
-        const playerCount = mp.room?.players?.length || 2;
-        const isMulti = playerCount >= 3;
-        if (isMulti) {
-          const room = mp.room;
-          const myIndex = room?.players ? room.players.findIndex((p: any) => p.id === mp.playerId) : -1;
-          let turnOwnerIndex = myIndex;
-          if (myIndex !== -1 && room?.players) {
-            if (spGame.gameState.turnOwner === 'DEALER') turnOwnerIndex = (myIndex + 2) % playerCount;
-            else if (spGame.gameState.turnOwner === 'PLAYER3') turnOwnerIndex = (myIndex + 1) % playerCount;
-            else if (spGame.gameState.turnOwner === 'PLAYER4') turnOwnerIndex = (myIndex + 3) % playerCount;
-          }
-          const turnOwnerId = room?.players && turnOwnerIndex !== -1 ? room.players[turnOwnerIndex]?.id : '';
+    const now = Date.now();
+    if (!force && now - lastSyncBroadcastRef.current < 350) return;
+    lastSyncBroadcastRef.current = now;
 
-          // Key names MUST match the receiver: playerState/dealerState/player3State/player4State
-          mp.sendAction(mp.room.id, {
-            type: 'SYNC_THREE_PLAYER_STATE',
-            playerState: spGame.player,
-            dealerState: spGame.dealer,
-            player3State: spGame.player3,
-            player4State: spGame.player4,
-            gameState: {
-              ...spGame.gameState,
-              turnOwnerId
-            }
-          });
-        } else {
-          mp.sendAction(mp.room.id, {
-            type: 'SYNC_STATE',
-            player1State: spGame.player,
-            player2State: spGame.dealer,
-            gameState: spGame.gameState
-          });
-        }
+    const playerCount = mp.room?.players?.length || 2;
+    const isMulti = playerCount >= 3;
+    if (isMulti) {
+      const room = mp.room;
+      const myIndex = room?.players ? room.players.findIndex((p: any) => p.id === mp.playerId) : -1;
+      let turnOwnerIndex = myIndex;
+      if (myIndex !== -1 && room?.players) {
+        if (spGame.gameState.turnOwner === 'DEALER') turnOwnerIndex = (myIndex + 2) % playerCount;
+        else if (spGame.gameState.turnOwner === 'PLAYER3') turnOwnerIndex = (myIndex + 1) % playerCount;
+        else if (spGame.gameState.turnOwner === 'PLAYER4') turnOwnerIndex = (myIndex + 3) % playerCount;
       }
+      const turnOwnerId = room?.players && turnOwnerIndex !== -1 ? room.players[turnOwnerIndex]?.id : '';
+
+      mp.sendImmediateAction(mp.room.id, {
+        type: 'SYNC_THREE_PLAYER_STATE',
+        playerState: spGame.player,
+        dealerState: spGame.dealer,
+        player3State: spGame.player3,
+        player4State: spGame.player4,
+        gameState: {
+          ...spGame.gameState,
+          turnOwnerId
+        }
+      });
+    } else {
+      mp.sendImmediateAction(mp.room.id, {
+        type: 'SYNC_STATE',
+        player1State: spGame.player,
+        player2State: spGame.dealer,
+        gameState: spGame.gameState
+      });
     }
+  }, [appState, mp.room, mp.playerId, mp.sendImmediateAction, spGame]);
+
+  useEffect(() => {
+    broadcastHostSync();
   // Include item content (joined) so debug item changes trigger a broadcast immediately
-  }, [spGame.player.hp, spGame.dealer.hp, spGame.player3?.hp, spGame.player4?.hp, spGame.gameState.phase, spGame.gameState.turnOwner, spGame.gameState.winner, spGame.isProcessing, spGame.player.items.join(','), spGame.dealer.items.join(','), spGame.player3?.items?.join(','), spGame.player4?.items?.join(',')]);
+  }, [spGame.player.hp, spGame.dealer.hp, spGame.player3?.hp, spGame.player4?.hp, spGame.gameState.phase, spGame.gameState.turnOwner, spGame.gameState.winner, spGame.isProcessing, spGame.player.items.join(','), spGame.dealer.items.join(','), spGame.player3?.items?.join(','), spGame.player4?.items?.join(','), broadcastHostSync]);
+
+  useEffect(() => {
+    mp.setOnFullSyncRequest(() => broadcastHostSync(true));
+  }, [mp.setOnFullSyncRequest, broadcastHostSync]);
 
   // --- DISCORD RICH PRESENCE UPDATER ---
   useEffect(() => {

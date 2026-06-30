@@ -9,6 +9,7 @@ export class SocketBatcher {
     private callback: (actions: SocketAction[]) => void;
     private queuedActions: SocketAction[] = [];
     private timerId: number | null = null;
+    private lastQueuedKey: string | null = null;
 
     constructor(maxBatchSize: number, maxDelayMs: number, callback: (actions: SocketAction[]) => void) {
         this.maxBatchSize = maxBatchSize;
@@ -17,6 +18,17 @@ export class SocketBatcher {
     }
 
     queue(type: string, data: any) {
+        const actionKey = data?.action?.type;
+        // Coalesce duplicate hover/aim packets — only the latest matters
+        if (actionKey === 'HOVER_TARGET' && this.lastQueuedKey === 'HOVER_TARGET') {
+            const lastIdx = this.queuedActions.length - 1;
+            if (lastIdx >= 0 && this.queuedActions[lastIdx].data?.action?.type === 'HOVER_TARGET') {
+                this.queuedActions[lastIdx] = { type, data };
+                return;
+            }
+        }
+        this.lastQueuedKey = actionKey || null;
+
         this.queuedActions.push({ type, data });
         if (this.queuedActions.length >= this.maxBatchSize) {
             this.flush();
@@ -38,6 +50,7 @@ export class SocketBatcher {
 
         const actions = this.queuedActions.slice();
         this.queuedActions.length = 0;
+        this.lastQueuedKey = null;
 
         if (this.timerId !== null) {
             window.clearTimeout(this.timerId);
