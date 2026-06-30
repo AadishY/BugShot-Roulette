@@ -9,6 +9,7 @@ interface LoadingScreenProps {
     error?: string | null;
     onRetry?: () => void;
     showClose?: boolean;
+    progress?: number;
 }
 
 export const LoadingScreen: React.FC<LoadingScreenProps> = ({
@@ -18,9 +19,10 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = ({
     duration = 3000,
     error,
     onRetry,
-    showClose = false
+    showClose = false,
+    progress: progressProp
 }) => {
-    const [progress, setProgress] = useState(0);
+    const [displayProgress, setDisplayProgress] = useState(0);
     const [terminalLines, setTerminalLines] = useState<string[]>([]);
     const [warningText, setWarningText] = useState("UNAUTHORIZED ACCESS IS PUNISHABLE BY DEATH");
 
@@ -54,8 +56,13 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = ({
 
     // Progress Timer Effect with fixed frame-based increments (resilient to thread freezes)
     useEffect(() => {
-        if (error) return; 
-        
+        if (error) return;
+
+        const audioProgress = typeof progressProp === 'number' ? Math.max(0, Math.min(progressProp, 100)) : null;
+        if (audioProgress !== null) {
+            setDisplayProgress(prev => Math.max(prev, audioProgress));
+        }
+
         let currentProgress = 0;
         let active = true;
 
@@ -65,9 +72,10 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = ({
             // We increment by a stable frame-based step.
             const frameIncrement = 100 / (duration / 16.67);
             currentProgress = Math.min(currentProgress + frameIncrement, 100);
-            setProgress(currentProgress);
+            const combinedProgress = Math.max(currentProgress, audioProgress || 0);
+            setDisplayProgress(prev => Math.max(prev, combinedProgress));
 
-            if (currentProgress >= 100) {
+            if (combinedProgress >= 100) {
                 setTimeout(() => {
                     if (active) onCompleteRef.current();
                 }, 300);
@@ -81,7 +89,7 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = ({
         return () => {
             active = false;
         };
-    }, [duration, error]);
+    }, [duration, error, progressProp]);
 
     // Terminal Lines Effect
     useEffect(() => {
@@ -153,7 +161,7 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = ({
                 <div className="w-full max-w-xs sm:max-w-md h-5 sm:h-6 border-2 border-green-800 bg-stone-950 p-0.5 relative rounded-sm overflow-hidden shadow-[inset_0_2px_4px_rgba(0,0,0,0.8)]">
                     <div
                         className="h-full bg-gradient-to-r from-green-600 to-green-400 shadow-[0_0_20px_rgba(34,197,94,0.7)] transition-all duration-75 ease-out rounded-sm relative will-change-[width]"
-                        style={{ width: `${progress}%`, transform: 'translate3d(0,0,0)' }}
+                        style={{ width: `${displayProgress}%`, transform: 'translate3d(0,0,0)' }}
                     >
                         {/* Segment Stripes for Premium Feel */}
                         <div className="absolute inset-0 bg-[linear-gradient(90deg,transparent_50%,rgba(0,0,0,0.4)_50%)] bg-[size:8px_100%]" />
@@ -165,9 +173,14 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = ({
                 {/* Performance Matrix Readout */}
                 <div className="mt-4 sm:mt-6 flex items-baseline gap-1.5 font-black text-lg sm:text-2xl tracking-[0.1em]">
                     <span className="text-green-600 text-xs font-bold">SYS_LOAD:</span>
-                    <span>{Math.round(progress)}</span>
+                    <span>{Math.round(displayProgress)}</span>
                     <span className="text-xs text-green-600 font-bold">%</span>
                 </div>
+                {typeof progressProp === 'number' && (
+                    <div className="mt-2 text-[10px] text-green-500 uppercase tracking-[0.3em] font-semibold">
+                        AUDIO SYNC {Math.round(displayProgress)}%
+                    </div>
+                )}
 
                 <div className="mt-6 sm:mt-8 text-[9px] sm:text-xs text-green-700/90 font-black tracking-[0.2em] uppercase text-center max-w-xs leading-relaxed animate-pulse border-t border-green-950/60 pt-3 w-full">
                     {warningText}

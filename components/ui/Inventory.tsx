@@ -209,24 +209,19 @@ const InventoryComponent: React.FC<InventoryProps> = ({ player, dealer, gameStat
                 <div className={`absolute right-0 bottom-0 top-0 w-8 bg-gradient-to-l from-black to-transparent pointer-events-none z-40 transition-opacity duration-300 ${isPotato ? '' : 'rounded-r-[2rem]'}`} />
             )}
 
-            {/* Center-aligned mobile description banner when holding/hovering an item on mobile */}
-            {isMobileView && mobileTooltipItem && (
-                <div className="fixed bottom-[100px] left-1/2 -translate-x-1/2 w-[92%] max-w-xs bg-black/95 border border-red-500/20 rounded-xl p-3 text-center pointer-events-none z-[999] text-stone-300 shadow-[0_15px_30px_rgba(0,0,0,0.95)] animate-in fade-in slide-in-from-bottom-2 duration-150">
-                    <div className="font-black text-red-500 mb-1 tracking-widest text-[11px] uppercase border-b border-red-950/20 pb-1">
-                        {ITEM_NAMES[mobileTooltipItem]}
+            {/* Bottom-right tooltip panel for hovered inventory items */}
+            {(mobileTooltipItem || hoveredIdx !== null) && (
+                <div className="fixed bottom-6 right-6 z-[999] w-[min(22rem,92vw)] max-w-[22rem] bg-stone-950/95 border border-stone-800 rounded-3xl p-4 text-left text-stone-300 shadow-[0_25px_70px_rgba(0,0,0,0.8)] backdrop-blur-2xl pointer-events-none">
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                        <div className="font-black text-white text-sm uppercase tracking-[0.35em]">{ITEM_NAMES[mobileTooltipItem || hoveredItem!]}</div>
+                        <span className="text-[10px] text-stone-400 uppercase tracking-[0.35em]">Description</span>
                     </div>
-                    <div className="text-stone-400 text-[10px] leading-relaxed">
-                        {ITEM_DESCRIPTIONS[mobileTooltipItem]}
+                    <div className="text-stone-400 text-[11px] leading-relaxed break-words whitespace-pre-wrap">
+                        {ITEM_DESCRIPTIONS[mobileTooltipItem || hoveredItem!]}
                     </div>
-                    {isHoveredCuffDisabled && (
-                        <div className="text-red-500 mt-1.5 font-bold border-t border-red-950/30 pt-1 tracking-wider uppercase text-[8px]">ALREADY CUFFED</div>
-                    )}
-                    {isGunHeld && (
-                        <div className="text-red-500 mt-1.5 tracking-wider uppercase text-[8px] border-t border-red-950/30 pt-1">DROP GUN FIRST</div>
-                    )}
-                    {player.isFlashbanged && (
-                        <div className="text-red-500 mt-1.5 font-bold border-t border-red-950/30 pt-1 tracking-wider uppercase text-[8px]">FLASHBANGED</div>
-                    )}
+                    {isHoveredCuffDisabled && <div className="text-red-500 mt-3 font-bold border-t border-stone-800 pt-3 tracking-wider uppercase text-[8px]">ALREADY CUFFED</div>}
+                    {isGunHeld && <div className="text-red-500 mt-3 tracking-wider uppercase text-[8px] border-t border-stone-800 pt-3">DROP GUN FIRST</div>}
+                    {player.isFlashbanged && <div className="text-red-500 mt-3 font-bold border-t border-stone-800 pt-3 tracking-wider uppercase text-[8px]">FLASHBANGED</div>}
                 </div>
             )}
 
@@ -289,6 +284,7 @@ const InventoryComponent: React.FC<InventoryProps> = ({ player, dealer, gameStat
                             onMouseLeave={() => setHoveredIdx(null)}
                         >
                             <button
+                                data-item-index={idx}
                                 onClick={() => {
                                     if (isUsageDisabled) return;
                                     if (isMobileView) {
@@ -391,20 +387,6 @@ const InventoryComponent: React.FC<InventoryProps> = ({ player, dealer, gameStat
                                 )}
                             </button>
 
-                            <div className={`${isPotato 
-                                ? 'absolute left-full top-1/2 -translate-y-1/2 ml-3 w-48 bg-black border border-stone-800 p-2 text-[10px] text-left pointer-events-none z-[100] text-stone-300 shadow-md'
-                                : 'absolute left-full top-1/2 -translate-y-1/2 ml-3 w-48 bg-stone-950/98 border border-stone-800 rounded-lg p-2.5 text-[10px] text-left pointer-events-none z-[100] text-stone-300 shadow-[0_15px_30px_rgba(0,0,0,0.9)] animate-in fade-in zoom-in-95 duration-150'
-                            } ${showTooltip ? 'md:block' : 'hidden'} z-[150]`}>
-                                <div className="font-black text-white mb-1.5 tracking-widest text-[11px] uppercase border-b border-white/5 pb-1">
-                                    {ITEM_NAMES[item]}
-                                </div>
-                                <div className="text-stone-400 leading-relaxed">
-                                    {ITEM_DESCRIPTIONS[item]}
-                                </div>
-                                {isCuffDisabled && <div className="text-red-500 mt-1.5 font-bold border-t border-red-950/50 pt-1 tracking-wider uppercase text-[8px]">ALREADY CUFFED</div>}
-                                {isGunHeld && <div className="text-red-500 mt-1.5 tracking-wider uppercase text-[8px]">DROP GUN FIRST</div>}
-                                {player.isFlashbanged && <div className="text-red-500 mt-1.5 font-bold border-t border-red-950/50 pt-1 tracking-wider uppercase text-[8px]">FLASHBANGED</div>}
-                            </div>
                         </div>
                     );
                 })}

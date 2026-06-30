@@ -178,10 +178,35 @@ const io = new Server(httpServer, {
 });
 
 const RECONNECT_GRACE_MS = 15000;
+const MAX_ROOM_ID_ATTEMPTS = 1000;
+const MAX_PLAYER_NAME_LENGTH = 18;
+const ROOM_ID_PATTERN = /^[0-9]{4}$/;
 const THROTTLE_EXEMPT_ACTIONS = new Set([
-    'SHOOT', 'SYNC_STATE', 'SYNC_THREE_PLAYER_STATE',
-    'SYNC_ROUND', 'SYNC_THREE_PLAYER_ROUND'
+    'SHOOT', 'USE_ITEM', 'SELECT_CARD', 'PICKUP_GUN', 'STEAL_ITEM',
+    'SYNC_STATE', 'SYNC_THREE_PLAYER_STATE', 'SYNC_ROUND', 'SYNC_THREE_PLAYER_ROUND',
+    'DEBUG_SYNC_PLAYER', 'DEBUG_SYNC_DEALER', 'DEBUG_SYNC_GAMESTATE',
+    'DEBUG_SYNC_THREE_PLAYER', 'DEBUG_SYNC_PLAYER_MODEL', 'DEBUG_SET_PLAYER_MODEL'
 ]);
+const VALID_GAME_ACTIONS = new Set([
+    'SHOOT', 'USE_ITEM', 'SELECT_CARD', 'PICKUP_GUN', 'STEAL_ITEM', 'HOVER_TARGET',
+    'SYNC_STATE', 'SYNC_THREE_PLAYER_STATE', 'SYNC_ROUND', 'SYNC_THREE_PLAYER_ROUND',
+    'DEBUG_SYNC_PLAYER', 'DEBUG_SYNC_DEALER', 'DEBUG_SYNC_GAMESTATE',
+    'DEBUG_SYNC_THREE_PLAYER', 'DEBUG_SYNC_PLAYER_MODEL', 'DEBUG_SET_PLAYER_MODEL'
+]);
+const VALID_MODEL_KEYS = new Set(['DEFAULT', 'YASH', 'YUVRAJ', 'ASP', 'AADISH']);
+const MAX_ACTION_BYTES = 250000;
+
+const sanitizePlayerName = (name) => {
+    if (typeof name !== 'string') return 'Player';
+    const cleaned = name.trim().substring(0, MAX_PLAYER_NAME_LENGTH);
+    return cleaned.length > 0 ? cleaned : 'Player';
+};
+
+const sanitizeRoomId = (roomId) => {
+    if (typeof roomId !== 'string') return null;
+    const trimmed = roomId.trim();
+    return ROOM_ID_PATTERN.test(trimmed) ? trimmed : null;
+};
 
 // --- ENGINE RADAR TERMINAL PAGE ---
 // Accessing the root server URL parses a high-contrast industrial diagnostic dark dashboard
@@ -477,6 +502,42 @@ const finalizeMidGameAbort = (room, roomId, disconnectedName) => {
     io.to(roomId).emit('roomUpdated', room);
 };
 
+const getActionSize = (action) => {
+    try {
+        return Buffer.byteLength(JSON.stringify(action), 'utf8');
+    } catch (err) {
+        return MAX_ACTION_BYTES + 1;
+    }
+};
+
+const normalizeGameAction = (action, room) => {
+    if (!action || typeof action !== 'object' || Array.isArray(action)) return null;
+    if (typeof action.type !== 'string' || !VALID_GAME_ACTIONS.has(action.type)) return null;
+    if (getActionSize(action) > MAX_ACTION_BYTES) return null;
+
+    const normalized = { ...action };
+    const roomPlayerIds = new Set(room.players.map(p => p.id));
+
+    if (normalized.targetId && !roomPlayerIds.has(normalized.targetId)) {
+        delete normalized.targetId;
+    }
+    if (normalized.targetPlayerId && !roomPlayerIds.has(normalized.targetPlayerId)) {
+        delete normalized.targetPlayerId;
+    }
+    if (normalized.shooterId && !roomPlayerIds.has(normalized.shooterId)) {
+        delete normalized.shooterId;
+    }
+    if (normalized.playerId && !roomPlayerIds.has(normalized.playerId)) {
+        delete normalized.playerId;
+    }
+
+    if ((normalized.type === 'DEBUG_SYNC_PLAYER_MODEL' || normalized.type === 'DEBUG_SET_PLAYER_MODEL') && !VALID_MODEL_KEYS.has(normalized.modelKey)) {
+        return null;
+    }
+
+    return normalized;
+};
+
 const joinSocketToRoom = (socket, room, playerName, authId) => {
     const newPlayerName = playerName ? playerName.trim().substring(0, 14) : `Player ${room.players.length + 1}`;
     const cleanAuthId = authId ? authId.trim().toLowerCase() : null;
@@ -612,9 +673,14 @@ io.on('connection', (socket) => {
     let hoverPacketCounter = 0;
     let lastThrottleReset = Date.now();
     
-    const relayGameAction = (roomId, action, player) => {
+    const relayGameAction = (roomId, rawAction, player) => {
         const room = rooms.get(roomId);
         if (!room) return;
+        const action = normalizeGameAction(rawAction, room);
+        if (!action) {
+            socket.emit('error', 'Invalid or oversized game action ignored.');
+            return;
+        }
 
         const containsDebugFlags = action.type?.toUpperCase().includes('DEBUG') || action.isDebug;
         if (containsDebugFlags) {
@@ -627,20 +693,23 @@ io.on('connection', (socket) => {
             console.log(`[DEVELOPER SYSTEM CALL] Authorized account 'aadish' deployed debugging hook element: ${action.type}`);
         }
 
-        if (action.type === 'DEBUG_SET_PLAYER_MODEL') {
+        if (action.type === 'DEBUG_SET_PLAYER_MODEL' || action.type === 'DEBUG_SYNC_PLAYER_MODEL') {
             const modelKey = action.modelKey;
-            const validModelKeys = ['DEFAULT', 'YASH', 'YUVRAJ', 'ASP', 'AADISH'];
-            if (!validModelKeys.includes(modelKey)) {
-                socket.emit('error', 'Invalid avatar model selection.');
-                return;
-            }
             room.debugPlayerModels = {
                 ...(room.debugPlayerModels || {}),
                 [action.playerId]: modelKey
             };
+            if (room.gameState) {
+                room.gameState = {
+                    ...room.gameState,
+                    multiplayerState: {
+                        ...(room.gameState.multiplayerState || {}),
+                        debugPlayerModels: room.debugPlayerModels
+                    }
+                };
+            }
             room.lastActivity = Date.now();
             io.to(roomId).emit('roomUpdated', room);
-            return;
         }
 
         if (action.type === 'USE_ITEM') {
@@ -678,14 +747,14 @@ io.on('connection', (socket) => {
         do {
             roomId = Math.floor(1000 + Math.random() * 9000).toString();
             attempts++;
-        } while (rooms.has(roomId) && attempts < 100);
+        } while (rooms.has(roomId) && attempts < MAX_ROOM_ID_ATTEMPTS);
 
         if (rooms.has(roomId)) {
             socket.emit('error', 'Failed to generate a unique room code. Try again.');
             return;
         }
 
-        const hostName = playerName ? playerName.trim().substring(0, 14) : 'Host';
+        const hostName = sanitizePlayerName(playerName);
         const room = createRoomObject(roomId, socket.id, hostName, settings);
         rooms.set(roomId, room);
 
@@ -694,8 +763,13 @@ io.on('connection', (socket) => {
 
     socket.on('joinRoom', ({ roomId, playerName, authId }) => {
         if (shouldThrottle({ type: 'LOBBY' })) return;
-        const room = rooms.get(roomId);
+        const safeRoomId = sanitizeRoomId(roomId);
+        if (!safeRoomId) {
+            socket.emit('error', 'Invalid room code.');
+            return;
+        }
 
+        const room = rooms.get(safeRoomId);
         if (!room) {
             socket.emit('error', 'Room not found.');
             return;
@@ -723,9 +797,9 @@ io.on('connection', (socket) => {
             do {
                 roomId = Math.floor(1000 + Math.random() * 9000).toString();
                 attempts++;
-            } while (rooms.has(roomId) && attempts < 100);
+            } while (rooms.has(roomId) && attempts < MAX_ROOM_ID_ATTEMPTS);
 
-            const hostName = playerName ? playerName.trim().substring(0, 14) : 'Host';
+            const hostName = sanitizePlayerName(playerName);
             const room = createRoomObject(roomId, socket.id, hostName, settings);
             rooms.set(roomId, room);
 
@@ -735,7 +809,9 @@ io.on('connection', (socket) => {
 
     socket.on('updateSettings', ({ roomId, settings }) => {
         if (shouldThrottle({ type: 'LOBBY' })) return;
-        const room = rooms.get(roomId);
+        const safeRoomId = sanitizeRoomId(roomId);
+        if (!safeRoomId) return;
+        const room = rooms.get(safeRoomId);
         if (room && room.hostId === socket.id && !room.gameState) {
             room.settings = {
                 rounds: Math.min(Math.max(parseInt(settings.rounds) || 3, 1), 7),
@@ -752,7 +828,9 @@ io.on('connection', (socket) => {
 
     socket.on('readyUp', ({ roomId, ready }) => {
         if (shouldThrottle({ type: 'LOBBY' })) return;
-        const room = rooms.get(roomId);
+        const safeRoomId = sanitizeRoomId(roomId);
+        if (!safeRoomId) return;
+        const room = rooms.get(safeRoomId);
         if (room) {
             const player = room.players.find(p => p.id === socket.id);
             if (player) {
@@ -765,7 +843,9 @@ io.on('connection', (socket) => {
 
     socket.on('startGame', ({ roomId, gameData }) => {
         if (shouldThrottle({ type: 'LOBBY' })) return;
-        const room = rooms.get(roomId);
+        const safeRoomId = sanitizeRoomId(roomId);
+        if (!safeRoomId) return;
+        const room = rooms.get(safeRoomId);
         if (room && room.hostId === socket.id) {
             if (room.players.filter(p => !p.disconnected).length < 2) {
                 socket.emit('error', 'Need at least 2 players to start.');
@@ -787,7 +867,9 @@ io.on('connection', (socket) => {
 
     socket.on('gameAction', ({ roomId, action }) => {
         if (shouldThrottle(action)) return;
-        const room = rooms.get(roomId);
+        const safeRoomId = sanitizeRoomId(roomId);
+        if (!safeRoomId) return;
+        const room = rooms.get(safeRoomId);
         if (!room) return;
         room.lastActivity = Date.now();
 
@@ -799,7 +881,11 @@ io.on('connection', (socket) => {
 
     socket.on('gameActionBatch', ({ actions }) => {
         if (!Array.isArray(actions) || actions.length === 0) return;
-        const roomId = actions[0]?.data?.roomId;
+        if (actions.length > 12) {
+            socket.emit('error', 'Action batch too large.');
+            return;
+        }
+        const roomId = sanitizeRoomId(actions[0]?.data?.roomId || actions[0]?.roomId);
         if (!roomId) return;
         const room = rooms.get(roomId);
         if (!room) return;
@@ -810,6 +896,7 @@ io.on('connection', (socket) => {
         room.lastActivity = Date.now();
         for (const entry of actions) {
             const payload = entry?.data || entry;
+            if (payload?.roomId !== roomId) continue;
             const action = payload?.action;
             if (!action || shouldThrottle(action)) continue;
             relayGameAction(roomId, action, player);
@@ -818,14 +905,17 @@ io.on('connection', (socket) => {
 
     socket.on('chatMessage', ({ roomId, message }) => {
         if (shouldThrottle({ type: 'CHAT' })) return;
-        const room = rooms.get(roomId);
+        const safeRoomId = sanitizeRoomId(roomId);
+        if (!safeRoomId) return;
+        const room = rooms.get(safeRoomId);
         if (room) {
             const player = room.players.find(p => p.id === socket.id);
-            if (player && message && message.trim().length > 0) {
+            const safeText = typeof message === 'string' ? message.trim().substring(0, 140) : '';
+            if (player && safeText.length > 0) {
                 const chatEntry = {
                     sender: player.name,
                     color: player.color,
-                    text: message.trim().substring(0, 140), // Hard character cap boundary limits
+                    text: safeText,
                     timestamp: Date.now()
                 };
                 room.messages.push(chatEntry);
@@ -838,7 +928,9 @@ io.on('connection', (socket) => {
 
     socket.on('kickPlayer', ({ roomId, targetPlayerId }) => {
         if (shouldThrottle({ type: 'LOBBY' })) return;
-        const room = rooms.get(roomId);
+        const safeRoomId = sanitizeRoomId(roomId);
+        if (!safeRoomId) return;
+        const room = rooms.get(safeRoomId);
         if (room && room.hostId === socket.id) {
             const playerIndex = room.players.findIndex(p => p.id === targetPlayerId);
             if (playerIndex !== -1) {
@@ -869,7 +961,9 @@ io.on('connection', (socket) => {
 
     socket.on('resetRoomState', ({ roomId }) => {
         if (shouldThrottle({ type: 'LOBBY' })) return;
-        const room = rooms.get(roomId);
+        const safeRoomId = sanitizeRoomId(roomId);
+        if (!safeRoomId) return;
+        const room = rooms.get(safeRoomId);
         if (room && room.hostId === socket.id) {
             room.gameState = null;
             room.players.forEach(p => {

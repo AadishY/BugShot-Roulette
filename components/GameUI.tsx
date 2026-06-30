@@ -441,7 +441,7 @@ export const GameUI: React.FC<GameUIProps> = ({
                                 );
                             })()
                         ) : (
-                            <div className="flex flex-col items-center text-center bg-black/90 px-8 py-4 border-y-2 border-stone-100/20 backdrop-blur-md rounded-sm pop-in">
+                            <div className="relative -top-16 flex flex-col items-center text-center bg-black/90 px-8 py-4 border-y-2 border-stone-100/20 backdrop-blur-md rounded-sm pop-in md:-top-20">
                                 {overlayText.includes('\n') ? (
                                     <>
                                         <div className="text-lg md:text-5xl font-black tracking-[0.2em] text-stone-100 drop-shadow-[0_0_20px_rgba(255,255,255,0.4)] uppercase italic">

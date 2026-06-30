@@ -10,6 +10,9 @@ class AudioManager {
     public sfxVolume: number = 0.7;
     private initialized: boolean = false;
     private activeDimmingCount: number = 0;
+    private loadPromises: Promise<void>[] = [];
+    private pendingMusic: string | null = null;
+    public isInitialized: boolean = false;
 
     constructor() {
         this.loadAssets();
@@ -55,19 +58,35 @@ class AudioManager {
             endscreen: '/sound/endscreen.mp3'
         };
 
-        // Preload sounds
+        const loadAudio = (audio: HTMLAudioElement) => new Promise<void>((resolve) => {
+            const onDone = () => {
+                audio.removeEventListener('canplaythrough', onDone);
+                audio.removeEventListener('error', onDone);
+                resolve();
+            };
+            audio.addEventListener('canplaythrough', onDone, { once: true });
+            audio.addEventListener('error', onDone, { once: true });
+            audio.preload = 'auto';
+            try {
+                audio.load();
+            } catch (e) {
+                resolve();
+            }
+        });
+
         for (const [key, path] of Object.entries(soundFiles)) {
             const audio = new Audio(path);
             audio.preload = 'auto'; // Important for mobile
             this.sounds[key] = audio;
+            this.loadPromises.push(loadAudio(audio));
         }
 
-        // Preload music
         for (const [key, path] of Object.entries(musicFiles)) {
             const audio = new Audio(path);
             audio.preload = 'auto';
             audio.loop = (key !== 'endscreen');
             this.music[key] = audio;
+            this.loadPromises.push(loadAudio(audio));
         }
     }
 
@@ -103,39 +122,40 @@ class AudioManager {
         if (this.initialized) return;
 
         try {
-            // Unlock audio context constraints for iOS/Android
-            // We iterate and play/pause a tiny bit of silence or just volume 0
+            await Promise.allSettled(this.loadPromises);
+
             const allAudio = [
                 ...Object.values(this.sounds),
                 ...Object.values(this.music)
             ];
 
-            const results = await Promise.allSettled(allAudio.map(s => {
+            const results = await Promise.allSettled(allAudio.map(async (s) => {
                 s.volume = 0;
-                return s.play().then(() => {
-                    s.pause();
-                    s.currentTime = 0;
-                });
+                s.muted = true;
+                try {
+                    await s.play();
+                } catch (error) {
+                    // Ignore autoplay prevention errors, we only want playback unlocking if possible.
+                }
+                s.pause();
+                s.currentTime = 0;
+                s.muted = false;
             }));
 
-            // If ALL failed, we are still locked.
             const anySuccess = results.some(r => r.status === 'fulfilled');
+            this.isInitialized = anySuccess || allAudio.length === 0;
 
-            if (anySuccess) {
-                this.initialized = true;
-                // Audio Initialized
-
-                // Restore music
-                if (this.currentMusic && this.music[this.currentMusic]) {
-                    const music = this.music[this.currentMusic];
-                    this.applyMusicVolume();
-                    music.play().catch(() => { });
-                }
-            } else {
-                // Audio Autoplay Blocked - Waiting for User Interaction
+            if (this.currentMusic && this.music[this.currentMusic]) {
+                const music = this.music[this.currentMusic];
+                this.applyMusicVolume();
+                music.play().catch(() => { });
+            } else if (this.pendingMusic) {
+                const queued = this.pendingMusic;
+                this.pendingMusic = null;
+                this.playMusic(queued);
             }
         } catch (e) {
-            // Audio initialization failed
+            console.warn('Audio initialization failed:', e);
         }
     }
 
@@ -218,11 +238,9 @@ class AudioManager {
     }
 
     public playMusic(key: string) {
-        // If same track requested
         if (this.currentMusic === key) {
             const track = this.music[key];
-            if (track && this.initialized) {
-                // If it's paused (finished non-looping track), restart it
+            if (track && this.isInitialized) {
                 if (track.paused) {
                     track.currentTime = 0;
                     track.play().catch(() => { });
@@ -231,7 +249,6 @@ class AudioManager {
             return;
         }
 
-        // Fade out/stop old
         if (this.currentMusic && this.music[this.currentMusic]) {
             const oldMusic = this.music[this.currentMusic];
             oldMusic.pause();
@@ -241,6 +258,11 @@ class AudioManager {
         this.currentMusic = key;
         const newMusic = this.music[key];
 
+        if (!this.isInitialized) {
+            this.pendingMusic = key;
+            return;
+        }
+
         if (newMusic) {
             this.applyMusicVolume();
             newMusic.currentTime = 0;
@@ -249,8 +271,7 @@ class AudioManager {
             if (playPromise !== undefined) {
                 playPromise.catch(error => {
                     if (error.name === 'NotAllowedError') {
-                        // Expected if user hasn't clicked yet. 
-                        // It will start once initialize() is called.
+                        this.pendingMusic = key;
                     } else {
                         console.warn(`Music '${key}' error:`, error);
                     }

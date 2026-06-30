@@ -143,33 +143,35 @@ export const initThreeScene = (container: HTMLElement, props: any): SceneContext
         alpha: false,
         stencil: false,
         depth: true, // Keep depth
-        precision: (isMobile || props.settings.ultraPerformance) ? 'lowp' : 'mediump' // Standardize across devices for consistency
+        precision: (!props.settings.ultraPerformance && !props.settings.balancedPerformance) ? 'mediump' : 'lowp'
     });
 
 
 
-    // Mobile Optimization: Aggressive resolution scaling
+    // Mobile Optimization: Reduced pixelation for mobile default mode.
     let mobilePixelScale = 2; // Default mobile
     if (isMobile) {
-        mobilePixelScale = props.settings.ultraPerformance ? 5.5 : (props.settings.balancedPerformance ? 4.5 : (isLowEndDevice ? 4.5 : 3.5));
+        mobilePixelScale = props.settings.ultraPerformance ? 5.5 : (props.settings.balancedPerformance ? 4.5 : (isLowEndDevice ? 4.5 : 1.8));
     } else if (isTablet) {
         mobilePixelScale = props.settings.ultraPerformance ? 4.0 : (props.settings.balancedPerformance ? 3.0 : 2.2);
     }
 
-    // Desktop: default to 3 or user setting. Mobile: strictly optimized.
+    // Desktop: default to 3 or user setting. Mobile: balanced between quality and performance.
     let basePixelScale = (isMobile || isTablet) ? mobilePixelScale : (props.settings.ultraPerformance ? 5.0 : (props.settings.balancedPerformance ? 4.0 : (props.settings.pixelScale || 3)));
     if (props.settings.debugHeadModel && props.settings.debugHeadModel !== 'DEFAULT') {
         basePixelScale = Math.max(1.0, basePixelScale * 0.45);
     }
     const pixelScale = basePixelScale;
 
-    const maxPixelRatio = (isMobile || props.settings.ultraPerformance) ? 1.0 : (isTablet ? 1.2 : Math.min(window.devicePixelRatio, 2)); // Cap at 2x for desktop
+    const maxPixelRatio = props.settings.ultraPerformance || props.settings.balancedPerformance
+        ? 1.0
+        : (isMobile ? Math.min(window.devicePixelRatio, 1.5) : (isTablet ? 1.2 : Math.min(window.devicePixelRatio, 2)));
     renderer.setPixelRatio(maxPixelRatio);
     renderer.setSize(width / pixelScale, height / pixelScale, false);
 
     renderer.domElement.style.width = '100%';
     renderer.domElement.style.height = '100%';
-    renderer.domElement.style.imageRendering = 'pixelated';
+    renderer.domElement.style.imageRendering = (isMobile && !props.settings.ultraPerformance && !props.settings.balancedPerformance) ? 'auto' : 'pixelated';
 
     // Disable shadows completely on ALL mobile/tablet devices or when ultraPerformance/balancedPerformance is active
     renderer.shadowMap.enabled = (device === 'pc') && !props.settings.ultraPerformance && !props.settings.balancedPerformance;

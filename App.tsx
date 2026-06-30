@@ -94,6 +94,19 @@ export default function App() {
 
   // --- ORIENTATION CHECK ---
   const [showRotateWarning, setShowRotateWarning] = useState(false);
+  const [isMobileNameTag, setIsMobileNameTag] = useState(false);
+
+  useEffect(() => {
+    const updateMobileTagState = () => {
+      if (typeof window === 'undefined') return;
+      const isMobile = window.matchMedia ? window.matchMedia('(pointer: coarse)').matches : window.innerWidth < 950;
+      setIsMobileNameTag(isMobile || window.innerWidth < 950);
+    };
+
+    updateMobileTagState();
+    window.addEventListener('resize', updateMobileTagState);
+    return () => window.removeEventListener('resize', updateMobileTagState);
+  }, []);
 
   // --- DISCORD SDK HANDSHAKE ---
   useEffect(() => {
@@ -910,10 +923,7 @@ export default function App() {
               let remoteAim: AimTarget = action.target;
               if (action.targetId && mp.room?.players) {
                 const relTarget = resolveTargetOwner(action.targetId, myId, mp.room.players);
-                remoteAim = relTarget === 'PLAYER' ? 'SELF' : 'OPPONENT';
-              } else {
-                if (action.target === 'SELF') remoteAim = 'OPPONENT';
-                else if (action.target === 'OPPONENT') remoteAim = 'SELF';
+                remoteAim = relTarget === 'DEALER' ? 'SELF' : 'OPPONENT';
               }
               spGame.setAimTarget(remoteAim);
               break;
@@ -933,11 +943,11 @@ export default function App() {
             case 'DEBUG_SYNC_PLAYER_MODEL': {
               // Transient model override from a remote dev client — do not persist
               spGame.setGameState(prev => {
-                const mpState = prev.multiplayerState || {};
+                const mpState = (prev.multiplayerState as any) || {};
                 const nextMpState = {
                   ...mpState,
                   debugPlayerModels: {
-                    ...(mpState.debugPlayerModels || {}),
+                    ...((mpState as any).debugPlayerModels || {}),
                     [action.playerId]: action.modelKey
                   }
                 };
@@ -1540,7 +1550,8 @@ export default function App() {
   };
 
   const handleBackToMenu = () => {
-    setAppState('GAME');
+    mp.disconnect();
+    setAppState('MENU');
     spGame.resetGame(true);
   };
 
@@ -1955,6 +1966,7 @@ export default function App() {
               if (appState === 'LOADING_MP') mp.connect();
             }}
             showClose={appState === 'LOADING_MP'}
+            progress={appState === 'LOADING_GAME' ? audioManager.getAudioLoadingProgress() : undefined}
           />
         </div>
       )}
@@ -1972,21 +1984,14 @@ export default function App() {
           onClose={() => setIsSettingsOpen(false)}
           onResetDefaults={handleResetSettings}
           isMultiplayer={spGame.gameState.isMultiplayer}
+          showExitToMenu={true}
           onExitToMenu={() => {
             setIsSettingsOpen(false);
             if (!spGame.gameState.isMultiplayer && appState === 'GAME' && spGame.gameState.phase !== 'INTRO' && spGame.gameState.phase !== 'BOOT') {
-              // @ts-ignore
-              setAppState('LOADING_GAME');
               spGame.resetGame(true);
+              setAppState('MENU');
             }
           }}
-          showExitToMenu={appState === 'GAME' && spGame.gameState.phase !== 'INTRO' && spGame.gameState.phase !== 'BOOT'}
-        />
-      )}
-
-      {isGuideOpen && (
-        <TutorialGuide
-          onClose={() => setIsGuideOpen(false)}
         />
       )}
 
@@ -2221,7 +2226,7 @@ export default function App() {
         tag.visible && (
           <div
             key={i}
-            className="absolute z-[40] pointer-events-none -translate-x-1/2 -translate-y-1/2 bg-black/80 border border-stone-800/80 px-2.5 py-1 text-[8px] sm:text-[9px] font-black tracking-[0.25em] text-stone-200 uppercase rounded-lg shadow-2xl select-none transition-opacity duration-150"
+            className={`absolute z-[40] pointer-events-none -translate-x-1/2 -translate-y-1/2 bg-black/80 border border-stone-800/80 ${isMobileNameTag ? 'px-2 py-0.5 text-[7px] sm:text-[8px]' : 'px-2.5 py-1 text-[8px] sm:text-[9px]'} font-black tracking-[0.25em] text-stone-200 uppercase rounded-lg shadow-2xl select-none transition-opacity duration-150`}
             style={{ left: `${tag.x}%`, top: `${tag.y}%` }}
           >
             {tag.name}

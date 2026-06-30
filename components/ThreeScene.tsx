@@ -49,7 +49,7 @@ const calculatePixelScale = (settings: GameSettings, width: number) => {
 
     let mobilePixelScale = 2;
     if (isMob) {
-        mobilePixelScale = settings.ultraPerformance ? 5.5 : (settings.balancedPerformance ? 4.5 : (isLowEndDevice ? 4.5 : 3.5));
+        mobilePixelScale = settings.ultraPerformance ? 5.5 : (settings.balancedPerformance ? 4.5 : (isLowEndDevice ? 4.5 : 2.8));
     } else if (isTab) {
         mobilePixelScale = settings.ultraPerformance ? 4.0 : (settings.balancedPerformance ? 3.0 : 2.2);
     }
@@ -78,10 +78,12 @@ const syncResolution = (container: HTMLDivElement, sceneContext: SceneContext, s
     const isTablet = /ipad|tablet|playbook|silk/i.test(ua) || (ua.includes('macintosh') && 'ontouchend' in document);
 
     const pxScale = calculatePixelScale(settings, width);
-    const maxPixelRatio = (isMobile || settings.ultraPerformance) ? 1.0 : (isTablet ? 1.2 : Math.min(window.devicePixelRatio, 2));
+    const maxPixelRatio = settings.ultraPerformance || settings.balancedPerformance
+        ? 1.0
+        : (isMobile ? Math.min(window.devicePixelRatio, 1.5) : (isTablet ? 1.2 : Math.min(window.devicePixelRatio, 2)));
     renderer.setPixelRatio(maxPixelRatio);
     renderer.setSize(width / pxScale, height / pxScale, false);
-    renderer.domElement.style.imageRendering = 'pixelated';
+    renderer.domElement.style.imageRendering = (isMobile && !settings.ultraPerformance && !settings.balancedPerformance) ? 'auto' : 'pixelated';
 
     const aspect = width / height;
     camera.aspect = aspect;
@@ -350,8 +352,19 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
 
                 const addHeadTag = (head: THREE.Object3D | null, label: string) => {
                     if (!head) return;
-                    head.getWorldPosition(worldPos);
-                    worldPos.y += 2.4;
+
+                    const bbox = new THREE.Box3().setFromObject(head);
+                    if (bbox.isEmpty()) {
+                        head.getWorldPosition(worldPos);
+                        worldPos.y += 2.4;
+                    } else {
+                        const topY = bbox.max.y;
+                        const headHeight = bbox.max.y - bbox.min.y;
+                        const x = (bbox.min.x + bbox.max.x) * 0.5;
+                        const z = (bbox.min.z + bbox.max.z) * 0.5;
+                        worldPos.set(x, topY + Math.max(0.08, headHeight * 0.08), z);
+                    }
+
                     worldPos.project(camera);
 
                     const x = (worldPos.x * 0.5 + 0.5) * 100;

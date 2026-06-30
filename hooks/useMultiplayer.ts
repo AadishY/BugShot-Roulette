@@ -61,6 +61,13 @@ const getAuthId = (): string | null => {
     return null;
 };
 
+const IMMEDIATE_ACTION_TYPES = new Set([
+    'SHOOT', 'USE_ITEM', 'SELECT_CARD', 'PICKUP_GUN', 'STEAL_ITEM',
+    'SYNC_STATE', 'SYNC_THREE_PLAYER_STATE', 'SYNC_ROUND', 'SYNC_THREE_PLAYER_ROUND',
+    'DEBUG_SYNC_PLAYER', 'DEBUG_SYNC_DEALER', 'DEBUG_SYNC_GAMESTATE',
+    'DEBUG_SYNC_THREE_PLAYER', 'DEBUG_SYNC_PLAYER_MODEL'
+]);
+
 export function useMultiplayer() {
     const [socket, setSocket] = useState<Socket | null>(null);
     const [room, setRoom] = useState<any>(null);
@@ -73,6 +80,7 @@ export function useMultiplayer() {
     const [latencyMs, setLatencyMs] = useState<number | null>(null);
 
     const connectionAttemptsRef = useRef(0);
+    const socketRef = useRef<Socket | null>(null);
     const socketBatcherRef = useRef<SocketBatcher | null>(null);
     const lastJoinRef = useRef<{ roomId: string; playerName: string } | null>(null);
     const playerNameRef = useRef<string>('');
@@ -92,8 +100,9 @@ export function useMultiplayer() {
         if (playerName) playerNameRef.current = playerName;
 
         // Prevent socket leaks if connect is called while already connected
-        if (socket) {
-            socket.disconnect();
+        if (socketRef.current) {
+            socketBatcherRef.current?.flush();
+            socketRef.current.disconnect();
         }
         setIsConnecting(true);
         setError(null);
@@ -118,6 +127,7 @@ export function useMultiplayer() {
             setIsConnected(true);
             setIsConnecting(false);
             setSocket(newSocket);
+            socketRef.current = newSocket;
             setError(null);
             setConnectionStatus('');
             connectionAttemptsRef.current = 0;
@@ -166,12 +176,19 @@ export function useMultiplayer() {
         newSocket.on('disconnect', (reason) => {
             console.log('Socket disconnected:', reason);
             setIsConnected(false);
+            socketBatcherRef.current?.flush();
             if (reason === 'io server disconnect') {
                 newSocket.connect();
             }
         });
 
         newSocket.on('joinedRoom', ({ room, playerId, reconnected }) => {
+            if (room?.debugPlayerModels) {
+                room.multiplayerState = {
+                    ...(room.multiplayerState || {}),
+                    debugPlayerModels: room.debugPlayerModels
+                };
+            }
             setRoom(room);
             setPlayerId(playerId);
             setMessages(room.messages || []);
@@ -183,6 +200,12 @@ export function useMultiplayer() {
         });
 
         newSocket.on('roomUpdated', (updatedRoom) => {
+            if (updatedRoom?.debugPlayerModels) {
+                updatedRoom.multiplayerState = {
+                    ...(updatedRoom.multiplayerState || {}),
+                    debugPlayerModels: updatedRoom.debugPlayerModels
+                };
+            }
             setRoom(updatedRoom);
         });
 
@@ -222,8 +245,11 @@ export function useMultiplayer() {
     }, []);
 
     const disconnect = useCallback(() => {
-        if (socket) {
-            socket.disconnect();
+        const activeSocket = socketRef.current || socket;
+        if (activeSocket) {
+            socketBatcherRef.current?.flush();
+            activeSocket.disconnect();
+            socketRef.current = null;
             setSocket(null);
             setIsConnected(false);
             setConnectionStatus('');
@@ -235,11 +261,13 @@ export function useMultiplayer() {
 
     useEffect(() => {
         return () => {
-            if (socket) {
-                socket.disconnect();
+            if (socketRef.current) {
+                socketBatcherRef.current?.flush();
+                socketRef.current.disconnect();
+                socketRef.current = null;
             }
         };
-    }, [socket]);
+    }, []);
 
     const joinRoom = (roomId: string, playerName: string) => {
         playerNameRef.current = playerName;
@@ -286,17 +314,25 @@ export function useMultiplayer() {
     };
 
     const sendAction = (roomId: string, action: any) => {
-        if (socketBatcherRef.current && socket?.connected) {
+        const activeSocket = socketRef.current || socket;
+        if (IMMEDIATE_ACTION_TYPES.has(action?.type)) {
+            socketBatcherRef.current?.flush();
+            activeSocket?.emit('gameAction', { roomId, action });
+            return;
+        }
+
+        if (socketBatcherRef.current && activeSocket?.connected) {
             socketBatcherRef.current.queue('gameAction', { roomId, action });
         } else {
-            socket?.emit('gameAction', { roomId, action });
+            activeSocket?.emit('gameAction', { roomId, action });
         }
     };
 
     // Bypass batcher for latency-sensitive events (aim, shoot, state sync)
     const sendImmediateAction = (roomId: string, action: any) => {
+        const activeSocket = socketRef.current || socket;
         socketBatcherRef.current?.flush();
-        socket?.emit('gameAction', { roomId, action });
+        activeSocket?.emit('gameAction', { roomId, action });
     };
 
     const kickPlayer = (roomId: string, targetPlayerId: string) => {
