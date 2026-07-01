@@ -1201,9 +1201,11 @@ export const useGameLogic = () => {
     crushIndexOverride?: number,
     contractLootOverride?: ItemType[],
     phoneFutureIndexOverride?: number,
-    targetPlayerId?: string
+    targetPlayerId?: string,
+    isLocalAction: boolean = true
   ): Promise<boolean> => {
     const isThreePlayer = gameStateRef.current.isThreePlayer;
+    const shouldDimMusic = isLocalAction;
     if (isThreePlayer) {
         const players = gameStateRef.current.multiplayerState?.players || [];
         const myId = gameStateRef.current.localPlayerId || '';
@@ -1410,7 +1412,7 @@ export const useGameLogic = () => {
 
             case 'JACKPOT':
                 const spinOutcome = jackpotOutcomeOverride || (Math.random() < 0.20 ? 'JACKPOT' : (Math.random() < 0.50 ? 'NORMAL' : 'LOSE'));
-                audioManager.playSound('slotmachine');
+                audioManager.playSound('slotmachine', { dimMusic: shouldDimMusic });
                 setAnim(p => ({ ...p, triggerJackpot: p.triggerJackpot + 1, jackpotResult: spinOutcome }));
                 addLog(`${userName.toUpperCase()} SPUN THE JACKPOT MACHINE`, 'info');
                 await wait(3500);
@@ -1419,7 +1421,7 @@ export const useGameLogic = () => {
                     addLog("JACKPOT WIN! IMMUNE TO NEXT 3 SHOTS", 'safe');
                     setOverlayText(`✨ JACKPOT WIN! ✨\n3 SHOT IMMUNITY FOR ${userName.toUpperCase()}`);
                     userSetter(p => ({ ...p, jackpotImmunityShots: 3 }));
-                    audioManager.playJackpotIntro();
+                    audioManager.playJackpotIntro({ dimMusic: shouldDimMusic });
                 } else if (spinOutcome === 'NORMAL') {
                     addLog("NORMAL WIN! IMMUNE TO NEXT 1 SHOT", 'safe');
                     setOverlayText(`👍 NORMAL WIN! 👍\n1 SHOT IMMUNITY FOR ${userName.toUpperCase()}`);
@@ -1520,7 +1522,7 @@ export const useGameLogic = () => {
 
     switch (item) {
       case 'BEER':
-        audioManager.playSound('blankshell');
+        audioManager.playSound('blankshell', { dimMusic: shouldDimMusic });
         roundEnded = await ItemActions.handleBeer(
           gameStateRef.current, setGameState,
           (v) => setAnim(p => ({ ...p, triggerRack: typeof v === 'function' ? v(p.triggerRack) : v })),
@@ -1665,7 +1667,7 @@ export const useGameLogic = () => {
         }
 
         // Trigger animation
-        audioManager.playSound('slotmachine');
+        audioManager.playSound('slotmachine', { dimMusic: shouldDimMusic });
         setAnim(p => ({
           ...p,
           triggerJackpot: p.triggerJackpot + 1,
@@ -1683,7 +1685,7 @@ export const useGameLogic = () => {
           addLog("JACKPOT WIN! IMMUNE TO NEXT 3 SHOTS", 'safe');
           setOverlayText(`✨ JACKPOT WIN! ✨\n3 SHOT IMMUNITY FOR ${userName.toUpperCase()}`);
           setOwner(p => ({ ...p, jackpotImmunityShots: 3 }));
-          audioManager.playJackpotIntro();
+          audioManager.playJackpotIntro({ dimMusic: shouldDimMusic });
         } else if (outcome === 'NORMAL') {
           addLog("NORMAL WIN! IMMUNE TO NEXT 1 SHOT", 'safe');
           setOverlayText(`👍 NORMAL WIN! 👍\n1 SHOT IMMUNITY FOR ${userName.toUpperCase()}`);
@@ -1699,7 +1701,7 @@ export const useGameLogic = () => {
       }
 
       case 'MIRROR': {
-        audioManager.playSound('mirror');
+        audioManager.playSound('mirror', { dimMusic: shouldDimMusic });
         setAnim(p => ({ ...p, triggerMirror: p.triggerMirror + 1 }));
         await wait(2200); // Let Mirror animation run first
 
@@ -1948,7 +1950,7 @@ export const useGameLogic = () => {
       selectedCardIndex: index
     }));
 
-    audioManager.playSound('cards');
+    audioManager.playSound('cards', { dimMusic: true });
 
     const cards = gameStateRef.current.deckCards;
     if (!cards || !cards[index]) {

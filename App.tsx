@@ -727,7 +727,7 @@ export default function App() {
                   }
                   return { ...d, items: newItems };
                 });
-                await spGame.processItemEffect(relSender, action.item, action.deckCards, action.jackpotOutcome, action.crushIndex, action.contractLoot, action.phoneFutureIndex, action.targetPlayerId);
+                await spGame.processItemEffect(relSender, action.item, action.deckCards, action.jackpotOutcome, action.crushIndex, action.contractLoot, action.phoneFutureIndex, action.targetPlayerId, false);
                 break;
               }
               case 'PICKUP_GUN':

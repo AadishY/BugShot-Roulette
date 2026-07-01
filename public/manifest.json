@@ -4,7 +4,13 @@
     "description": "A high-stakes tabletop horror game where you play Russian Roulette with a 12-gauge pump-action shotgun. Features 3D graphics, strategic items, and multiplayer.",
     "start_url": "/",
     "id": "/",
+    "scope": "/",
     "display": "fullscreen",
+    "display_override": [
+        "fullscreen",
+        "standalone",
+        "minimal-ui"
+    ],
     "orientation": "landscape",
     "background_color": "#050505",
     "theme_color": "#0a0a0a",
@@ -46,10 +52,39 @@
             "sizes": "1920x1080",
             "type": "image/jpeg",
             "form_factor": "wide",
-            "label": "Aadish Roulette Gameplay"
+            "label": "Aadish Roulette Wide Gameplay"
+        },
+        {
+            "src": "/image/preview-lowquality.jpg",
+            "sizes": "1080x1920",
+            "type": "image/jpeg",
+            "form_factor": "narrow",
+            "label": "Aadish Roulette Mobile Gameplay"
+        }
+    ],
+    "related_applications": [
+        {
+            "platform": "play",
+            "url": "https://play.google.com/store/apps/details?id=com.aadishroulette.game",
+            "id": "com.aadishroulette.game"
+        }
+    ],
+    "prefer_related_applications": false,
+    "scope_extensions": [
+        {
+            "type": "origin",
+            "origin": "https://aadish-roulette.pages.dev"
+        }
+    ],
+    "launch_handler": {
+        "client_mode": "focus-existing"
+    },
+    "protocol_handlers": [
+        {
+            "protocol": "web+aadishroulette",
+            "url": "/?url=%s"
         }
     ],
     "lang": "en-US",
-    "dir": "ltr",
-    "prefer_related_applications": false
+    "dir": "ltr"
 }

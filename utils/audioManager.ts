@@ -174,7 +174,7 @@ class AudioManager {
         return this.initializationPromise;
     }
 
-    public playSound(key: string, options?: { volume?: number, playbackRate?: number }) {
+    public playSound(key: string, options?: { volume?: number, playbackRate?: number, dimMusic?: boolean }) {
         // If not initialized, we shouldn't crash, but we might not hear it yet depending on browser.
         // Better: Try to play.
         const original = this.sounds[key];
@@ -204,14 +204,16 @@ class AudioManager {
         const boost = boostMap[key] || 1.0;
 
         // Check if this sound should dim the background music
-        const shouldDim = [
+        const shouldDimByKey = [
             'dropping', 'checkhandcuffs', 'handcuffed', 'adrenaline', 
             'beer', 'cig', 'glass', 'inverter', 'big_inverter', 
             'phone', 'saw', 'choke', 'remote', 'contract', 'luckycharm', 'flashbang', 'crusher', 'totem', 'mirror',
             'slotmachine'
         ].includes(key);
 
-        if (shouldDim) {
+        const shouldDimMusic = options?.dimMusic ?? shouldDimByKey;
+
+        if (shouldDimMusic) {
             this.activeDimmingCount++;
             this.applyMusicVolume();
         }
@@ -228,7 +230,7 @@ class AudioManager {
         const playPromise = sound.play();
         if (playPromise !== undefined) {
             playPromise.catch(error => {
-                if (shouldDim) {
+                if (shouldDimMusic) {
                     this.activeDimmingCount = Math.max(0, this.activeDimmingCount - 1);
                     this.applyMusicVolume();
                 }
@@ -245,7 +247,7 @@ class AudioManager {
             sound.pause();
             sound.src = '';
             sound.onended = null;
-            if (shouldDim) {
+            if (shouldDimMusic) {
                 this.activeDimmingCount = Math.max(0, this.activeDimmingCount - 1);
                 this.applyMusicVolume();
             }
@@ -319,26 +321,29 @@ class AudioManager {
     private jackpotLoopAudio: HTMLAudioElement | null = null;
     private isJackpotActive: boolean = false;
 
-    public playJackpotIntro() {
+    public playJackpotIntro(options?: { dimMusic?: boolean }) {
         this.stopJackpotMusic();
 
         const intro = this.sounds['jackpot'];
         if (!intro) return;
 
-        this.isJackpotActive = true;
-        this.applyMusicVolume();
+        const shouldDimMusic = options?.dimMusic ?? true;
+        if (shouldDimMusic) {
+            this.isJackpotActive = true;
+            this.applyMusicVolume();
+        }
 
         this.jackpotIntroAudio = intro.cloneNode() as HTMLAudioElement;
         this.jackpotIntroAudio.volume = this.sfxVolume;
         this.jackpotIntroAudio.onended = () => {
-            this.playJackpotLoop();
+            this.playJackpotLoop({ dimMusic: shouldDimMusic });
         };
         this.jackpotIntroAudio.play().catch(e => {
             console.warn("Jackpot intro blocked", e);
         });
     }
 
-    public playJackpotLoop() {
+    public playJackpotLoop(options?: { dimMusic?: boolean }) {
         if (this.jackpotIntroAudio) {
             this.jackpotIntroAudio.onended = null;
             this.jackpotIntroAudio.pause();
@@ -352,8 +357,14 @@ class AudioManager {
             return;
         }
 
-        this.isJackpotActive = true;
-        this.applyMusicVolume();
+        const shouldDimMusic = options?.dimMusic ?? true;
+        if (shouldDimMusic) {
+            this.isJackpotActive = true;
+            this.applyMusicVolume();
+        } else {
+            this.isJackpotActive = false;
+            this.applyMusicVolume();
+        }
 
         this.jackpotLoopAudio = loop.cloneNode() as HTMLAudioElement;
         this.jackpotLoopAudio.loop = true;
