@@ -6,7 +6,7 @@ import { AnnouncementModal } from './AnnouncementModal';
 import { Settings as SettingsIcon, HelpCircle, Trophy, ShieldAlert, Lock, User, Terminal, BookOpen, Crown, Shield, Skull, X, Crosshair, Swords, Activity, Award, Bell } from 'lucide-react';
 import { audioManager } from '../../utils/audioManager';
 import { loginUser, registerUser, getLeaderboard, saveUserStatsToRedis } from '../../utils/redisService';
-import { GAME_VERSION } from '../../constants';
+import { GAME_VERSION, ANNOUNCEMENT_VERSION } from '../../constants';
 import { getStoredStats, mergeGameStats } from '../../utils/statsManager';
 
 const AUTH_QUOTES = [
@@ -72,6 +72,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
     // Dialog & UI state
     const [showChangelog, setShowChangelog] = React.useState(false);
     const [showAnnouncement, setShowAnnouncement] = React.useState(false);
+    const [pendingChangelog, setPendingChangelog] = React.useState(false);
     const [showLoginModal, setShowLoginModal] = React.useState(false);
     const [showLeaderboard, setShowLeaderboard] = React.useState(false);
     const [loginTab, setLoginTab] = React.useState<'signin' | 'register'>('signin');
@@ -138,13 +139,18 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
     useEffect(() => {
         if (hasBoundSoul) {
             const currentVersion = GAME_VERSION;
+            const currentAnnouncementVersion = ANNOUNCEMENT_VERSION;
             const lastSeenChangelog = localStorage.getItem('aadish_roulette_changelog_seen');
             const lastSeenAnnouncement = localStorage.getItem('aadish_roulette_announcement_seen');
 
-            if (lastSeenAnnouncement !== currentVersion) {
+            if (lastSeenAnnouncement !== currentAnnouncementVersion) {
                 setTimeout(() => {
                     setShowAnnouncement(true);
-                    localStorage.setItem('aadish_roulette_announcement_seen', currentVersion);
+                    localStorage.setItem('aadish_roulette_announcement_seen', currentAnnouncementVersion);
+
+                    if (lastSeenChangelog !== currentVersion) {
+                        setPendingChangelog(true);
+                    }
                 }, 700);
             } else if (lastSeenChangelog !== currentVersion) {
                 setTimeout(() => {
@@ -709,7 +715,13 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
 
             <AnnouncementModal
                 isOpen={showAnnouncement}
-                onClose={() => setShowAnnouncement(false)}
+                onClose={() => {
+                    setShowAnnouncement(false);
+                    if (pendingChangelog) {
+                        setShowChangelog(true);
+                        setPendingChangelog(false);
+                    }
+                }}
             />
 
             {/* Redesigned, Scaled-Up Global Leaderboard Modal */}

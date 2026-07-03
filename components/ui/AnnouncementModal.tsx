@@ -33,36 +33,33 @@ export const AnnouncementModal: React.FC<AnnouncementModalProps> = ({ isOpen, on
                         </div>
                     </div>
                     <span className="px-2.5 py-1 text-[9px] sm:text-[10px] uppercase tracking-[0.35em] font-black bg-stone-900 border border-amber-500/30 text-amber-300 rounded-full">
-                        PENDING
+                        Active
                     </span>
                 </div>
 
                 <div className="flex flex-col gap-4 overflow-y-auto pr-1.5 text-stone-300 custom-scrollbar">
-                    <div className="bg-stone-900/80 border border-stone-800 p-4 rounded-3xl min-h-[180px] flex flex-col justify-center items-center text-center gap-3">
-                        <p className="text-stone-400 text-sm sm:text-base leading-relaxed">
-                            No announcement content has been published yet.
-                        </p>
-                        <p className="text-stone-500 text-[10px] sm:text-[11px] uppercase tracking-[0.35em]">
-                            This panel supports images, video, pinned notices, and rich broadcast content.
-                        </p>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <div className="h-40 md:h-44 rounded-3xl border border-stone-800 bg-stone-900/70 flex items-center justify-center text-stone-500 text-[10px] sm:text-sm text-center px-3">
-                            Image / GIF panel placeholder
-                        </div>
-                        <div className="h-40 md:h-44 rounded-3xl border border-stone-800 bg-stone-900/70 flex items-center justify-center text-stone-500 text-[10px] sm:text-sm text-center px-3">
-                            Video player placeholder
+                    <div className="bg-stone-900/80 border border-stone-800 p-4 rounded-3xl min-h-[180px] flex flex-col justify-center items-start gap-3">
+                        <div className="text-left space-y-2">
+                            <p className="text-amber-300 uppercase tracking-[0.35em] text-[10px] sm:text-[11px] font-black">NEW PLAYER MODELS</p>
+                            <h3 className="text-stone-100 text-lg sm:text-xl font-black tracking-wider">Fresh character visuals are now live.</h3>
+                            <p className="text-stone-400 text-sm sm:text-base leading-relaxed">
+                                Dive into the updated player model lineup with enhanced animation detail, sharper textures, and a more expressive lobby presence. Watch the preview to see the new rigs in action.
+                            </p>
                         </div>
                     </div>
 
-                    <div className="bg-stone-900/80 border border-stone-800 p-4 rounded-3xl space-y-2">
-                        <p className="text-stone-400 text-xs uppercase tracking-[0.35em] font-bold">Announcement Notes</p>
-                        <ul className="list-disc list-inside text-stone-500 text-[11px] leading-relaxed space-y-1">
-                            <li>Force show once when a new announcement version is available.</li>
-                            <li>Supports multi-media content and pinned message state.</li>
-                            <li>Designed to display rich promo and system broadcast content.</li>
-                        </ul>
+                    <div className="grid grid-cols-1 gap-3">
+                        <div className="relative overflow-hidden rounded-3xl border border-stone-800 bg-black/80 shadow-[0_10px_40px_rgba(0,0,0,0.8)]">
+                            <div className="absolute inset-0 bg-gradient-to-b from-transparent via-black/10 to-black/90 pointer-events-none" />
+                            <iframe
+                                className="w-full aspect-video rounded-3xl"
+                                src="https://www.youtube.com/embed/nwWeNF0ljNQ?si=VZKOk7WieMm5P6iK"
+                                title="New Player Models Preview"
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                allowFullScreen
+                                loading="lazy"
+                            />
+                        </div>
                     </div>
                 </div>
             </div>
