@@ -483,7 +483,19 @@ export const useGameLogic = () => {
       audioManager.stopJackpotMusic();
     }
     setKnownShell(null);
-    setAnim({ dealerDropping: false, playerHit: false });
+    setAnim({
+      dealerDropping: false,
+      dealerHit: false,
+      dealerRecovering: false,
+      playerHit: false,
+      playerRecovering: false,
+      player3Hit: false,
+      player3Dropping: false,
+      player3Recovering: false,
+      player4Hit: false,
+      player4Dropping: false,
+      player4Recovering: false
+    });
     let startCamView: CameraView = 'PLAYER';
     if (turnOwnerOverride === 'DEALER') startCamView = 'DEALER';
     else if (turnOwnerOverride === 'PLAYER3') startCamView = 'PLAYER3_GUN';
@@ -1104,7 +1116,7 @@ export const useGameLogic = () => {
       const aliveCount = (postPlayerHp > 0 ? 1 : 0) + (postDealerHp > 0 ? 1 : 0) + (postPlayer3Hp > 0 ? 1 : 0) + (postPlayer4Hp > 0 ? 1 : 0);
 
       const shooterSetter = getPlayerSetter(shooter);
-      shooterSetter(p => ({ ...p, isSawedActive: false }));
+      shooterSetter(p => ({ ...p, isSawedActive: false, isFlashbanged: false }));
 
       if (aliveCount <= 1) {
         setIsProcessing(true);
@@ -1453,6 +1465,9 @@ export const useGameLogic = () => {
                 setOverlayText(`⚡ ${targetName.toUpperCase()} BLINDED!`);
                 await wait(2000);
                 setOverlayText(null);
+                if (resolvedTargetOwner === 'PLAYER') {
+                    setShowFlashbang(false);
+                }
                 break;
 
             case 'JACKPOT':
@@ -1999,6 +2014,7 @@ export const useGameLogic = () => {
     const chosenCard = cards[index];
     const turnOwner = gameStateRef.current.turnOwner;
     const userName = turnOwner === 'PLAYER' ? (playerName || 'PLAYER') : (gameStateRef.current.opponentName || 'OPPONENT');
+    const wasCuffedBeforeHermit = getPlayerState(turnOwner).isHandcuffed;
     
     setOverlayText(`🃏 ${userName.toUpperCase()} REVEALED: ${chosenCard.name.toUpperCase()}...`);
 
@@ -2108,8 +2124,52 @@ export const useGameLogic = () => {
       }
       
       case 'The Hermit': {
-        addLog(`${userName} ends turn instantly with The Hermit.`, 'danger');
-        setOverlayText(`⛓️ THE HERMIT: TURN TRANSFERRED TO ${turnOwner === 'PLAYER' ? 'DEALER' : 'PLAYER'}!`);
+        const nextOpponent: TurnOwner = turnOwner === 'PLAYER' ? 'DEALER' : 'PLAYER';
+        let resolvedNextOwner: TurnOwner = nextOpponent;
+        if (gameStateRef.current.isMultiplayer && (gameStateRef.current.isThreePlayer || gameStateRef.current.isFourPlayer)) {
+          const mPlayers = gameStateRef.current.multiplayerState?.players || [];
+          const size = mPlayers.length;
+          const myId = gameStateRef.current.localPlayerId || '';
+          const myIndex = mPlayers.findIndex(p => p.id === myId);
+
+          let currentId = myId;
+          if (turnOwner === 'DEALER') currentId = mPlayers[(myIndex + 2) % size]?.id;
+          else if (turnOwner === 'PLAYER3') currentId = mPlayers[(myIndex + 1) % size]?.id;
+          else if (turnOwner === 'PLAYER4') currentId = mPlayers[(myIndex + 3) % size]?.id;
+
+          const currentIdx = mPlayers.findIndex(p => p.id === currentId);
+          if (currentIdx !== -1) {
+            let nextIdx = (currentIdx + 1) % size;
+            const getHp = (playerObj: any) => {
+              const relOwner = resolveTargetOwner(playerObj.id, myId, mPlayers);
+              return getPlayerState(relOwner).hp;
+            };
+            while (getHp(mPlayers[nextIdx]) <= 0) {
+              nextIdx = (nextIdx + 1) % size;
+            }
+            resolvedNextOwner = resolveTargetOwner(mPlayers[nextIdx].id, myId, mPlayers);
+          }
+        }
+
+        const drawerState = getPlayerState(turnOwner);
+        const receiverState = getPlayerState(resolvedNextOwner);
+
+        if (drawerState.isHandcuffed) {
+          const setOwner = getPlayerSetter(turnOwner);
+          setOwner(p => ({ ...p, isHandcuffed: false }));
+          addLog(`${userName} broke cuffs with The Hermit.`, 'safe');
+          setOverlayText(`⛓️ THE HERMIT: CUFFS BROKEN! TURN RETAINED.`);
+        } else if (receiverState.isHandcuffed) {
+          const setReceiver = getPlayerSetter(resolvedNextOwner);
+          setReceiver(p => ({ ...p, isHandcuffed: false }));
+          const receiverName = getPlayerNameByOwner(resolvedNextOwner);
+          addLog(`${receiverName} broke cuffs with The Hermit.`, 'safe');
+          setOverlayText(`⛓️ THE HERMIT: ${receiverName.toUpperCase()}'S CUFFS BROKEN! TURN TRANSFERRED.`);
+        } else {
+          addLog(`${userName} ends turn instantly with The Hermit.`, 'danger');
+          const opponentNameText = getPlayerNameByOwner(resolvedNextOwner);
+          setOverlayText(`⛓️ THE HERMIT: TURN TRANSFERRED TO ${opponentNameText.toUpperCase()}!`);
+        }
         break;
       }
       
@@ -2327,9 +2387,42 @@ export const useGameLogic = () => {
     if (!deathTriggered && gameStateRef.current.phase !== 'GAME_OVER') {
       let nextOwner = turnOwner;
       if (chosenCard.name === 'The Hermit') {
-        nextOwner = turnOwner === 'PLAYER' ? 'DEALER' : 'PLAYER';
+        const nextOpponent: TurnOwner = turnOwner === 'PLAYER' ? 'DEALER' : 'PLAYER';
+        let resolvedNextOwner: TurnOwner = nextOpponent;
+        if (gameStateRef.current.isMultiplayer && (gameStateRef.current.isThreePlayer || gameStateRef.current.isFourPlayer)) {
+          const mPlayers = gameStateRef.current.multiplayerState?.players || [];
+          const size = mPlayers.length;
+          const myId = gameStateRef.current.localPlayerId || '';
+          const myIndex = mPlayers.findIndex(p => p.id === myId);
+
+          let currentId = myId;
+          if (turnOwner === 'DEALER') currentId = mPlayers[(myIndex + 2) % size]?.id;
+          else if (turnOwner === 'PLAYER3') currentId = mPlayers[(myIndex + 1) % size]?.id;
+          else if (turnOwner === 'PLAYER4') currentId = mPlayers[(myIndex + 3) % size]?.id;
+
+          const currentIdx = mPlayers.findIndex(p => p.id === currentId);
+          if (currentIdx !== -1) {
+            let nextIdx = (currentIdx + 1) % size;
+            const getHp = (playerObj: any) => {
+              const relOwner = resolveTargetOwner(playerObj.id, myId, mPlayers);
+              return getPlayerState(relOwner).hp;
+            };
+            while (getHp(mPlayers[nextIdx]) <= 0) {
+              nextIdx = (nextIdx + 1) % size;
+            }
+            resolvedNextOwner = resolveTargetOwner(mPlayers[nextIdx].id, myId, mPlayers);
+          }
+        }
+
+        const receiverWasCuffed = getPlayerState(resolvedNextOwner).isHandcuffed;
+
+        if (wasCuffedBeforeHermit) {
+          nextOwner = turnOwner;
+        } else {
+          nextOwner = resolvedNextOwner;
+        }
       }
-      const nextPhase = nextOwner === 'PLAYER' ? 'PLAYER_TURN' : 'DEALER_TURN';
+      const nextPhase = nextOwner === 'PLAYER' ? 'PLAYER_TURN' : (nextOwner === 'PLAYER3' ? 'PLAYER3_TURN' : (nextOwner === 'PLAYER4' ? 'PLAYER4_TURN' : 'DEALER_TURN'));
       setGameState(prev => ({
         ...prev,
         phase: nextPhase,
@@ -2413,7 +2506,13 @@ export const useGameLogic = () => {
       if (data.dealer) setDealer(d => ({ ...d, ...data.dealer }));
       if (data.player3) setPlayer3(p3 => ({ ...p3, ...data.player3 }));
       if (data.player4) setPlayer4(p4 => ({ ...p4, ...data.player4 }));
-      if (data.gameState) setGameState(s => ({ ...s, ...data.gameState }));
+      if (data.gameState) setGameState(s => {
+        const nextState = { ...s, ...data.gameState };
+        if (s.phase === 'STEALING' && s.turnOwner === 'PLAYER') {
+          nextState.phase = 'STEALING';
+        }
+        return nextState;
+      });
     },
     setGamePhase,
     setOverlayText,

@@ -298,8 +298,13 @@ export const initThreeScene = (container: HTMLElement, props: any): SceneContext
     };
 
     const roomDebugModels = props.gameState?.multiplayerState?.debugPlayerModels || {};
-    const getModelForSeat = (seat: 'dealer' | 'front' | 'left' | 'right', playerId?: string) => {
-        if (playerId && roomDebugModels[playerId]) return roomDebugModels[playerId];
+    const getModelForSeat = (seat: 'dealer' | 'front' | 'left' | 'right', playerIndex: number, playerId?: string) => {
+        if (playerId && Object.prototype.hasOwnProperty.call(roomDebugModels, playerId)) {
+            return roomDebugModels[playerId] as PlayerModelKey;
+        }
+        if (Object.prototype.hasOwnProperty.call(roomDebugModels, playerIndex)) {
+            return roomDebugModels[playerIndex] as PlayerModelKey;
+        }
         return getDefaultModelForPlayer(playerId, seat);
     };
 
@@ -314,19 +319,23 @@ export const initThreeScene = (container: HTMLElement, props: any): SceneContext
             const rightOpponent = players[(myIndex + 3) % 4];
 
             // Front player -> DEALER
+            const frontIndex = players.findIndex((p: any) => p.id === frontOpponent?.id);
+            const leftIndex = players.findIndex((p: any) => p.id === leftOpponent?.id);
+            const rightIndex = players.findIndex((p: any) => p.id === rightOpponent?.id);
+
             dealerGroup = createPlayerAvatar(scene, new THREE.Vector3(0, -4.5, -8), Math.PI,
-                frontOpponent ? frontOpponent.name : 'OPPONENT 1', 4, 4, getModelForSeat('dealer', frontOpponent?.id));
+                frontOpponent ? frontOpponent.name : 'OPPONENT 1', 4, 4, getModelForSeat('dealer', frontIndex, frontOpponent?.id));
             dealerGroup.name = 'DEALER';
 
             // Left player -> PLAYER3
             player3Group = createPlayerAvatar(scene, new THREE.Vector3(-8, -4.5, -2), Math.PI / 2,
-                leftOpponent ? leftOpponent.name : 'OPPONENT 2', 4, 4, getModelForSeat('left', leftOpponent?.id));
+                leftOpponent ? leftOpponent.name : 'OPPONENT 2', 4, 4, getModelForSeat('left', leftIndex, leftOpponent?.id));
             player3Group.name = 'PLAYER3';
             scene.userData.player3Side = 'left';
 
             // Right player -> PLAYER4
             player4Group = createPlayerAvatar(scene, new THREE.Vector3(8, -4.5, -2), -Math.PI / 2,
-                rightOpponent ? rightOpponent.name : 'OPPONENT 3', 4, 4, getModelForSeat('right', rightOpponent?.id));
+                rightOpponent ? rightOpponent.name : 'OPPONENT 3', 4, 4, getModelForSeat('right', rightIndex, rightOpponent?.id));
             player4Group.name = 'PLAYER4';
             scene.userData.player4Side = 'right';
         } else {
@@ -349,15 +358,18 @@ export const initThreeScene = (container: HTMLElement, props: any): SceneContext
             const sidePos = myIndex === 1 ? 'right' : 'left';
 
             // Front player -> DEALER
+            const frontIndex = players.findIndex((p: any) => p.id === frontOpponent?.id);
+            const sideIndex = players.findIndex((p: any) => p.id === sideOpponent?.id);
+
             dealerGroup = createPlayerAvatar(scene, new THREE.Vector3(0, -4.5, -8), Math.PI,
-                frontOpponent.name, 4, 4, getModelForSeat('dealer', frontOpponent?.id));
+                frontOpponent.name, 4, 4, getModelForSeat('dealer', frontIndex, frontOpponent?.id));
             dealerGroup.name = 'DEALER';
 
             // Side player -> PLAYER3
             const sideX   = sidePos === 'left' ? -8 : 8;
             const sideRot = sidePos === 'left' ? Math.PI / 2 : -Math.PI / 2;
             player3Group = createPlayerAvatar(scene, new THREE.Vector3(sideX, -4.5, -2), sideRot,
-                sideOpponent.name, 4, 4, getModelForSeat('left', sideOpponent?.id));
+                sideOpponent.name, 4, 4, getModelForSeat('left', sideIndex, sideOpponent?.id));
             player3Group.name = 'PLAYER3';
             scene.userData.player3Side = sidePos;
         } else {
@@ -371,8 +383,9 @@ export const initThreeScene = (container: HTMLElement, props: any): SceneContext
     } else if (isMP) {
         const opponentName = props.gameState?.opponentName || 'OPPONENT';
         const remotePlayer = props.gameState?.multiplayerState?.players?.find((p: any) => p.id !== props.gameState?.localPlayerId);
+        const remoteIndex = props.gameState?.multiplayerState?.players?.findIndex((p: any) => p.id === remotePlayer?.id) ?? -1;
         dealerGroup = createPlayerAvatar(scene, new THREE.Vector3(0, -4.5, -8), Math.PI,
-            opponentName, 4, 4, getModelForSeat('dealer', remotePlayer?.id));
+            opponentName, 4, 4, getModelForSeat('dealer', remoteIndex, remotePlayer?.id));
         dealerGroup.name = 'DEALER'; // Keep 'DEALER' for animation logic compatibility
 
         if (scene.fog instanceof THREE.FogExp2) scene.fog.density = 0.003;

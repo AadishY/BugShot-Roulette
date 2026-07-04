@@ -592,16 +592,25 @@ const joinSocketToRoom = (socket, room, playerName, authId) => {
     const newPlayerName = playerName ? playerName.trim().substring(0, 14) : `Player ${room.players.length + 1}`;
     const cleanAuthId = authId ? authId.trim().toLowerCase() : null;
 
-    // Mid-game reconnect for logged-in players within grace window
-    if (room.gameState && cleanAuthId) {
-        const pendingIndex = room.players.findIndex(p => p.disconnected && p.authId === cleanAuthId);
+    // Mid-game reconnect for players within grace window (both logged in and guest players)
+    if (room.gameState) {
+        const pendingIndex = room.players.findIndex(p => p.disconnected && (
+            cleanAuthId ? p.authId === cleanAuthId : p.name.toLowerCase() === newPlayerName.toLowerCase()
+        ));
         if (pendingIndex !== -1) {
             const returning = room.players[pendingIndex];
+            const wasHost = room.hostId === returning.id;
+
             if (returning.disconnectTimer) clearTimeout(returning.disconnectTimer);
             returning.id = socket.id;
             returning.disconnected = false;
             returning.name = newPlayerName;
             delete returning.disconnectTimer;
+            
+            if (wasHost) {
+                room.hostId = socket.id;
+            }
+
             room.lastActivity = Date.now();
             socket.join(room.id);
 
@@ -745,21 +754,32 @@ io.on('connection', (socket) => {
 
         if (action.type === 'DEBUG_SET_PLAYER_MODEL' || action.type === 'DEBUG_SYNC_PLAYER_MODEL') {
             const modelKey = action.modelKey;
-            room.debugPlayerModels = {
-                ...(room.debugPlayerModels || {}),
-                [action.playerId]: modelKey
-            };
-            if (room.gameState) {
-                room.gameState = {
-                    ...room.gameState,
-                    multiplayerState: {
-                        ...(room.gameState.multiplayerState || {}),
-                        debugPlayerModels: room.debugPlayerModels
-                    }
-                };
+            let playerId = action.playerId;
+            if (playerId && !room.players.some(p => p.id === playerId)) {
+                playerId = undefined;
             }
-            room.lastActivity = Date.now();
-            emitRoomUpdated(roomId, room);
+            if (!playerId && typeof action.playerIndex === 'number' && action.playerIndex >= 0 && action.playerIndex < room.players.length) {
+                playerId = room.players[action.playerIndex].id;
+            }
+            if (!playerId) {
+                console.warn(`[DEBUG] Ignoring invalid player reference for ${action.type}:`, action.playerId ?? action.playerIndex);
+            } else {
+                room.debugPlayerModels = {
+                    ...(room.debugPlayerModels || {}),
+                    [playerId]: modelKey
+                };
+                if (room.gameState) {
+                    room.gameState = {
+                        ...room.gameState,
+                        multiplayerState: {
+                            ...(room.gameState.multiplayerState || {}),
+                            debugPlayerModels: room.debugPlayerModels
+                        }
+                    };
+                }
+                room.lastActivity = Date.now();
+                emitRoomUpdated(roomId, room);
+            }
         }
 
         if (action.type === 'USE_ITEM') {
@@ -1040,32 +1060,38 @@ io.on('connection', (socket) => {
             console.log(`[DISCONNECT LOOP] User ${disconnectedPlayer.name} abandoned pipeline link lane: ${roomId}`);
 
             if (room.gameState) {
-                if (room.hostId === socket.id) {
-                    const activeHost = room.players.find(p => p.id !== socket.id);
-                    if (activeHost) {
-                        room.hostId = activeHost.id;
-                        console.log(`[AUTHORITY ESCALATION] Transfer host to ${activeHost.name} after disconnect in room ${roomId}`);
-                    }
-                }
+                disconnectedPlayer.disconnected = true;
 
-                const leaveMessage = {
+                const disconnectMsg = {
                     sender: 'SYSTEM',
                     color: '#737373',
-                    text: `${disconnectedPlayer.name} has left the bunker.`,
+                    text: `${disconnectedPlayer.name} disconnected. Reconnecting... (15s grace)`,
                     timestamp: Date.now()
                 };
-                room.messages.push(leaveMessage);
+                room.messages.push(disconnectMsg);
                 if (room.messages.length > 50) room.messages.shift();
-                io.to(roomId).emit('chatMessageReceived', leaveMessage);
+                io.to(roomId).emit('chatMessageReceived', disconnectMsg);
 
-                room.players.splice(playerIndex, 1);
+                emitRoomUpdated(roomId, room);
 
-                if (room.players.length === 0) {
-                    rooms.delete(roomId);
-                    return;
-                }
-
-                finalizeMidGameAbort(room, roomId, disconnectedPlayer.name);
+                disconnectedPlayer.disconnectTimer = setTimeout(() => {
+                    const roomAfterTimeout = rooms.get(roomId);
+                    if (roomAfterTimeout) {
+                        const pIdx = roomAfterTimeout.players.findIndex(p => p.id === disconnectedPlayer.id);
+                        if (pIdx !== -1) {
+                            if (roomAfterTimeout.players[pIdx].disconnected) {
+                                roomAfterTimeout.players.splice(pIdx, 1);
+                                if (roomAfterTimeout.players.length === 0) {
+                                    rooms.delete(roomId);
+                                    console.log(`[GARBAGE COLLECTION] Purged empty room ${roomId} after disconnect timeout.`);
+                                } else {
+                                    console.log(`[DISCONNECT TIMEOUT] User ${disconnectedPlayer.name} failed to reconnect within grace window in room ${roomId}. Aborting match.`);
+                                    finalizeMidGameAbort(roomAfterTimeout, roomId, disconnectedPlayer.name);
+                                }
+                            }
+                        }
+                    }
+                }, RECONNECT_GRACE_MS);
                 return;
             }
 

@@ -95,8 +95,20 @@ export const DebugOverlay: React.FC<DebugOverlayProps> = ({
         { value: 'YUVRAJ',  label: 'Yuvraj'  },
     ];
 
-    const handleMultiplayerModelChange = (playerId: string, modelKey: PlayerModelKey) => {
-        // Optimistically update local gameState so the select reflects the change instantly
+    const playerList = gameState.multiplayerState?.players || [];
+
+    const getPlayerDebugModel = (playerId: string, index: number) => {
+        const debugModels = gameState.multiplayerState?.debugPlayerModels || {};
+        if (Object.prototype.hasOwnProperty.call(debugModels, playerId)) {
+            return debugModels[playerId] as PlayerModelKey;
+        }
+        if (Object.prototype.hasOwnProperty.call(debugModels, index)) {
+            return debugModels[index] as PlayerModelKey;
+        }
+        return 'DEFAULT';
+    };
+
+    const handleMultiplayerModelChange = (playerId: string, playerIndex: number, modelKey: PlayerModelKey) => {
         setGameState(prev => ({
             ...prev,
             multiplayerState: prev.multiplayerState
@@ -109,8 +121,7 @@ export const DebugOverlay: React.FC<DebugOverlayProps> = ({
                 }
                 : prev.multiplayerState,
         }));
-        // Broadcast to all room nodes via server → roomUpdated
-        if (onSyncDebugState) onSyncDebugState('MULTIPLAYER_MODEL', { playerId, modelKey });
+        if (onSyncDebugState) onSyncDebugState('MULTIPLAYER_MODEL', { playerId, playerIndex, modelKey });
     };
 
     // --- Chamber Cheats ---
@@ -507,14 +518,14 @@ export const DebugOverlay: React.FC<DebugOverlayProps> = ({
                             <div className="space-y-2 md:space-y-3 pt-1.5 md:pt-2 border-t border-stone-900">
                                 <span className="font-extrabold tracking-widest text-stone-500 uppercase text-[7.5px] md:text-[9px] block">Multiplayer Avatar Models</span>
                                 <div className="space-y-1.5">
-                                    {(gameState.multiplayerState?.players || []).map((entry: any) => (
+                                    {playerList.map((entry: any, index: number) => (
                                         <div key={entry.id} className="flex items-center justify-between gap-1 bg-stone-900/50 px-1 py-0.75 rounded border border-stone-800">
                                             <span className="font-bold text-[6px] md:text-[7.5px] uppercase text-stone-300">
                                                 {entry.id === gameState.localPlayerId ? 'YOU' : entry.name}
                                             </span>
                                             <select
-                                                value={gameState.multiplayerState?.debugPlayerModels?.[entry.id] || 'DEFAULT'}
-                                                onChange={(e) => handleMultiplayerModelChange(entry.id, e.target.value as PlayerModelKey)}
+                                                value={getPlayerDebugModel(entry.id, index)}
+                                                onChange={(e) => handleMultiplayerModelChange(entry.id, index, e.target.value as PlayerModelKey)}
                                                 className="bg-stone-950 border border-stone-700 text-[5.5px] md:text-[6.5px] text-stone-200 rounded px-1 py-0.5 font-bold uppercase cursor-pointer"
                                             >
                                                 {modelOptions.map((option) => (

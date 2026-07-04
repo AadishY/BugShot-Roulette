@@ -153,10 +153,10 @@ export function useMultiplayer() {
             });
         });
 
-        newSocket.io.on('ping', () => {
+        (newSocket.io as any).on('ping', () => {
             (newSocket as any)._pingSentAt = Date.now();
         });
-        newSocket.io.on('pong', () => {
+        (newSocket.io as any).on('pong', () => {
             const sent = (newSocket as any)._pingSentAt;
             if (sent) setLatencyMs(Date.now() - sent);
         });

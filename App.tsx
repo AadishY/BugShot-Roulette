@@ -699,6 +699,7 @@ export default function App() {
           const getPlayerSetter = (owner: TurnOwner) => {
             if (owner === 'PLAYER') return spGame.setPlayer;
             if (owner === 'PLAYER3') return spGame.setPlayer3;
+            if (owner === 'PLAYER4') return spGame.setPlayer4;
             return spGame.setDealer;
           };
 
@@ -804,16 +805,19 @@ export default function App() {
                       if (action.gameState.phase === 'PLAYER_TURN' || action.gameState.phase === 'DEALER_TURN' || action.gameState.phase === 'PLAYER3_TURN' || action.gameState.phase === 'PLAYER4_TURN') {
                         nextPhase = relTurnOwner === 'PLAYER' ? 'PLAYER_TURN' : (relTurnOwner === 'PLAYER3' ? 'PLAYER3_TURN' : (relTurnOwner === 'PLAYER4' ? 'PLAYER4_TURN' : 'DEALER_TURN'));
                       }
-                      spGame.setGameState(prev => ({
-                        ...prev,
-                        ...action.gameState,
-                        localPlayerId: prev.localPlayerId,
-                        opponentName: prev.opponentName,
-                        multiplayerState: prev.multiplayerState,
-                        turnOwner: relTurnOwner,
-                        phase: nextPhase,
-                        winner: relWinner
-                      }));
+                      spGame.setGameState(prev => {
+                        const targetPhase = (prev.phase === 'STEALING' && prev.turnOwner === 'PLAYER') ? 'STEALING' : nextPhase;
+                        return {
+                          ...prev,
+                          ...action.gameState,
+                          localPlayerId: prev.localPlayerId,
+                          opponentName: prev.opponentName,
+                          multiplayerState: prev.multiplayerState,
+                          turnOwner: relTurnOwner,
+                          phase: targetPhase,
+                          winner: relWinner
+                        };
+                      });
                     }
                   }
                 }
@@ -937,11 +941,12 @@ export default function App() {
               // Transient model override from a remote dev client — do not persist
               spGame.setGameState(prev => {
                 const mpState = (prev.multiplayerState as any) || {};
+                const debugKey = action.playerId ?? (action.playerIndex !== undefined ? action.playerIndex : undefined);
                 const nextMpState = {
                   ...mpState,
                   debugPlayerModels: {
                     ...((mpState as any).debugPlayerModels || {}),
-                    [action.playerId]: action.modelKey
+                    ...(debugKey !== undefined ? { [debugKey]: action.modelKey } : {})
                   }
                 };
                 return { ...prev, multiplayerState: nextMpState } as any;
@@ -2137,9 +2142,7 @@ export default function App() {
           onSyncDebugState={(type, state) => {
             if (appState === 'GAME' && spGame.gameState.isMultiplayer) {
               if (type === 'MULTIPLAYER_MODEL') {
-                // Use a non-persistent debug sync action so model overrides
-                // do not become permanent room state after the match ends.
-                mp.sendImmediateAction(mp.room.id, { type: 'DEBUG_SYNC_PLAYER_MODEL', playerId: state.playerId, modelKey: state.modelKey });
+                mp.sendImmediateAction(mp.room.id, { type: 'DEBUG_SYNC_PLAYER_MODEL', playerId: state.playerId, playerIndex: state.playerIndex, modelKey: state.modelKey });
                 return;
               }
 
@@ -2202,6 +2205,32 @@ export default function App() {
             >
               Return to Lobby
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Immediate Player Disconnection Overlay */}
+      {appState === 'GAME' && mp.room?.players?.some((p: any) => p.disconnected) && (
+        <div className="fixed inset-0 z-[250] flex flex-col items-center justify-center bg-black/85 backdrop-blur-md pointer-events-auto animate-in fade-in duration-300">
+          <div className="text-center p-8 bg-stone-900 border border-red-500/30 rounded-2xl max-w-md w-full shadow-2xl animate-pulse">
+            <div className="mb-4 inline-block p-4 rounded-full bg-red-950/40 border border-red-500/20 text-red-500">
+              <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="animate-spin duration-1000">
+                <line x1="2" x2="5" y1="12" y2="12" />
+                <line x1="19" x2="22" y1="12" y2="12" />
+                <line x1="12" x2="12" y1="2" y2="5" />
+                <line x1="12" x2="12" y1="19" y2="22" />
+                <line x1="4.93" x2="7.05" y1="4.93" y2="7.05" />
+                <line x1="16.95" x2="19.07" y1="16.95" y2="19.07" />
+                <line x1="2" x2="22" y1="2" y2="22" />
+              </svg>
+            </div>
+            <h2 className="text-2xl font-black text-red-500 tracking-[0.2em] uppercase mb-2">LINK INTERRUPTED</h2>
+            <p className="text-stone-300 text-sm font-bold uppercase tracking-widest leading-relaxed">
+              {(mp.room.players.find((p: any) => p.disconnected)?.name || 'ANOTHER OPERATOR').toUpperCase()} lost connection.
+            </p>
+            <p className="text-stone-500 text-xs mt-4 uppercase tracking-widest font-black">
+              Attempting reconnection (15s grace)...
+            </p>
           </div>
         </div>
       )}

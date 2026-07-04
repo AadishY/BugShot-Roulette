@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
+import { clone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 
 type PlayerModelKey = 'DEFAULT' | 'AADISH' | 'ASP' | 'YASH' | 'YUVRAJ';
 
@@ -115,7 +116,7 @@ export const createPlayerAvatar = (scene: THREE.Scene, position: THREE.Vector3, 
     _sharedPlayerLoader.load(
         resolveAssetPath(config.path),
         (gltf) => {
-            const model = gltf.scene as THREE.Group;
+            const model = clone(gltf.scene as THREE.Group);
             model.traverse((obj: THREE.Object3D) => {
                 if (obj instanceof THREE.Light || obj instanceof THREE.Camera || (obj as any).isHelper) {
                     obj.visible = false;

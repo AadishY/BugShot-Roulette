@@ -172,13 +172,13 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = ({
 
                 {/* Performance Matrix Readout */}
                 <div className="mt-4 sm:mt-6 flex items-baseline gap-1.5 font-black text-lg sm:text-2xl tracking-[0.1em]">
-                    <span className="text-green-600 text-xs font-bold">SYS_LOAD:</span>
+                    <span className="text-green-600 text-xs font-bold">Hacking your device:</span>
                     <span>{Math.round(displayProgress)}</span>
                     <span className="text-xs text-green-600 font-bold">%</span>
                 </div>
                 {typeof progressProp === 'number' && (
                     <div className="mt-2 text-[10px] text-green-500 uppercase tracking-[0.3em] font-semibold">
-                        AUDIO SYNC {Math.round(displayProgress)}%
+                        Rendering Environmenr {Math.round(displayProgress)}%
                     </div>
                 )}
 

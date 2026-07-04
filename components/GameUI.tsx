@@ -523,151 +523,8 @@ export const GameUI: React.FC<GameUIProps> = ({
                     </div>
                 )}
 
-                {/* Extraction / Looting logic remains inside scaled UI for alignment with depth */}
-                {/* Stealing Screen Overlay */}
-                {gameState.phase === 'STEALING' && gameState.turnOwner === 'PLAYER' && (
-                    <div className="absolute inset-0 z-[110] flex flex-col items-center justify-center bg-red-950/20 backdrop-blur-[16px] px-6 pointer-events-auto animate-in fade-in duration-700 overflow-hidden">
-                        {/* Atmospheric Overlays */}
-                        <div className="absolute inset-0 opacity-20 pointer-events-none bg-[radial-gradient(circle_at_center,rgba(220,38,38,0.3),transparent_70%)]" />
-                        <div className="absolute inset-0 opacity-[0.05] pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/black-linen-2.png')] animate-[pulse_4s_infinite]" />
-                        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-red-600 to-transparent animate-[scanline_3s_linear_infinite] shadow-[0_0_20px_rgba(220,38,38,0.5)]" />
+                {/* Stealing Screen Overlay moved outside scaled div */}
 
-                        <div className="relative z-10 flex flex-col items-center max-w-5xl w-full">
-                            <div className="mb-14 text-center">
-                                <h2 className="text-5xl md:text-8xl font-black text-white tracking-[-0.05em] mb-4 uppercase drop-shadow-[0_0_40px_rgba(255,0,0,0.4)] italic">
-                                    Adrenaline <span className="text-red-700 animate-pulse">Extraction</span>
-                                </h2>
-                                <div className="flex flex-col items-center gap-2">
-                                    <p className="text-stone-400 font-bold tracking-[0.6em] text-[9px] md:text-xs uppercase bg-black/40 px-6 py-1.5 rounded-full border border-red-900/30">
-                                        Neural Link Active • Seize Repository
-                                    </p>
-                                    <div className="h-[1px] w-24 bg-gradient-to-r from-transparent via-red-900/50 to-transparent mt-2" />
-                                </div>
-                            </div>
-
-                            {/* Extraction Grid */}
-                            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-4 md:gap-8 w-full max-w-6xl mx-auto">
-                                {(() => {
-                                    const targetItems = (gameState.isThreePlayer && gameState.adrenalineTargetOwner === 'PLAYER3' && player3)
-                                        ? player3.items
-                                        : dealer.items;
-
-                                    if (targetItems.length === 0) {
-                                        return (
-                                            <div className="col-span-full py-32 text-center bg-black/40 rounded-3xl border border-white/5 backdrop-blur-xl">
-                                                <div className="mb-4 inline-block p-4 rounded-full bg-stone-900/60 border border-white/10">
-                                                    <Icons.Adrenaline size={48} className="text-stone-700 opacity-50" />
-                                                </div>
-                                                <p className="text-stone-500 font-black tracking-[0.4em] uppercase italic text-2xl">Vault Empty</p>
-                                                <p className="text-stone-700 text-sm mt-2 font-bold tracking-widest uppercase truncate px-4">Subject Has No Extractable Assets</p>
-                                            </div>
-                                        );
-                                    }
-                                    return targetItems.map((item, idx) => {
-                                        const isAdrenaline = item === 'ADRENALINE';
-                                        const isTotemLocked = item === 'TOTEM';
-                                        const isStealLocked = isAdrenaline || isTotemLocked;
-                                        return (
-                                            <button
-                                                key={idx}
-                                                onClick={() => !isStealLocked && onStealItem && onStealItem(idx)}
-                                                disabled={isStealLocked}
-                                                className={`group relative flex flex-col items-center justify-center aspect-[5/7] rounded-2xl border transition-all duration-700 overflow-hidden ${isStealLocked
-                                                    ? 'bg-black/80 border-white/5 cursor-not-allowed grayscale-[0.8] opacity-60'
-                                                    : 'bg-stone-900/60 border-white/10 hover:border-red-500 hover:bg-red-500/10 hover:shadow-[0_0_40px_rgba(239,68,68,0.2)] hover:-translate-y-2 active:scale-95 active:translate-y-0'
-                                                    }`}
-                                            >
-                                                {/* Scanline effect for grid items */}
-                                                <div className="absolute inset-0 bg-[linear-gradient(transparent_0%,rgba(255,255,255,0.03)_50%,transparent_100%)] bg-[length:100%_4px] animate-[scanline_4s_linear_infinite] pointer-events-none" />
-
-                                                {/* Card BG Deco */}
-                                                <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity bg-[radial-gradient(circle_at_center,rgba(255,100,100,0.1),transparent_70%)]" />
-
-                                                {isStealLocked ? (
-                                                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/40 z-20">
-                                                        {item === 'ADRENALINE' ? (
-                                                            <Icons.Adrenaline size={48} className="text-stone-700 mb-2 opacity-30" />
-                                                        ) : (
-                                                            <Icons.Totem size={48} className="text-stone-700 mb-2 opacity-30" />
-                                                        )}
-                                                        <span className="text-[10px] font-black tracking-widest text-red-900 border border-red-900/40 px-2 py-1 rounded bg-black/80 rotate-12">LOCKED</span>
-                                                    </div>
-                                                ) : (
-                                                    <div className="relative z-10 flex flex-col items-center">
-                                                        <div className={`mb-4 transition-all duration-500 group-hover:scale-125 group-hover:drop-shadow-[0_0_15px_rgba(255,255,255,0.3)] ${item === 'BEER' ? 'text-amber-500' :
-                                                            item === 'CIGS' ? 'text-red-500' :
-                                                                item === 'GLASS' ? 'text-cyan-400' :
-                                                                    item === 'CUFFS' ? 'text-stone-300' :
-                                                                        item === 'SAW' ? 'text-orange-600' :
-                                                                            item === 'PHONE' ? 'text-blue-300' :
-                                                                                item === 'INVERTER' ? 'text-green-400' :
-                                                                                    item === 'CHOKE' ? 'text-stone-300' :
-                                                                                        item === 'REMOTE' ? 'text-red-500' :
-                                                                                            item === 'BIG_INVERTER' ? 'text-orange-500' :
-                                                                                                item === 'CONTRACT' ? 'text-red-700' :
-                                                                                                    item === 'LUCKYCHARM' ? 'text-emerald-500' :
-                                                                                                        item === 'FLASHBANG' ? 'text-zinc-300' :
-                                                                                                            item === 'CRUSHER' ? 'text-amber-600' :
-                                                                                                                (item as ItemType) === 'TOTEM' ? 'text-amber-400' :
-                                                                                                                    item === 'MIRROR' ? 'text-indigo-400' :
-                                                                                                                        item === 'DECK_CARD' ? 'text-purple-400' : 'text-stone-300'
-                                                            }`}>
-                                                            {item === 'BEER' && <Icons.Beer size={56} />}
-                                                            {item === 'CIGS' && <Icons.Cigs size={56} />}
-                                                            {item === 'GLASS' && <Icons.Glass size={56} />}
-                                                            {item === 'CUFFS' && <Icons.Cuffs size={56} />}
-                                                            {item === 'SAW' && <Icons.Saw size={56} />}
-                                                            {item === 'PHONE' && <Icons.Phone size={56} />}
-                                                            {item === 'INVERTER' && <Icons.Inverter size={56} />}
-                                                            {item === 'CHOKE' && <Icons.Choke size={56} />}
-                                                            {item === 'REMOTE' && <Icons.Remote size={56} />}
-                                                            {item === 'BIG_INVERTER' && <Icons.BigInverter size={56} />}
-                                                            {item === 'CONTRACT' && <Icons.Contract size={56} />}
-                                                            {item === 'LUCKYCHARM' && <Icons.Luckycharm size={56} />}
-                                                            {item === 'FLASHBANG' && <Icons.Flashbang size={56} />}
-                                                            {item === 'CRUSHER' && <Icons.Crusher size={56} />}
-                                                            {(item as ItemType) === 'TOTEM' && <Icons.Totem size={56} />}
-                                                            {item === 'MIRROR' && <Icons.Mirror size={56} />}
-                                                            {item === 'DECK_CARD' && <Icons.DeckCard size={56} />}
-                                                        </div>
-                                                        <span className="text-[10px] md:text-sm font-black text-stone-200 tracking-[0.2em] uppercase group-hover:text-white transition-colors">
-                                                            {item.replace('_', ' ')}
-                                                        </span>
-                                                        <span className="text-[7.5px] md:text-[9.5px] text-stone-400 font-bold uppercase tracking-widest text-center mt-1 px-2 group-hover:text-white/85 transition-colors leading-tight select-none">
-                                                            {ITEM_DESCRIPTIONS[item]}
-                                                        </span>
-                                                    </div>
-                                                )}
-
-                                                {/* Hover Overlay info */}
-                                                {!isAdrenaline && (
-                                                    <div className="absolute bottom-0 left-0 w-full h-1/4 bg-red-600 flex items-center justify-center translate-y-full group-hover:translate-y-0 transition-all duration-300">
-                                                        <span className="text-[10px] font-black text-white tracking-[0.4em] uppercase">EXTRACT</span>
-                                                    </div>
-                                                )}
-
-                                                {/* Active pulse dot */}
-                                                {!isAdrenaline && (
-                                                    <div className="absolute top-3 right-3 opacity-20 group-hover:opacity-100 transition-opacity">
-                                                        <div className="w-2 h-2 bg-red-500 rounded-full animate-ping" />
-                                                    </div>
-                                                )}
-                                            </button>
-                                        );
-                                    });
-                                })()}
-                            </div>
-
-                            <div className="mt-16 text-stone-600 text-[10px] font-bold tracking-[0.5em] uppercase flex items-center gap-6">
-                                <div className="h-[1px] w-12 bg-stone-800" />
-                                Operation Immediate Extraction
-                                <div className="h-[1px] w-12 bg-stone-800" />
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* Loot Overlay will be moved outside scaled div below */}
 
 
 
@@ -775,6 +632,149 @@ export const GameUI: React.FC<GameUIProps> = ({
                     </div>
                 )}
             </div>
+
+            {/* Global Stealing Screen Overlay - Priority Layer Outside UI Scale */}
+            {gameState.phase === 'STEALING' && gameState.turnOwner === 'PLAYER' && (
+                <div className="fixed inset-0 z-[150] flex flex-col items-center justify-start md:justify-center bg-red-950/40 backdrop-blur-[16px] px-6 pointer-events-auto animate-in fade-in duration-700 overflow-y-auto">
+                    {/* Atmospheric Overlays */}
+                    <div className="absolute inset-0 opacity-20 pointer-events-none bg-[radial-gradient(circle_at_center,rgba(220,38,38,0.3),transparent_70%)]" />
+                    <div className="absolute inset-0 opacity-[0.05] pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/black-linen-2.png')] animate-[pulse_4s_infinite]" />
+                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-red-600 to-transparent animate-[scanline_3s_linear_infinite] shadow-[0_0_20px_rgba(220,38,38,0.5)]" />
+
+                    <div className="relative z-10 flex flex-col items-center max-w-5xl w-full my-8 md:my-0">
+                        <div className="mb-14 text-center">
+                            <h2 className="text-5xl md:text-8xl font-black text-white tracking-[-0.05em] mb-4 uppercase drop-shadow-[0_0_40px_rgba(255,0,0,0.4)] italic">
+                                Adrenaline <span className="text-red-700 animate-pulse">Extraction</span>
+                            </h2>
+                            <div className="flex flex-col items-center gap-2">
+                                <p className="text-stone-400 font-bold tracking-[0.6em] text-[9px] md:text-xs uppercase bg-black/40 px-6 py-1.5 rounded-full border border-red-900/30">
+                                    Neural Link Active • Seize Repository
+                                </p>
+                                <div className="h-[1px] w-24 bg-gradient-to-r from-transparent via-red-900/50 to-transparent mt-2" />
+                            </div>
+                        </div>
+
+                        {/* Extraction Grid */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-4 md:gap-8 w-full max-w-6xl mx-auto">
+                            {(() => {
+                                const targetItems = (gameState.isThreePlayer && gameState.adrenalineTargetOwner === 'PLAYER3' && player3)
+                                    ? player3.items
+                                    : dealer.items;
+
+                                if (targetItems.length === 0) {
+                                    return (
+                                        <div className="col-span-full py-32 text-center bg-black/40 rounded-3xl border border-white/5 backdrop-blur-xl">
+                                            <div className="mb-4 inline-block p-4 rounded-full bg-stone-900/60 border border-white/10">
+                                                <Icons.Adrenaline size={48} className="text-stone-700 opacity-50" />
+                                            </div>
+                                            <p className="text-stone-500 font-black tracking-[0.4em] uppercase italic text-2xl">Vault Empty</p>
+                                            <p className="text-stone-700 text-sm mt-2 font-bold tracking-widest uppercase truncate px-4">Subject Has No Extractable Assets</p>
+                                        </div>
+                                    );
+                                }
+                                return targetItems.map((item, idx) => {
+                                    const isAdrenaline = item === 'ADRENALINE';
+                                    const isTotemLocked = item === 'TOTEM';
+                                    const isStealLocked = isAdrenaline || isTotemLocked;
+                                    return (
+                                        <button
+                                            key={idx}
+                                            onClick={() => !isStealLocked && onStealItem && onStealItem(idx)}
+                                            disabled={isStealLocked}
+                                            className={`group relative flex flex-col items-center justify-center aspect-[5/7] rounded-2xl border transition-all duration-700 overflow-hidden ${isStealLocked
+                                                ? 'bg-black/80 border-white/5 cursor-not-allowed grayscale-[0.8] opacity-60'
+                                                : 'bg-stone-900/60 border-white/10 hover:border-red-500 hover:bg-red-500/10 hover:shadow-[0_0_40px_rgba(239,68,68,0.2)] hover:-translate-y-2 active:scale-95 active:translate-y-0'
+                                                }`}
+                                        >
+                                            {/* Scanline effect for grid items */}
+                                            <div className="absolute inset-0 bg-[linear-gradient(transparent_0%,rgba(255,255,255,0.03)_50%,transparent_100%)] bg-[length:100%_4px] animate-[scanline_4s_linear_infinite] pointer-events-none" />
+
+                                            {/* Card BG Deco */}
+                                            <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity bg-[radial-gradient(circle_at_center,rgba(255,100,100,0.1),transparent_70%)]" />
+
+                                            {isStealLocked ? (
+                                                <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/40 z-20">
+                                                    {item === 'ADRENALINE' ? (
+                                                        <Icons.Adrenaline size={48} className="text-stone-700 mb-2 opacity-30" />
+                                                    ) : (
+                                                        <Icons.Totem size={48} className="text-stone-700 mb-2 opacity-30" />
+                                                    )}
+                                                    <span className="text-[10px] font-black tracking-widest text-red-900 border border-red-900/40 px-2 py-1 rounded bg-black/80 rotate-12">LOCKED</span>
+                                                </div>
+                                            ) : (
+                                                <div className="relative z-10 flex flex-col items-center">
+                                                    <div className={`mb-4 transition-all duration-500 group-hover:scale-125 group-hover:drop-shadow-[0_0_15px_rgba(255,255,255,0.3)] ${item === 'BEER' ? 'text-amber-500' :
+                                                        item === 'CIGS' ? 'text-red-500' :
+                                                            item === 'GLASS' ? 'text-cyan-400' :
+                                                                item === 'CUFFS' ? 'text-stone-300' :
+                                                                    item === 'SAW' ? 'text-orange-600' :
+                                                                        item === 'PHONE' ? 'text-blue-300' :
+                                                                            item === 'INVERTER' ? 'text-green-400' :
+                                                                                item === 'CHOKE' ? 'text-stone-300' :
+                                                                                    item === 'REMOTE' ? 'text-red-500' :
+                                                                                        item === 'BIG_INVERTER' ? 'text-orange-500' :
+                                                                                            item === 'CONTRACT' ? 'text-red-700' :
+                                                                                                item === 'LUCKYCHARM' ? 'text-emerald-500' :
+                                                                                                    item === 'FLASHBANG' ? 'text-zinc-300' :
+                                                                                                        item === 'CRUSHER' ? 'text-amber-600' :
+                                                                                                            (item as ItemType) === 'TOTEM' ? 'text-amber-400' :
+                                                                                                                item === 'MIRROR' ? 'text-indigo-400' :
+                                                                                                                    item === 'DECK_CARD' ? 'text-purple-400' : 'text-stone-300'
+                                                        }`}>
+                                                        {item === 'BEER' && <Icons.Beer size={56} />}
+                                                        {item === 'CIGS' && <Icons.Cigs size={56} />}
+                                                        {item === 'GLASS' && <Icons.Glass size={56} />}
+                                                        {item === 'CUFFS' && <Icons.Cuffs size={56} />}
+                                                        {item === 'SAW' && <Icons.Saw size={56} />}
+                                                        {item === 'PHONE' && <Icons.Phone size={56} />}
+                                                        {item === 'INVERTER' && <Icons.Inverter size={56} />}
+                                                        {item === 'CHOKE' && <Icons.Choke size={56} />}
+                                                        {item === 'REMOTE' && <Icons.Remote size={56} />}
+                                                        {item === 'BIG_INVERTER' && <Icons.BigInverter size={56} />}
+                                                        {item === 'CONTRACT' && <Icons.Contract size={56} />}
+                                                        {item === 'LUCKYCHARM' && <Icons.Luckycharm size={56} />}
+                                                        {item === 'FLASHBANG' && <Icons.Flashbang size={56} />}
+                                                        {item === 'CRUSHER' && <Icons.Crusher size={56} />}
+                                                        {(item as ItemType) === 'TOTEM' && <Icons.Totem size={56} />}
+                                                        {item === 'MIRROR' && <Icons.Mirror size={56} />}
+                                                        {item === 'DECK_CARD' && <Icons.DeckCard size={56} />}
+                                                    </div>
+                                                    <span className="text-[10px] md:text-sm font-black text-stone-200 tracking-[0.2em] uppercase group-hover:text-white transition-colors">
+                                                        {item.replace('_', ' ')}
+                                                    </span>
+                                                    <span className="text-[7.5px] md:text-[9.5px] text-stone-400 font-bold uppercase tracking-widest text-center mt-1 px-2 group-hover:text-white/85 transition-colors leading-tight select-none">
+                                                        {ITEM_DESCRIPTIONS[item]}
+                                                    </span>
+                                                </div>
+                                            )}
+
+                                            {/* Hover Overlay info */}
+                                            {!isAdrenaline && (
+                                                <div className="absolute bottom-0 left-0 w-full h-1/4 bg-red-600 flex items-center justify-center translate-y-full group-hover:translate-y-0 transition-all duration-300">
+                                                    <span className="text-[10px] font-black text-white tracking-[0.4em] uppercase">EXTRACT</span>
+                                                </div>
+                                            )}
+
+                                            {/* Active pulse dot */}
+                                            {!isAdrenaline && (
+                                                <div className="absolute top-3 right-3 opacity-20 group-hover:opacity-100 transition-opacity">
+                                                    <div className="w-2 h-2 bg-red-500 rounded-full animate-ping" />
+                                                </div>
+                                            )}
+                                        </button>
+                                    );
+                                });
+                            })()}
+                        </div>
+
+                        <div className="mt-16 text-stone-600 text-[10px] font-bold tracking-[0.5em] uppercase flex items-center gap-6">
+                            <div className="h-[1px] w-12 bg-stone-800" />
+                            Operation Immediate Extraction
+                            <div className="h-[1px] w-12 bg-stone-800" />
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {showExternalSettingsButton && gameState.phase !== 'INTRO' && gameState.phase !== 'BOOT' && gameState.phase !== 'GAME_OVER' && (
                 <button

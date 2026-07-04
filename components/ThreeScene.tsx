@@ -221,7 +221,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
                     if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
                         (window as Window & typeof globalThis & { requestIdleCallback: (cb: IdleRequestCallback, options?: IdleRequestOptions) => number }).requestIdleCallback(() => warmup(), { timeout: 1000 });
                     } else {
-                        window.setTimeout(warmup, 250);
+                        setTimeout(warmup, 250);
                     }
                 } catch (e) {
                     console.error('WebGL Warmup Error:', e);
@@ -281,7 +281,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
 
             const isUltra = !!propsRef.current.settings?.ultraPerformance;
             const isBalanced = !!propsRef.current.settings?.balancedPerformance;
-            const currentTargetFPS = isInMenu ? 24 : (isUltra ? 30 : (isBalanced ? 45 : (isMobile && (isAndroid || window.devicePixelRatio < 2) ? 40 : 60)));
+            const currentTargetFPS = isInMenu ? 24 : (isUltra ? 30 : (isBalanced ? 45 : (isMobile && (isAndroid || window.devicePixelRatio < 2) ? 40 : 55)));
             const currentFrameInterval = 1000 / currentTargetFPS;
             const shouldLimitFrame = isInMenu || isUltra || isBalanced || (isMobile && (isAndroid || window.devicePixelRatio < 2));
 
