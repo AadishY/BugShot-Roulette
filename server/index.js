@@ -45,8 +45,12 @@ app.use(cors(corsOptions));
 app.use(express.json());
 
 // --- SECURE UPSTASH REDIS TUNNEL PROXY ---
-const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL || "https://enormous-mackerel-87613.upstash.io";
-const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || "gQAAAAAAAVY9AAIncDFhZDhkNGNjODM5M2I0NmY5YTg5YzQwYWFhOGU3NzI2NnAxODc2MTM";
+const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
+const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+
+if (!REDIS_URL || !REDIS_TOKEN) {
+    console.error("[CRITICAL ERROR] UPSTASH_REDIS_REST_URL or UPSTASH_REDIS_REST_TOKEN environment variables are missing!");
+}
 
 // --- SHARED REDIS PROXY HANDLERS ---
 const handleRedisProxy = async (req, res) => {
@@ -100,7 +104,12 @@ app.post('/api/token', async (req, res) => {
             return res.status(400).json({ error: 'Authorization code is required' });
         }
 
-        const clientId = process.env.DISCORD_CLIENT_ID || '1517863650998882406';
+        const clientId = process.env.DISCORD_CLIENT_ID;
+
+        if (!clientId) {
+            console.error("DISCORD_CLIENT_ID environment variable is missing!");
+            return res.status(500).json({ error: 'Server configuration error: client ID missing' });
+        }
         const clientSecret = process.env.DISCORD_CLIENT_SECRET;
 
         if (!clientSecret) {
@@ -778,13 +787,14 @@ io.on('connection', (socket) => {
 
         const containsDebugFlags = action.type?.toUpperCase().includes('DEBUG') || action.isDebug;
         if (containsDebugFlags) {
-            if (player.name.toLowerCase() !== 'aadish') {
+            const devUser = (process.env.DEV_USERNAME || '').toLowerCase();
+            if (!devUser || player.name.toLowerCase() !== devUser) {
                 unauthorizedInterventionsBlocked++;
                 console.warn(`[SECURITY WARNING] Intercepted unauthorized debug runtime execution try by player: ${player.name} inside room: ${roomId}`);
                 socket.emit('error', 'Access Denied: Debug tools are strictly restricted to the developer account.');
                 return;
             }
-            console.log(`[DEVELOPER SYSTEM CALL] Authorized account 'aadish' deployed debugging hook element: ${action.type}`);
+            console.log(`[DEVELOPER SYSTEM CALL] Authorized account '${devUser}' deployed debugging hook element: ${action.type}`);
         }
 
         if (action.type === 'DEBUG_SET_PLAYER_MODEL' || action.type === 'DEBUG_SYNC_PLAYER_MODEL') {

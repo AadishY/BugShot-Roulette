@@ -1,12 +1,12 @@
 import type { GameStats } from './statsManager';
 
-const DEFAULT_URL = "https://enormous-mackerel-87613.upstash.io";
-const DEFAULT_TOKEN = "gQAAAAAAAVY9AAIncDFhZDhkNGNjODM5M2I0NmY5YTg5YzQwYWFhOGU3NzI2NnAxODc2MTM";
-
 const getRedisConfig = () => {
-    const url = import.meta.env.VITE_UPSTASH_REDIS_REST_URL || DEFAULT_URL;
-    const token = import.meta.env.VITE_UPSTASH_REDIS_REST_TOKEN || DEFAULT_TOKEN;
-    return { url, token };
+    const url = import.meta.env.VITE_UPSTASH_REDIS_REST_URL;
+    const token = import.meta.env.VITE_UPSTASH_REDIS_REST_TOKEN;
+    if (!url || !token) {
+        console.error("[Upstash Redis] REST URL or REST Token is missing from environment variables!");
+    }
+    return { url: url || "", token: token || "" };
 };
 
 const checkIfDiscord = () => {
@@ -197,8 +197,8 @@ export const registerUser = async (username: string, passwordHash: string): Prom
     }
 
     // Dev username is reserved
-    const devUser = (import.meta.env.VITE_DEV_USERNAME || 'aadish').toLowerCase();
-    if (cleanUsername === devUser) {
+    const devUser = (import.meta.env.VITE_DEV_USERNAME || '').toLowerCase();
+    if (devUser && cleanUsername === devUser) {
         return { success: false, error: 'Reserved developer account' };
     }
 
@@ -254,12 +254,12 @@ export const loginUser = async (username: string, passwordHash: string): Promise
     }
 
     const key = `aadishroulette:${cleanUsername}`;
-    const devUser = (import.meta.env.VITE_DEV_USERNAME || 'aadish').toLowerCase();
-    const devPass = import.meta.env.VITE_DEV_PASSWORD || 'Aadish20m';
+    const devUser = (import.meta.env.VITE_DEV_USERNAME || '').toLowerCase();
+    const devPass = import.meta.env.VITE_DEV_PASSWORD || '';
 
     // Handle Predefined Developer Account
-    if (cleanUsername === devUser) {
-        if (passwordHash === devPass) {
+    if (devUser && cleanUsername === devUser) {
+        if (devPass && passwordHash === devPass) {
             let stats: GameStats = {
                 wins: 0, losses: 0, totalRounds: 0, shotsFired: 0, shotsHit: 0,
                 selfShots: 0, damageDealt: 0, itemsUsed: 0,
@@ -281,7 +281,7 @@ export const loginUser = async (username: string, passwordHash: string): Promise
             } catch (e) {
                 console.error("Failed to seed developer in Redis:", e);
             }
-            return { success: true, user: { username: 'Aadish', stats, isDeveloper: true } };
+            return { success: true, user: { username: devUser, stats, isDeveloper: true } };
         } else {
             return { success: false, error: 'Invalid password' };
         }

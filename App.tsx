@@ -122,7 +122,11 @@ export default function App() {
     const isDiscord = params.has('frame_id') || params.has('instance_id') || window.location.search.includes('platform=') || window.location.hostname.includes('discordsays.com');
 
     if (isDiscord && params.has('frame_id')) {
-      const clientId = import.meta.env.VITE_DISCORD_CLIENT_ID || '1517863650998882406';
+      const clientId = import.meta.env.VITE_DISCORD_CLIENT_ID;
+      if (!clientId) {
+        console.error("[Discord] VITE_DISCORD_CLIENT_ID environment variable is missing!");
+        return;
+      }
       console.log(`[Discord] Initializing SDK with client ID: ${clientId}`);
       try {
         const discordSdk = new DiscordSDK(clientId);
