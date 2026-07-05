@@ -13,7 +13,7 @@
 
 ### A Deadly Game of Chance
 
-[![Play Now](https://img.shields.io/badge/PLAY%20NOW-Live%20Demo-orange?style=for-the-badge&logo=cloudflare)](https://aadishroulette.pages.dev/)
+[![Play Now](https://img.shields.io/badge/PLAY%20NOW-Live%20Demo-orange?style=for-the-badge&logo=cloudflare)](https://bugshotroulette.pages.dev/)
 [![GitHub](https://img.shields.io/badge/GitHub-AadishY-black?style=for-the-badge&logo=github)](https://github.com/AadishY)
 
 ---
