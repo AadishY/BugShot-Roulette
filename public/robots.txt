@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /server/
+Disallow: /api/
+
+Sitemap: https://bugshotroulette.pages.dev/sitemap.xml
