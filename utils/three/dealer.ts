@@ -249,7 +249,9 @@ export const createDealerModel = (scene: THREE.Scene, debugHeadModel: DebugHeadM
 
                             if (m instanceof THREE.MeshStandardMaterial) {
                                 // Apply the same quality tuning to default and custom heads.
-                                m.roughness = m.roughnessMap ? Math.min(m.roughness, 0.72) : 0.62;
+                                m.toneMapped = true;
+                                m.side = THREE.DoubleSide;
+                                m.roughness = m.roughnessMap ? Math.min(m.roughness, 0.85) : 0.68;
                                 m.metalness = 0.0;
                                 m.envMapIntensity = lowPerf ? 0.35 : 1.1;
                                 if (m.emissive) m.emissive.setHex(0x0a0704);
@@ -257,6 +259,9 @@ export const createDealerModel = (scene: THREE.Scene, debugHeadModel: DebugHeadM
                                 m.fog = false;
                                 if (m.color) {
                                     m.color.setHex(0xffffff);
+                                }
+                                if (m.normalScale) {
+                                    m.normalScale.setScalar(lowPerf ? 0 : 0.85);
                                 }
                                 if (isDefaultHead) {
                                     configureDealerMaterialEffects(m, { pixelate: true, blur: true });

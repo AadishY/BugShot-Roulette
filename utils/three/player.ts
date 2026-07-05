@@ -169,7 +169,9 @@ export const createPlayerAvatar = (scene: THREE.Scene, position: THREE.Vector3, 
                             }
 
                             if (m instanceof THREE.MeshStandardMaterial) {
-                                m.roughness = m.roughnessMap ? Math.min(m.roughness, 0.68) : 0.58;
+                                m.toneMapped = true;
+                                m.side = THREE.DoubleSide;
+                                m.roughness = m.roughnessMap ? Math.min(m.roughness, 0.85) : 0.68;
                                 m.metalness = 0.0;
                                 m.envMapIntensity = lowPerf ? 0.45 : 1.4;
                                 if (m.emissive) m.emissive.setHex(0x120a08); // subtle warm lift
@@ -177,6 +179,9 @@ export const createPlayerAvatar = (scene: THREE.Scene, position: THREE.Vector3, 
                                 m.fog = false;
                                 if (m.color) {
                                     m.color.setHex(0xffffff);
+                                }
+                                if (m.normalScale) {
+                                    m.normalScale.setScalar(lowPerf ? 0 : 0.85);
                                 }
 
                                 if (ultraPerformance) {

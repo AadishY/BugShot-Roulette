@@ -1,5 +1,5 @@
 {
-  "name": "Aadish Roulette",
+  "name": "Bugshot Roulette",
   "short_name": "Roulette",
   "description": "A high-stakes tabletop horror game where you play Russian Roulette with a 12-gauge pump-action shotgun. Features 3D graphics, strategic items, and multiplayer.",
   "start_url": "/",
@@ -53,14 +53,14 @@
       "sizes": "1920x1080",
       "type": "image/jpeg",
       "form_factor": "wide",
-      "label": "Aadish Roulette Wide Gameplay"
+      "label": "Bugshot Roulette Wide Gameplay"
     },
     {
       "src": "/image/preview-lowquality.jpg",
       "sizes": "1080x1920",
       "type": "image/jpeg",
       "form_factor": "narrow",
-      "label": "Aadish Roulette Mobile Gameplay"
+      "label": "Bugshot Roulette Mobile Gameplay"
     }
   ],
   "related_applications": [
@@ -82,7 +82,7 @@
   },
   "protocol_handlers": [
     {
-      "protocol": "web+aadishroulette",
+      "protocol": "web+bugshotroulette",
       "url": "/?url=%s"
     }
   ],

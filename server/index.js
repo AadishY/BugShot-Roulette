@@ -234,7 +234,7 @@ app.get('/', (req, res) => {
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>AADISH ROULETTE // ENGINE CORE</title>
+        <title>BUGSHOT ROULETTE // ENGINE CORE</title>
         <script src="https://cdn.tailwindcss.com"></script>
         <style>
             @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&display=swap');
@@ -253,7 +253,7 @@ app.get('/', (req, res) => {
                 <div>
                     <div class="flex items-center gap-3">
                         <span class="w-2.5 h-2.5 rounded-full bg-red-600 animate-pulse"></span>
-                        <h1 class="text-xl md:text-2xl font-black text-white tracking-wider uppercase">AADISH-ROULETTE CORE</h1>
+                        <h1 class="text-xl md:text-2xl font-black text-white tracking-wider uppercase">BUGSHOT-ROULETTE CORE</h1>
                     </div>
                     <p class="text-[10px] text-stone-500 mt-1 uppercase tracking-widest">Network Architecture Protocol V2.5 // Live Processing Diagnostics</p>
                 </div>

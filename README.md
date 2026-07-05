@@ -7,9 +7,9 @@
 
 <div align="center">
 
-# 🎯 AADISH ROULETTE
+# 🎯 BUGSHOT ROULETTE
 
-<img src="public/image/Banner.jpg" alt="Aadish Roulette Banner" width="100%" style="border-radius: 12px;" />
+<img src="public/image/Banner.jpg" alt="Bugshot Roulette Banner" width="100%" style="border-radius: 12px;" />
 
 ### A Deadly Game of Chance
 
@@ -18,7 +18,7 @@
 
 ---
 
-<img src="public/image/Banner%20gif.gif" alt="Aadish Roulette Gameplay Banner" width="100%" style="border-radius: 12px;" />
+<img src="public/image/Banner%20gif.gif" alt="Bugshot Roulette Gameplay Banner" width="100%" style="border-radius: 12px;" />
 
 *A high-stakes tabletop horror game where you play Russian Roulette with a 12-gauge pump-action shotgun.*
 
@@ -28,7 +28,7 @@
 
 ## 🎬 About
 
-**Aadish Roulette** is a web-based reimagining of the deadly shotgun game, inspired by Mike Klubnika's *Buckshot Roulette*. Built with React, TypeScript, and Three.js, it features 3D layouts, retro CRT filters, atmospheric volumetric lighting, and strategic item play.
+**Bugshot Roulette** is a web-based reimagining of the deadly shotgun game, inspired by Mike Klubnika's *Buckshot Roulette*. Built with React, TypeScript, and Three.js, it features 3D layouts, retro CRT filters, atmospheric volumetric lighting, and strategic item play.
 
 ---
 

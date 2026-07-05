@@ -140,7 +140,7 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ onClose, stats: initialS
             <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md pointer-events-auto p-4 animate-in fade-in duration-300">
                 <div className="bg-stone-950/90 border border-white/10 rounded-3xl p-8 text-center text-stone-100 shadow-[0_20px_60px_rgba(0,0,0,0.65)]">
                     <div className="mb-4 text-lg font-black uppercase tracking-[0.35em]">SYNCING STATS</div>
-                    <div className="text-sm text-stone-400">Fetching latest stats from AadishServer...</div>
+                    <div className="text-sm text-stone-400">Fetching latest stats from BugshotServer...</div>
                 </div>
             </div>
         );

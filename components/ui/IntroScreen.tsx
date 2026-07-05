@@ -387,7 +387,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
 
                 <div className="text-center relative z-10 p-4">
                     <h1 className="text-4xl sm:text-6xl md:text-8xl font-black text-stone-100 mb-6 sm:mb-8 tracking-tighter leading-none drop-shadow-[0_0_20px_rgba(255,255,255,0.2)]">
-                        <span className="block animate-in slide-in-from-top duration-700">AADISH</span>
+                        <span className="block animate-in slide-in-from-top duration-700">BUGSHOT</span>
                         <span className="block text-red-700 animate-[text-pop_0.5s_ease-out] relative">
                             ROULETTE
                             {!isMobile && (
@@ -885,17 +885,12 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
             >
                 <div className="mb-2 sm:mb-3 relative">
                     <h1 className="text-2xl sm:text-4xl md:text-5xl font-black mb-0 text-white tracking-tighter leading-[0.85] drop-shadow-[0_0_30px_rgba(255,255,255,0.15)]">
-                        AADISH<br />
+                        BUGSHOT<br />
                         <span className="text-red-700/95 tracking-[-0.05em] relative">
                             ROULETTE
                             <span className="absolute -inset-1 blur-2xl bg-red-950/20 -z-10" />
                         </span>
                     </h1>
-                    <div className="mt-1 sm:mt-2 flex items-center justify-center gap-3">
-                        <div className="h-[1px] w-8 sm:w-12 bg-stone-850" />
-                        <p className="text-stone-500 font-black tracking-[0.5em] text-[8.5px] sm:text-[9.5px] uppercase">Version {GAME_VERSION}</p>
-                        <div className="h-[1px] w-8 sm:w-12 bg-stone-850" />
-                    </div>
                 </div>
 
                 {/* Mobile-only User Profile Badge (Flowed inline to prevent viewport overlap) */}
@@ -933,9 +928,9 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                 <div className="flex flex-col gap-1.5 sm:gap-2 max-w-sm mx-auto w-full">
                     {/* Identity Section */}
                     <div className="text-center mb-0.5">
-                        <p className="text-[8px] sm:text-[9px] text-red-700/60 font-black tracking-[0.45em] uppercase mb-1 animate-pulse flex items-center justify-center gap-1.5">
-                            <span className="w-1.5 h-1.5 bg-red-650 rounded-full animate-ping shrink-0" />
-                            <span>BINDING_SOUL_PROTOCOL</span>
+                        <p className="text-[10px] sm:text-[11px] text-stone-300 font-black tracking-[0.35em] uppercase mb-1 animate-pulse flex items-center justify-center gap-1.5">
+                            <span className="w-1.5 h-1.5 bg-stone-400 rounded-full animate-ping shrink-0" />
+                            <span>A Web Game By Aadish</span>
                         </p>
                         <div className="relative group max-w-[260px] mx-auto w-full">
                             <input

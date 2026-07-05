@@ -177,7 +177,7 @@ export default function App() {
                   state: state ? state.substring(0, 127) : "",
                   assets: {
                     large_image: "banner",
-                    large_text: "Aadish Roulette",
+                    large_text: "Bugshot Roulette",
                     small_image: "favicon",
                     small_text: "A Deadly Game of Chance"
                   },

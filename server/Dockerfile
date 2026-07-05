@@ -1,4 +1,4 @@
-# Production Dockerfile for Aadish-Roulette Server
+# Production Dockerfile for Bugshot-Roulette Server
 FROM node:18-slim
 
 # Create app directory

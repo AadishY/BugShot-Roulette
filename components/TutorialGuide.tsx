@@ -124,7 +124,7 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
                         <div className="w-16 h-16 md:w-20 md:h-20 mx-auto mb-3 bg-gradient-to-br from-red-600 to-red-900 rounded-full flex items-center justify-center shadow-lg shadow-red-900/50">
                             <Gamepad2 size={32} className="text-white" />
                         </div>
-                        <p className="text-sm md:text-lg text-stone-300">Welcome to <span className="text-red-500 font-black">AADISH ROULETTE</span></p>
+                        <p className="text-sm md:text-lg text-stone-300">Welcome to <span className="text-red-500 font-black">BUGSHOT ROULETTE</span></p>
                         <p className="text-xs md:text-sm text-stone-500 mt-1">A deadly game of chance and strategy</p>
                     </div>
 
@@ -894,7 +894,7 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
 
                     <div className="bg-gradient-to-br from-stone-900/80 to-stone-950 border border-stone-700/50 p-4 md:p-5 rounded-sm">
                         <p className="text-stone-300 text-center text-xs md:text-sm mb-5 leading-relaxed">
-                            Thanks for playing <span className="text-red-500 font-bold">AADISH ROULETTE</span>!
+                            Thanks for playing <span className="text-red-500 font-bold">BUGSHOT ROULETTE</span>!
                             <br />Built with ❤️ as a web-based reimagining of the deadly shotgun game.
                         </p>
 
@@ -934,7 +934,7 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
 
                         <div className="mt-5 pt-4 border-t border-stone-800 text-center">
                             <p className="text-stone-600 text-[10px] md:text-xs font-mono">
-                                AADISH ROULETTE v{GAME_VERSION} • REACT + THREE.JS
+                                BUGSHOT ROULETTE v{GAME_VERSION} • REACT + THREE.JS
                             </p>
                             <p className="text-stone-700 text-[10px] md:text-xs font-mono mt-1">
                                 © 2024 AADISH NETWORKS

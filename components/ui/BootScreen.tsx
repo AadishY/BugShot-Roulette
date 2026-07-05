@@ -109,7 +109,7 @@ export const BootScreen: React.FC<BootScreenProps> = ({ onContinue }) => {
     return (
         <div className="fixed inset-0 z-[100] bg-black flex flex-col justify-between p-4 md:p-12 font-mono select-none transform translate3d(0,0,0)">
             <div className="flex justify-between items-start text-stone-600 text-[9px] sm:text-xs">
-                <span>AADISH_OS v1.0.0</span>
+                <span>BUGSHOT_OS v1.0.0</span>
                 <span>MEM: 65536KB OK</span>
             </div>
             <div className="flex-1 flex flex-col justify-center max-w-lg mx-auto w-full gap-2 sm:gap-4 my-auto">
