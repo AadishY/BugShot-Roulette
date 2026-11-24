@@ -15,21 +15,47 @@ export const AnnouncementModal: React.FC<AnnouncementModalProps> = ({ isOpen, on
             return;
         }
 
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                onClose();
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+
         const timer = window.setTimeout(() => setIsFrameLoaded(true), 180);
-        return () => window.clearTimeout(timer);
-    }, [isOpen]);
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+            window.clearTimeout(timer);
+        };
+    }, [isOpen, onClose]);
 
     if (!isOpen) return null;
 
     return (
-        <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-md p-2 sm:p-4 animate-in fade-in duration-300">
+        <div 
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-md p-2 sm:p-4 animate-in fade-in duration-300"
+            role="dialog"
+            aria-modal="true"
+            aria-label="System Announcement"
+            style={{
+                paddingTop: 'max(env(safe-area-inset-top, 0px), 8px)',
+                paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 8px)',
+                paddingLeft: 'max(env(safe-area-inset-left, 0px), 8px)',
+                paddingRight: 'max(env(safe-area-inset-right, 0px), 8px)'
+            }}
+            onClick={(e) => {
+                if (e.target === e.currentTarget) {
+                    onClose();
+                }
+            }}
+        >
             <div className="relative w-full max-w-3xl max-h-[95vh] bg-stone-950/95 border-2 border-stone-800/80 p-4 sm:p-6 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.9)] font-mono flex flex-col overflow-hidden">
                 <button
                     onClick={onClose}
-                    className="absolute top-3 right-3 sm:top-4 sm:right-4 text-stone-300 hover:text-red-400 bg-stone-900/60 hover:bg-red-955/30 border border-stone-850 hover:border-red-500/45 p-1.5 sm:p-2 rounded-xl z-50 cursor-pointer flex items-center justify-center shadow-lg hover:shadow-[0_0_15px_rgba(239,68,68,0.25)] transition-all"
+                    className="absolute top-2.5 right-2.5 sm:top-4 sm:right-4 text-stone-300 hover:text-red-400 bg-stone-900/60 hover:bg-red-955/30 border border-stone-850 hover:border-red-500/45 w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl z-50 cursor-pointer flex items-center justify-center shadow-lg hover:shadow-[0_0_15px_rgba(239,68,68,0.25)] transition-all"
                     title="Close Announcement"
                 >
-                    <X size={14} className="sm:w-[18px] sm:h-[18px]" />
+                    <X size={18} />
                 </button>
 
                 <div className="absolute top-0 left-0 w-full h-[2px] bg-amber-500/30 animate-[scan-line-move_4s_linear_infinite]" />

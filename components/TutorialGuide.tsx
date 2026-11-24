@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { X, ChevronLeft, ChevronRight, Target, Beer, Cigarette, Scale, Link, Scissors, Phone, RefreshCw, Zap, Settings, Code, Github, Instagram, Gamepad2, HelpCircle, Shield, Heart, Crosshair, CircleDot, Smartphone, Monitor, Volume2, Maximize, Eye, Swords, Users, Terminal } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, Target, Beer, Cigarette, Scale, Link, Scissors, RefreshCw, Zap, Settings, Code, Github, Instagram, Gamepad2, Shield, Heart, Crosshair, CircleDot, Smartphone, Monitor, Volume2, Maximize, Eye, Swords, Users, Terminal } from 'lucide-react';
 import { GAME_VERSION } from '../constants';
 import { Icons } from './ui/Icons';
+import { audioManager } from '../utils/audioManager';
 
 interface TutorialGuideProps {
     onClose: () => void;
@@ -56,36 +57,6 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
     const [currentPage, setCurrentPage] = useState(0);
     const [touchStart, setTouchStart] = useState<number | null>(null);
     const [touchEnd, setTouchEnd] = useState<number | null>(null);
-    const [scale, setScale] = useState(1);
-    const [isMobile, setIsMobile] = useState(false);
-
-    useEffect(() => {
-        const handleResize = () => {
-            const mob = window.innerWidth < 768;
-            setIsMobile(mob);
-
-            if (mob) {
-                // On mobile, skip CSS scale entirely — use natural responsive layout
-                setScale(1);
-                return;
-            }
-
-            const targetWidth = 1000;
-            const targetHeight = 420;
-
-            const wScale = Math.min(1, (window.innerWidth - 20) / targetWidth);
-            const hScale = Math.min(1, (window.innerHeight - 20) / targetHeight);
-
-            let newScale = Math.min(wScale, hScale);
-            if (newScale < 0.6) newScale = 0.6;
-
-            setScale(newScale);
-        };
-
-        window.addEventListener('resize', handleResize);
-        handleResize();
-        return () => window.removeEventListener('resize', handleResize);
-    }, []);
 
     // Swipe detection for mobile
     const minSwipeDistance = 50;
@@ -171,7 +142,7 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
                         <ItemCard
                             icon={<Eye size={20} />}
                             name="MAGNIFYING GLASS"
-                            description="Reveals the current shell type (LIVE/BLANK) in the chamber. Dealer uses glass silently — you won't see the result."
+                            description="Reveals the current shell type (LIVE/BLANK) in the chamber privately. Dealer uses glass silently — you won't see the result."
                             color="text-cyan-400"
                             effect="→ REVEALS LIVE/BLANK"
                         />
@@ -179,7 +150,7 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
                         <ItemCard
                             icon={<Beer size={20} />}
                             name="BEER"
-                            description="Racks the shotgun to eject the current shell without firing. The ejected shell type is shown. Does NOT consume Choke Mod status."
+                            description="Racks the shotgun to eject the current shell immediately without firing. The ejected shell type (LIVE or BLANK) is revealed and logged. Does NOT consume Choke Mod status."
                             color="text-amber-500"
                             effect="→ EJECTS SHELL (CHOKE PRESERVED)"
                         />
@@ -195,7 +166,7 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
                         <ItemCard
                             icon={<Link size={20} />}
                             name="HANDCUFFS"
-                            description="Restrains opponent, forcing them to skip their next turn. Cannot stack — if already cuffed, effect is wasted."
+                            description="Restrains opponent, forcing them to skip their next turn. Cannot be stacked or doubled — if already cuffed, effect cannot be applied."
                             color="text-stone-400"
                             effect="→ SKIP ENEMY TURN"
                         />
@@ -203,7 +174,7 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
                         <ItemCard
                             icon={<Scissors size={20} />}
                             name="HAND SAW"
-                            description="Saws off the shotgun barrel, DOUBLING the next shot's damage to 2 HP. Stacks with Choke Mod for massive damage."
+                            description="Saws off the shotgun barrel, dealing exactly 2x damage for 1 shot. Resets immediately on shot fired (live or blank). Stacks with Choke Mod."
                             color="text-orange-500"
                             effect="→ 2X DAMAGE (STACKS W/ CHOKE)"
                         />
@@ -211,7 +182,7 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
                         <ItemCard
                             icon={<Smartphone size={20} />}
                             name="BURNER PHONE"
-                            description="A mysterious caller reveals a random future shell position (3rd+). Hidden: Has a secret 5% chance to LIE about the shell type. Useless if < 3 shells remain."
+                            description="A mysterious caller whispers a future shell hint (2nd, 3rd, 4th, etc.). Has a secret 5% chance to LIE about the shell type. Fails only if no future shells remain."
                             color="text-blue-300"
                             effect="→ FUTURE SHELL (5% LIE RISK)"
                         />
@@ -219,7 +190,7 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
                         <ItemCard
                             icon={<RefreshCw size={20} />}
                             name="POLARITY INVERTER"
-                            description="Swaps the current shell: LIVE ↔ BLANK. Only affects the next shell to be fired. Does not reveal the shell type."
+                            description="Inverts polarity of the current shell: LIVE ↔ BLANK. Only affects the current shell in the chamber. Does not reveal the shell type."
                             color="text-green-400"
                             effect="→ INVERTS CURRENT SHELL"
                         />
@@ -227,15 +198,15 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
                         <ItemCard
                             icon={<Zap size={20} />}
                             name="ADRENALINE"
-                            description="Steals one item from opponent's inventory and uses it immediately. Hidden: Cannot steal Totem of Undying or another Adrenaline. If stolen Contract kills you at 1 HP, dealer stashes it instead."
+                            description="Steals one item from opponent's inventory and allows immediate use (with cancellation option). Cannot steal Totem of Undying, another Adrenaline, or Jackpot."
                             color="text-pink-500"
-                            effect="→ STEAL & USE (NO TOTEM/ADRENALINE)"
+                            effect="→ STEAL & USE (W/ CANCEL)"
                         />
 
                         <ItemCard
                             icon={<Icons.Choke size={20} />}
                             name="CHOKE MOD"
-                            description="Attaches barrel mod to fire 2 shells simultaneously (current + next). Both LIVE = 2 DMG, one LIVE = 1 DMG, both BLANK = 0 DMG. Saw doubles total damage."
+                            description="Attaches barrel mod to narrow spread and fire 2 shells simultaneously (current + next). Both LIVE = 2 DMG, one LIVE = 1 DMG, both BLANK = 0 DMG. Saw doubles total damage."
                             color="text-yellow-700"
                             effect="→ DOUBLE FIRE (SAW STACKS)"
                         />
@@ -266,17 +237,17 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
                         <ItemCard
                             icon={<Icons.Remote size={20} />}
                             name="REMOTE"
-                            description="Swaps current shell position with the next shell. Fails silently if only 1 shell remains in chamber."
+                            description="Cycles ammo chamber index by swapping the current shell position with the next shell. Fails safely if only 1 shell remains in chamber."
                             color="text-red-600"
-                            effect="→ SWAP SHELL ORDER"
+                            effect="→ CYCLE CHAMBER INDEX"
                         />
 
                         <ItemCard
                             icon={<Icons.Contract size={20} />}
                             name="BLOOD CONTRACT"
-                            description="Sacrifice 1 HP to obtain 2 high-tier items (Choke, Saw, Glass, Cigs, Adrenaline weighted 5x). If Lucky Charm is active, high-tier weight boosted to 15x+. Using at 1 HP = instant death. Player only. Max 1 per inventory."
+                            description="Gamble 1 HP to obtain 2 random high-tier items. Blocked at 1 HP without Totem or Jackpot shield immunity. Under active Jackpot shield, consumes 1 immunity charge instead of HP. Player only. Max 1 per inventory."
                             color="text-red-700"
-                            effect="→ -1 HP, +2 HIGH-TIER ITEMS"
+                            effect="→ GAMBLE 1 HP FOR 2 ITEMS"
                         />
 
                         <ItemCard
@@ -290,15 +261,15 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
                         <ItemCard
                             icon={<Icons.Flashbang size={20} />}
                             name="FLASHBANG"
-                            description="Blinds the opponent, completely preventing them from using ANY items on their next turn. Also disables the target's Totem of Undying passive save for that round. They can still pick up the gun and shoot."
+                            description="Blinds target for 1 turn, preventing them from using ANY items on their next turn. Crucially negates and disables the target's Totem of Undying passive save. Target can still pick up shotgun to shoot."
                             color="text-zinc-300"
-                            effect="→ BLOCK ITEMS & DISABLE TOTEM"
+                            effect="→ BLIND 1 TURN (NEGATES TOTEM)"
                         />
 
                         <ItemCard
                             icon={<Icons.Crusher size={20} />}
                             name="ITEM CRUSHER"
-                            description="Slams a giant hammer to destroy 1 random item from your opponent's inventory. Can destroy any item including Totem. Fails if opponent has empty inventory."
+                            description="Slams a giant hydraulic crusher to destroy 1 random item from your opponent's inventory. Can destroy any item including Totem. Fails if opponent has an empty inventory."
                             color="text-amber-600"
                             effect="→ DESTROY 1 RANDOM ENEMY ITEM"
                         />
@@ -306,25 +277,25 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
                         <ItemCard
                             icon={<Icons.Totem size={20} />}
                             name="TOTEM OF UNDYING"
-                            description="[PASSIVE] Auto-activates when HP drops to 0, saving you at 1 HP. Fails to trigger if you are Flashbanged/Blinded. Cannot be stolen via Adrenaline. Can be destroyed by Crusher. Max 1 per inventory."
+                            description="[PASSIVE] Passive survival: auto-activates on lethal blow, reviving you and restoring you to 1 HP. Completely negated if you are Flashbanged/Blinded. Cannot be stolen via Adrenaline. Can be destroyed by Crusher. Max 1 per inventory."
                             color="text-amber-400"
-                            effect="→ AUTO-SURVIVE (BLOCKED BY BLIND)"
+                            effect="→ REVIVES TO 1 HP (NEGATED BY BLIND)"
                         />
 
                         <ItemCard
                             icon={<Icons.Mirror size={20} />}
                             name="MIRROR"
-                            description="Copies and replays ALL items your opponent used on their last turn, in sequence. Excludes Mirror itself to prevent infinite loops. Useless if opponent used no items."
+                            description="Duplicates and replays ALL item effects used by your opponent on their previous turn, in sequence. Excludes Mirror and Adrenaline to prevent infinite loops. Useless if opponent used no items."
                             color="text-indigo-400"
-                            effect="→ REPLAY OPPONENT'S LAST TURN ITEMS"
+                            effect="→ DUPLICATE ENEMY LAST TURN ITEMS"
                         />
 
                         <ItemCard
                             icon={<Icons.Jackpot size={20} />}
-                            name="JACKPOT SLOT MACHINE"
-                            description="Spin to win! 20% chance for 3-shot immunity (7-7-7 Jackpot Win), 30% chance for 1-shot immunity (Cherry-Cherry-Lemon Normal Win), 50% lose. Only live shots decrement immunity; blank self/dealer shots are exempt. Using Blood Contract consumes 1 immunity shot instead of 1 HP. Stacks with multiple wins."
+                            name="JACKPOT SLOT MACHINE (SHIELD)"
+                            description="Spin the slot machine for bullet immunity shield! Absorbs next incoming hit(s). 20% chance for 3-shot shield (7-7-7 Jackpot Win), 30% chance for 1-shot shield (Normal Win), 50% lose. Only live shots decrement shield; blank self-shots are exempt. Blood Contract consumes 1 shield shot instead of HP."
                             color="text-yellow-500"
-                            effect="→ SPIN FOR SHOT IMMUNITY (PLAYER ONLY)"
+                            effect="→ ABSORBS NEXT INCOMING HIT(S)"
                         />
                     </div>
                 </div>
@@ -590,7 +561,7 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
             )
         },
 
-        // Page 5: Dealer Protocol (Normal + Hard Mode)
+        // Page 6: Dealer Protocol (Normal + Hard Mode)
         {
             title: "DEALER PROTOCOL",
             icon: <Shield size={20} className="text-purple-400" />,
@@ -651,7 +622,7 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
             )
         },
 
-        // Page 6: Multiplayer Bunker
+        // Page 7: Multiplayer Bunker
         {
             title: "MULTIPLAYER",
             icon: <Swords size={20} className="text-cyan-400" />,
@@ -711,7 +682,7 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
             )
         },
 
-        // Page 7: Settings Menu
+        // Page 8: Settings Menu
         {
             title: "SETTINGS",
             icon: <Settings size={20} className="text-stone-400" />,
@@ -780,7 +751,7 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
                             <div>
                                 <h3 className="font-black text-red-400 text-[10px] md:text-xs mb-1 uppercase">DEVELOPER CONSOLE</h3>
                                 <p className="text-stone-400 text-[9px] md:text-[10px] leading-tight">
-                                    Toggle Developer overlay overlay cheats. Ignores statistics and scoreboards if active.
+                                    Toggle Developer overlay cheats. Ignores statistics and scoreboards if active.
                                 </p>
                             </div>
                         </div>
@@ -795,7 +766,7 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
             )
         },
 
-        // Page 7: System Logistics
+        // Page 9: System Logistics
         {
             title: "SYSTEM LOGISTICS",
             icon: <Shield size={20} className="text-amber-500" />,
@@ -828,14 +799,161 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
                         </InfoCard>
 
                         <div className="md:col-span-2">
-                            <div className="bg-gradient-to-r from-purple-950/40 to-stone-900/40 border border-purple-900/30 p-3 md:p-4 rounded-sm">
-                                <h4 className="font-black text-purple-400 text-xs md:text-sm uppercase tracking-wider mb-2 flex items-center gap-2">
-                                    🎰 ACTIVE SPECIAL PROTOCOL
-                                </h4>
-                                <div className="space-y-2 text-stone-400 text-xs">
-                                    <div>
-                                        <span className="font-bold text-stone-200">🎰 JACKPOT:</span> Grants absolute immunity from the next 3 shell discharges (self-inflicted or enemy fired). Exclusive to player, dealer cannot steal or acquire it. Stacks normal wins (+1 immune shot) and jackpot wins (3 immune shots).
-                                    </div>
+                            <div className="bg-gradient-to-r from-purple-950/40 via-stone-900/60 to-purple-950/40 border border-purple-900/40 p-3 md:p-4 rounded-xl space-y-3 shadow-lg">
+                                <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-1 border-b border-purple-900/40 pb-2">
+                                    <h4 className="font-black text-purple-300 text-xs md:text-sm uppercase tracking-wider flex items-center gap-2">
+                                        🎰 BUCKSHOT & BUGSHOT COMPARATIVE RULES MATRIX
+                                    </h4>
+                                    <span className="text-[8px] font-mono text-purple-400 font-bold bg-purple-950/80 px-2 py-0.5 rounded border border-purple-800">
+                                        16/16 SYSTEMS AUDITED & VERIFIED
+                                    </span>
+                                </div>
+                                <p className="text-[9px] md:text-[10px] text-stone-400">
+                                    Side-by-side behavioral matrix comparing classic mechanics with Bugshot Roulette enhanced tactical extensions.
+                                </p>
+
+                                {/* Split Screen Comparison Table */}
+                                <div className="overflow-x-auto custom-scrollbar">
+                                    <table className="w-full text-left font-mono text-[8.5px] md:text-[9.5px] border-collapse min-w-[550px]">
+                                        <thead>
+                                            <tr className="border-b border-stone-800 text-[8px] uppercase tracking-widest text-stone-500 bg-stone-950/60">
+                                                <th className="py-2 px-2.5 font-black text-purple-400">ITEM / PROTOCOL</th>
+                                                <th className="py-2 px-2.5 font-black text-stone-400">BUCKSHOT (ORIGINAL)</th>
+                                                <th className="py-2 px-2.5 font-black text-cyan-400">BUGSHOT (TACTICAL / MULTI)</th>
+                                                <th className="py-2 px-2 font-black text-right text-emerald-400">AUDIT</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-stone-850/60 text-stone-300">
+                                            <tr className="hover:bg-white/5 transition-colors">
+                                                <td className="py-2 px-2.5 font-bold text-white flex items-center gap-1.5">
+                                                    <span>🪓</span> <span>SAW</span>
+                                                </td>
+                                                <td className="py-2 px-2.5 text-stone-400">2x damage on next shot</td>
+                                                <td className="py-2 px-2.5 text-stone-200">2x DMG for 1 shot; unconditionally resets on discharge; stacks with Choke Mod</td>
+                                                <td className="py-2 px-2 text-right"><span className="text-emerald-400 font-bold bg-emerald-955/60 px-1.5 py-0.5 rounded border border-emerald-700 text-[7px]">VERIFIED</span></td>
+                                            </tr>
+                                            <tr className="hover:bg-white/5 transition-colors">
+                                                <td className="py-2 px-2.5 font-bold text-white flex items-center gap-1.5">
+                                                    <span>⛓️</span> <span>HANDCUFFS</span>
+                                                </td>
+                                                <td className="py-2 px-2.5 text-stone-400">Opponent skips turn</td>
+                                                <td className="py-2 px-2.5 text-stone-200">Forces target to skip 1 turn; strict anti-stack guard across 2P, 3P & 4P corridors</td>
+                                                <td className="py-2 px-2 text-right"><span className="text-emerald-400 font-bold bg-emerald-955/60 px-1.5 py-0.5 rounded border border-emerald-700 text-[7px]">VERIFIED</span></td>
+                                            </tr>
+                                            <tr className="hover:bg-white/5 transition-colors">
+                                                <td className="py-2 px-2.5 font-bold text-white flex items-center gap-1.5">
+                                                    <span>🍺</span> <span>BEER</span>
+                                                </td>
+                                                <td className="py-2 px-2.5 text-stone-400">Ejects current shell</td>
+                                                <td className="py-2 px-2.5 text-stone-200">Racks shotgun; ejects & logs shell type; preserves active Choke Mod status</td>
+                                                <td className="py-2 px-2 text-right"><span className="text-emerald-400 font-bold bg-emerald-955/60 px-1.5 py-0.5 rounded border border-emerald-700 text-[7px]">VERIFIED</span></td>
+                                            </tr>
+                                            <tr className="hover:bg-white/5 transition-colors">
+                                                <td className="py-2 px-2.5 font-bold text-white flex items-center gap-1.5">
+                                                    <span>🚬</span> <span>CIGARETTES</span>
+                                                </td>
+                                                <td className="py-2 px-2.5 text-stone-400">Restores 1 HP</td>
+                                                <td className="py-2 px-2.5 text-stone-200">Restores 1 HP; strictly capped at maximum HP (no overheal permitted)</td>
+                                                <td className="py-2 px-2 text-right"><span className="text-emerald-400 font-bold bg-emerald-955/60 px-1.5 py-0.5 rounded border border-emerald-700 text-[7px]">VERIFIED</span></td>
+                                            </tr>
+                                            <tr className="hover:bg-white/5 transition-colors">
+                                                <td className="py-2 px-2.5 font-bold text-white flex items-center gap-1.5">
+                                                    <span>🔍</span> <span>MAGNIFYING GLASS</span>
+                                                </td>
+                                                <td className="py-2 px-2.5 text-stone-400">Inspects chamber shell</td>
+                                                <td className="py-2 px-2.5 text-stone-200">Private inspection HUD; Dealer inspects silently without leaking chamber state</td>
+                                                <td className="py-2 px-2 text-right"><span className="text-emerald-400 font-bold bg-emerald-955/60 px-1.5 py-0.5 rounded border border-emerald-700 text-[7px]">VERIFIED</span></td>
+                                            </tr>
+                                            <tr className="hover:bg-white/5 transition-colors">
+                                                <td className="py-2 px-2.5 font-bold text-white flex items-center gap-1.5">
+                                                    <span>🔄</span> <span>INVERTER</span>
+                                                </td>
+                                                <td className="py-2 px-2.5 text-stone-400">Inverts shell polarity</td>
+                                                <td className="py-2 px-2.5 text-stone-200">Flips LIVE ↔ BLANK; immediately syncs chamber counter telemetry</td>
+                                                <td className="py-2 px-2 text-right"><span className="text-emerald-400 font-bold bg-emerald-955/60 px-1.5 py-0.5 rounded border border-emerald-700 text-[7px]">VERIFIED</span></td>
+                                            </tr>
+                                            <tr className="hover:bg-white/5 transition-colors">
+                                                <td className="py-2 px-2.5 font-bold text-white flex items-center gap-1.5">
+                                                    <span>📞</span> <span>BURNER PHONE</span>
+                                                </td>
+                                                <td className="py-2 px-2.5 text-stone-400">Whispers random shell hint</td>
+                                                <td className="py-2 px-2.5 text-stone-200">Whispers future shell type starting at current+1 (accurately labels 2ND, 3RD, etc.)</td>
+                                                <td className="py-2 px-2 text-right"><span className="text-emerald-400 font-bold bg-emerald-955/60 px-1.5 py-0.5 rounded border border-emerald-700 text-[7px]">VERIFIED</span></td>
+                                            </tr>
+                                            <tr className="hover:bg-white/5 transition-colors">
+                                                <td className="py-2 px-2.5 font-bold text-white flex items-center gap-1.5">
+                                                    <span>⚡</span> <span>ADRENALINE</span>
+                                                </td>
+                                                <td className="py-2 px-2.5 text-stone-400">Steals 1 enemy item</td>
+                                                <td className="py-2 px-2.5 text-stone-200">Steals & uses instantly; includes cancellation flow; steals of Totem/Jackpot blocked</td>
+                                                <td className="py-2 px-2 text-right"><span className="text-emerald-400 font-bold bg-emerald-955/60 px-1.5 py-0.5 rounded border border-emerald-700 text-[7px]">VERIFIED</span></td>
+                                            </tr>
+                                            <tr className="hover:bg-white/5 transition-colors">
+                                                <td className="py-2 px-2.5 font-bold text-white flex items-center gap-1.5">
+                                                    <span>💥</span> <span>CHOKE MOD</span>
+                                                </td>
+                                                <td className="py-2 px-2.5 text-stone-500 italic">Not in classic</td>
+                                                <td className="py-2 px-2.5 text-stone-200">Narrows barrel spread to fire 2 shells simultaneously; stacks with Hand Saw</td>
+                                                <td className="py-2 px-2 text-right"><span className="text-cyan-400 font-bold bg-cyan-955/60 px-1.5 py-0.5 rounded border border-cyan-700 text-[7px]">EXCLUSIVE</span></td>
+                                            </tr>
+                                            <tr className="hover:bg-white/5 transition-colors">
+                                                <td className="py-2 px-2.5 font-bold text-white flex items-center gap-1.5">
+                                                    <span>🔀</span> <span>REMOTE</span>
+                                                </td>
+                                                <td className="py-2 px-2.5 text-stone-500 italic">Not in classic</td>
+                                                <td className="py-2 px-2.5 text-stone-200">Cycles ammo chamber sequence; swaps current shell index with the next</td>
+                                                <td className="py-2 px-2 text-right"><span className="text-cyan-400 font-bold bg-cyan-955/60 px-1.5 py-0.5 rounded border border-cyan-700 text-[7px]">EXCLUSIVE</span></td>
+                                            </tr>
+                                            <tr className="hover:bg-white/5 transition-colors">
+                                                <td className="py-2 px-2.5 font-bold text-white flex items-center gap-1.5">
+                                                    <span>🛡️</span> <span>JACKPOT SHIELD</span>
+                                                </td>
+                                                <td className="py-2 px-2.5 text-stone-500 italic">Not in classic</td>
+                                                <td className="py-2 px-2.5 text-stone-200">Absorbs 1 or 3 incoming hits via slot machine immunity; self blanks don't consume</td>
+                                                <td className="py-2 px-2 text-right"><span className="text-cyan-400 font-bold bg-cyan-955/60 px-1.5 py-0.5 rounded border border-cyan-700 text-[7px]">EXCLUSIVE</span></td>
+                                            </tr>
+                                            <tr className="hover:bg-white/5 transition-colors">
+                                                <td className="py-2 px-2.5 font-bold text-white flex items-center gap-1.5">
+                                                    <span>🪞</span> <span>MIRROR</span>
+                                                </td>
+                                                <td className="py-2 px-2.5 text-stone-500 italic">Not in classic</td>
+                                                <td className="py-2 px-2.5 text-stone-200">Replays target's previous turn item sequence (excludes Mirror & Adrenaline)</td>
+                                                <td className="py-2 px-2 text-right"><span className="text-cyan-400 font-bold bg-cyan-955/60 px-1.5 py-0.5 rounded border border-cyan-700 text-[7px]">EXCLUSIVE</span></td>
+                                            </tr>
+                                            <tr className="hover:bg-white/5 transition-colors">
+                                                <td className="py-2 px-2.5 font-bold text-white flex items-center gap-1.5">
+                                                    <span>🔨</span> <span>CRUSHER</span>
+                                                </td>
+                                                <td className="py-2 px-2.5 text-stone-500 italic">Not in classic</td>
+                                                <td className="py-2 px-2.5 text-stone-200">Destroys 1 random target item; provides distinct log if target inventory empty</td>
+                                                <td className="py-2 px-2 text-right"><span className="text-cyan-400 font-bold bg-cyan-955/60 px-1.5 py-0.5 rounded border border-cyan-700 text-[7px]">EXCLUSIVE</span></td>
+                                            </tr>
+                                            <tr className="hover:bg-white/5 transition-colors">
+                                                <td className="py-2 px-2.5 font-bold text-white flex items-center gap-1.5">
+                                                    <span>✨</span> <span>TOTEM OF UNDYING</span>
+                                                </td>
+                                                <td className="py-2 px-2.5 text-stone-500 italic">Not in classic</td>
+                                                <td className="py-2 px-2.5 text-stone-200">Passive revival on lethal blow; restores user to 1 HP; negated if flashbanged</td>
+                                                <td className="py-2 px-2 text-right"><span className="text-cyan-400 font-bold bg-cyan-955/60 px-1.5 py-0.5 rounded border border-cyan-700 text-[7px]">EXCLUSIVE</span></td>
+                                            </tr>
+                                            <tr className="hover:bg-white/5 transition-colors">
+                                                <td className="py-2 px-2.5 font-bold text-white flex items-center gap-1.5">
+                                                    <span>🩸</span> <span>BLOOD CONTRACT</span>
+                                                </td>
+                                                <td className="py-2 px-2.5 text-stone-500 italic">Not in classic</td>
+                                                <td className="py-2 px-2.5 text-stone-200">Sacrifices 1 HP for 2 high-tier items; blocked at 1 HP without Totem or Shield</td>
+                                                <td className="py-2 px-2 text-right"><span className="text-cyan-400 font-bold bg-cyan-955/60 px-1.5 py-0.5 rounded border border-cyan-700 text-[7px]">EXCLUSIVE</span></td>
+                                            </tr>
+                                            <tr className="hover:bg-white/5 transition-colors">
+                                                <td className="py-2 px-2.5 font-bold text-white flex items-center gap-1.5">
+                                                    <span>⚡</span> <span>FLASHBANG</span>
+                                                </td>
+                                                <td className="py-2 px-2.5 text-stone-500 italic">Not in classic</td>
+                                                <td className="py-2 px-2.5 text-stone-200">Blinds target for 1 turn; disables target item usage and negates target Totem save</td>
+                                                <td className="py-2 px-2 text-right"><span className="text-cyan-400 font-bold bg-cyan-955/60 px-1.5 py-0.5 rounded border border-cyan-700 text-[7px]">EXCLUSIVE</span></td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
                                 </div>
                             </div>
                         </div>
@@ -844,7 +962,7 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
             )
         },
 
-        // Page 8: Credits
+        // Page 10: Credits
         {
             title: "CREDITS",
             icon: <Heart size={20} className="text-amber-400" />,
@@ -860,8 +978,26 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
 
                     <div className="space-y-3 text-stone-300 text-[10px] md:text-sm leading-relaxed">
                         <p>This project is inspired by the original <span className="text-red-400 font-bold">Buckshot Roulette</span> concept.</p>
+                        
+                        {/* Creator & Lead Developer Credit */}
+                        <div className="bg-gradient-to-r from-red-955/40 via-stone-900/80 to-stone-900/70 border border-red-500/60 p-3 rounded-xl space-y-1 shadow-[0_0_20px_rgba(220,38,38,0.15)]">
+                            <div className="flex items-center justify-between">
+                                <p className="font-black uppercase tracking-[0.2em] text-red-400 text-[9px] md:text-[10px] flex items-center gap-1.5">
+                                    <Code size={13} className="text-red-400" />
+                                    Game Creator
+                                </p>
+                                <span className="px-1.5 py-0.2 bg-red-600 text-white text-[7px] font-black rounded uppercase tracking-wider">CREATOR</span>
+                            </div>
+                            <p className="text-white font-bold text-xs md:text-sm">
+                                Aadish (<a href="https://github.com/AadishY" target="_blank" rel="noopener noreferrer" className="text-red-400 hover:text-white underline font-mono">@AadishY</a>)
+                            </p>
+                            <p className="text-stone-300 text-[9px] md:text-[10px] leading-relaxed">
+                                Lead developer, full-stack multiplayer engineer, 3D WebGL pipeline, cloud synchronization, and game mechanics for Bugshot Roulette.
+                            </p>
+                        </div>
+
                         <div className="bg-stone-900/70 border border-stone-700 p-3 rounded-xl space-y-2">
-                            <p className="font-black uppercase tracking-[0.2em] text-stone-200 text-[9px] md:text-[10px]">Original Creator</p>
+                            <p className="font-black uppercase tracking-[0.2em] text-stone-200 text-[9px] md:text-[10px]">Original Concept & Inspiration</p>
                             <p>Mike Klubnika — the original creator behind <a href="https://mikeklubnika.itch.io/buckshot-roulette" target="_blank" rel="noopener noreferrer" className="text-red-400 font-bold hover:text-white">Buckshot Roulette</a>.</p>
                         </div>
                         <div className="bg-stone-900/70 border border-stone-700 p-3 rounded-xl space-y-2">
@@ -878,7 +1014,7 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
             )
         },
 
-        // Page 9: Developer Info
+        // Page 11: Developer Info
         {
             title: "DEVELOPER",
             icon: <Code size={20} className="text-red-500" />,
@@ -948,17 +1084,20 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
 
     const nextPage = () => {
         if (currentPage < pages.length - 1) {
+            audioManager.playSound('click');
             setCurrentPage(currentPage + 1);
         }
     };
 
     const prevPage = () => {
         if (currentPage > 0) {
+            audioManager.playSound('click');
             setCurrentPage(currentPage - 1);
         }
     };
 
     const goToPage = (index: number) => {
+        audioManager.playSound('click');
         setCurrentPage(index);
     };
 
@@ -974,20 +1113,36 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
     }, [currentPage]);
 
     return (
-        <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-black/85 backdrop-blur-md p-2 sm:p-4 overflow-y-auto custom-scrollbar select-none animate-in fade-in duration-300">
+        <div 
+            className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-black/85 backdrop-blur-md p-2 sm:p-4 overflow-y-auto custom-scrollbar select-none animate-in fade-in duration-300"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Tactical Manual"
+            style={{
+                paddingTop: 'max(env(safe-area-inset-top, 0px), 8px)',
+                paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 8px)',
+                paddingLeft: 'max(env(safe-area-inset-left, 0px), 8px)',
+                paddingRight: 'max(env(safe-area-inset-right, 0px), 8px)'
+            }}
+            onClick={(e) => {
+                if (e.target === e.currentTarget) {
+                    onClose();
+                }
+            }}
+        >
             <div
-                className="w-[94vw] h-[94vh] max-w-[94vw] max-h-[94vh] md:w-[88vw] md:h-[90vh] md:max-w-[88vw] md:max-h-[90vh] bg-stone-950/45 backdrop-blur-2xl border-[2px] border-stone-700/80 shadow-[0_30px_90px_rgba(0,0,0,0.85)] relative flex flex-col overflow-hidden rounded-2xl ring-2 ring-white/10 my-auto"
+                className="w-[96vw] h-[92vh] max-w-[96vw] max-h-[92vh] md:w-[88vw] md:h-[88vh] md:max-w-[88vw] md:max-h-[88vh] bg-stone-950/95 backdrop-blur-2xl border-2 border-stone-700/80 shadow-[0_30px_90px_rgba(0,0,0,0.85)] relative flex flex-col overflow-hidden rounded-2xl ring-1 ring-white/10 my-auto text-stone-200"
                 onTouchStart={onTouchStart}
                 onTouchMove={onTouchMove}
                 onTouchEnd={onTouchEnd}
             >
                 {/* Decorative top stripe */}
                 <div className="absolute top-0 left-0 w-full h-[1.5px] bg-gradient-to-r from-transparent via-red-500/30 to-transparent z-50" />
- 
+
                 {/* Header */}
-                <div className="flex justify-between items-center p-3 sm:p-4 border-b border-stone-800/50 bg-stone-950/30 shrink-0">
+                <div className="flex justify-between items-center p-3 sm:p-4 border-b border-stone-800/50 bg-stone-950/50 shrink-0">
                     <div className="flex items-center gap-3">
-                        <div className="p-2 bg-stone-900/80 rounded-xl border border-stone-800 flex items-center justify-center text-red-500 shadow-inner">
+                        <div className="w-10 h-10 min-w-[40px] min-h-[40px] bg-stone-900/80 rounded-xl border border-stone-800 flex items-center justify-center text-red-500 shadow-inner">
                             {pages[currentPage].icon}
                         </div>
                         <div>
@@ -998,42 +1153,49 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
                         </div>
                     </div>
                     <button
-                        onClick={onClose}
-                        className="p-2 text-stone-500 hover:text-white hover:bg-white/5 rounded-full transition-all active:scale-95 cursor-pointer border border-transparent hover:border-white/5"
+                        onClick={() => {
+                            audioManager.playSound('click');
+                            onClose();
+                        }}
+                        className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center text-stone-400 hover:text-white hover:bg-white/10 rounded-full transition-all active:scale-95 cursor-pointer border border-transparent hover:border-white/10"
                         aria-label="Close guide"
                     >
-                        <X size={18} />
+                        <X size={20} />
                     </button>
                 </div>
- 
+
                 {/* Split Navigation & Content Container */}
-                <div className="flex flex-row flex-1 overflow-hidden h-full">
-                    {/* Navigation Sidebar */}
-                    <div className="flex flex-col overflow-y-auto bg-stone-950/60 border-r border-stone-850 p-1.5 md:p-3 gap-1.5 shrink-0 select-none [&::-webkit-scrollbar]:hidden [scrollbar-width:none] w-44 min-w-[11rem] h-full items-stretch">
+                <div className="flex flex-col sm:flex-row flex-1 min-h-0 overflow-hidden">
+                    {/* Navigation Bar / Sidebar */}
+                    <div className="flex flex-row sm:flex-col overflow-x-auto sm:overflow-y-auto bg-stone-950/80 border-b sm:border-b-0 sm:border-r border-stone-800 p-2 md:p-3 gap-1.5 shrink-0 select-none custom-scrollbar w-full sm:w-48 sm:min-w-[12rem] items-center sm:items-stretch">
                         {pages.map((page, idx) => {
                             const isActive = idx === currentPage;
                             return (
                                 <button
                                     key={idx}
-                                    onClick={() => goToPage(idx)}
-                                    className={`flex items-center gap-2.5 px-2.5 py-2 md:py-2.5 border text-left transition-all shrink-0 md:shrink rounded-xl cursor-pointer ${
+                                    onClick={() => {
+                                        audioManager.playSound('click');
+                                        goToPage(idx);
+                                    }}
+                                    className={`flex items-center justify-center sm:justify-start gap-2 px-3 py-2 min-h-[44px] border text-left transition-all shrink-0 rounded-xl cursor-pointer ${
                                         isActive
-                                        ? 'bg-red-500/10 border-red-500/35 text-white font-black shadow-[0_0_15px_rgba(239,68,68,0.06)]'
-                                        : 'bg-transparent border-transparent text-stone-500 hover:text-stone-300 hover:bg-white/5'
+                                        ? 'bg-red-500/15 border-red-500/50 text-white font-black shadow-[0_0_15px_rgba(239,68,68,0.1)]'
+                                        : 'bg-stone-900/40 border-stone-850 text-stone-300 hover:text-white hover:bg-stone-900/80'
                                     }`}
+                                    title={page.title}
                                 >
-                                    <div className={`p-1 rounded-lg shrink-0 ${isActive ? 'bg-red-500/20 text-red-400' : 'bg-stone-900 border border-stone-800 text-stone-500'}`}>
+                                    <div className={`p-1.5 rounded-lg shrink-0 ${isActive ? 'bg-red-500/25 text-red-400' : 'bg-stone-900 border border-stone-800 text-stone-400'}`}>
                                         {React.cloneElement(page.icon as React.ReactElement, { size: 14 })}
                                     </div>
-                                    <span className="text-[10px] md:text-xs tracking-wider uppercase font-sans font-bold leading-none truncate">{page.title}</span>
+                                    <span className="text-[10px] md:text-xs tracking-wider uppercase font-sans font-bold leading-none truncate whitespace-nowrap">{page.title}</span>
                                 </button>
                             );
                         })}
                     </div>
- 
+
                     {/* Content Area */}
-                    <div className="flex-1 overflow-y-auto p-3 sm:p-4 overscroll-contain custom-scrollbar bg-stone-900/10">
-                        <div className="max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <div className="flex-1 min-h-0 min-w-0 overflow-y-auto p-4 sm:p-6 overscroll-contain custom-scrollbar bg-stone-950/60 text-stone-200">
+                        <div className="max-w-4xl mx-auto space-y-4">
                             {pages[currentPage].content}
                         </div>
                     </div>
@@ -1043,14 +1205,17 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
                 <div className="shrink-0 p-2.5 sm:p-3 border-t border-stone-800/50 bg-stone-950/40 backdrop-blur-xl">
                     <div className="max-w-4xl mx-auto flex items-center justify-between">
                         <button
-                            onClick={prevPage}
+                            onClick={() => {
+                                audioManager.playSound('click');
+                                prevPage();
+                            }}
                             disabled={currentPage === 0}
-                            className={`flex items-center gap-1.5 px-3 py-1.75 font-black tracking-[0.2em] transition-all text-[8px] sm:text-[9px] rounded-xl border ${currentPage === 0
+                            className={`flex items-center gap-1.5 px-4 py-2 min-h-[44px] font-black tracking-[0.2em] transition-all text-[8px] sm:text-[9px] rounded-xl border ${currentPage === 0
                                 ? 'border-transparent text-transparent pointer-events-none'
                                 : 'border-stone-800 text-stone-400 hover:text-white hover:bg-white/5 hover:border-stone-600'
                                 }`}
                         >
-                            <ChevronLeft size={14} />
+                            <ChevronLeft size={16} />
                             BACK
                         </button>
  
@@ -1058,15 +1223,18 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
                             {pages.map((_, index) => (
                                 <button
                                     key={index}
-                                    onClick={() => goToPage(index)}
+                                    onClick={() => {
+                                        audioManager.playSound('click');
+                                        goToPage(index);
+                                    }}
                                     type="button"
                                     className={`block p-0 transition-all ${index === currentPage
                                         ? 'bg-red-500'
                                         : 'bg-stone-700 hover:bg-stone-600'
                                         }`}
                                     style={{
-                                        width: index === currentPage ? 5 : 2,
-                                        height: 1,
+                                        width: index === currentPage ? 8 : 4,
+                                        height: 4,
                                         minWidth: 0,
                                         minHeight: 0,
                                         padding: 0,
@@ -1080,15 +1248,18 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
                         </div>
  
                         <button
-                            onClick={nextPage}
+                            onClick={() => {
+                                audioManager.playSound('click');
+                                nextPage();
+                            }}
                             disabled={currentPage === pages.length - 1}
-                            className={`flex items-center gap-1.5 px-3 py-1.75 font-black tracking-[0.2em] transition-all text-[8px] sm:text-[9px] rounded-xl border ${currentPage === pages.length - 1
+                            className={`flex items-center gap-1.5 px-4 py-2 min-h-[44px] font-black tracking-[0.2em] transition-all text-[8px] sm:text-[9px] rounded-xl border ${currentPage === pages.length - 1
                                 ? 'border-transparent text-transparent pointer-events-none'
                                 : 'bg-white text-black hover:bg-stone-200 border-white'
                                 }`}
                         >
                             NEXT
-                            <ChevronRight size={14} />
+                            <ChevronRight size={16} />
                         </button>
                     </div>
                 </div>

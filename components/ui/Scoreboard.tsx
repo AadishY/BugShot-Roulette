@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { X, Trophy, Activity, Target, Zap, Skull, Swords } from 'lucide-react';
-import { GameStats, getStoredStats } from '../../utils/statsManager';
-import { getUserStatsFromRedis } from '../../utils/redisService';
+import { X, Trophy, Activity, Target, Zap, Skull, Swords, Clock, Copy, Check, User, Shield } from 'lucide-react';
+import { GameStats, getStoredStats, setUserActiveStats } from '../../utils/statsManager';
+import { getUserStatsFromFirebase, getPlayerId, UserProfile } from '../../utils/firebaseService';
+import { getDicebearUrl } from '../../utils/dicebear';
 import { audioManager } from '../../utils/audioManager';
 import { Icons } from './Icons';
 
@@ -82,9 +83,40 @@ interface ScoreboardProps {
 
 export const Scoreboard: React.FC<ScoreboardProps> = ({ onClose, stats: initialStats }) => {
     const [stats, setStats] = useState<GameStats | null>(null);
-    const [selectedMPMatch, setSelectedMPMatch] = useState<any>(null);
+    const [selectedMatch, setSelectedMatch] = useState<any>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [loadError, setLoadError] = useState<string | null>(null);
+    const [copiedId, setCopiedId] = useState(false);
+
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                if (selectedMatch) {
+                    setSelectedMatch(null);
+                } else {
+                    audioManager.playSound('click');
+                    onClose();
+                }
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [selectedMatch, onClose]);
+
+    const currentUserProfile: UserProfile | null = (() => {
+        try {
+            const session = localStorage.getItem('aadish_roulette_logged_in_user');
+            if (session) return JSON.parse(session);
+        } catch (e) {}
+        return null;
+    })();
+
+    const isDev = currentUserProfile?.username?.toLowerCase() === 'aadish' || Boolean(currentUserProfile?.isDeveloper);
+    const playerDisplayName = currentUserProfile?.displayName || currentUserProfile?.username || 'AGENT';
+    const playerIdentifier = currentUserProfile ? getPlayerId(currentUserProfile) : '@AGENT#0000';
+    const playerAvatar = isDev 
+        ? 'https://avatars.githubusercontent.com/u/101470733'
+        : (currentUserProfile?.avatarUrl || getDicebearUrl(currentUserProfile?.avatarStyle || 'thumbs', currentUserProfile?.username || 'operator'));
 
     useEffect(() => {
         const initializeStats = async () => {
@@ -113,7 +145,7 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ onClose, stats: initialS
                     return;
                 }
 
-                const remoteStats = await getUserStatsFromRedis(userObj.username);
+                const remoteStats = await getUserStatsFromFirebase(userObj.username);
                 if (!remoteStats) {
                     setLoadError('Unable to load latest remote stats.');
                     setStats(null);
@@ -122,9 +154,9 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ onClose, stats: initialS
                 }
 
                 setStats(remoteStats);
-                localStorage.setItem('aadish_roulette_stats_v1', JSON.stringify(remoteStats));
+                setUserActiveStats(userObj.username, remoteStats);
             } catch (e) {
-                console.warn('Failed to refresh stats from Upstash:', e);
+                console.warn('Failed to refresh stats from Firebase:', e);
                 setLoadError('Unable to load latest remote stats.');
                 setStats(null);
             } finally {
@@ -151,7 +183,7 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ onClose, stats: initialS
             <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md pointer-events-auto p-4 animate-in fade-in duration-300">
                 <div className="bg-stone-950/90 border border-white/10 rounded-3xl p-8 text-center text-stone-100 shadow-[0_20px_60px_rgba(0,0,0,0.65)] max-w-sm">
                     <div className="mb-4 text-lg font-black uppercase tracking-[0.35em]">REMOTE STATS ERROR</div>
-                    <div className="text-sm text-stone-400 mb-6">{loadError || 'Unable to load Upstash stats.'}</div>
+                    <div className="text-sm text-stone-400 mb-6">{loadError || 'Unable to load Cloud stats.'}</div>
                     <button
                         onClick={() => {
                             audioManager.playSound('click');
@@ -166,13 +198,13 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ onClose, stats: initialS
                                 }
                                 try {
                                     const userObj = JSON.parse(loggedInUser);
-                                    const remoteStats = await getUserStatsFromRedis(userObj.username);
+                                    const remoteStats = await getUserStatsFromFirebase(userObj.username);
                                     if (!remoteStats) {
                                         setLoadError('Unable to load latest remote stats.');
                                         setStats(null);
                                     } else {
                                         setStats(remoteStats);
-                                        localStorage.setItem('aadish_roulette_stats_v1', JSON.stringify(remoteStats));
+                                        setUserActiveStats(userObj.username, remoteStats);
                                     }
                                 } catch (err) {
                                     setLoadError('Unable to load latest remote stats.');
@@ -199,38 +231,104 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ onClose, stats: initialS
         );
     }
 
-    const totalGames = stats.wins + stats.losses;
-    const winRate = totalGames > 0 ? Math.round((stats.wins / totalGames) * 100) : 0;
-    const accuracy = stats.shotsFired > 0 ? Math.round((stats.shotsHit / stats.shotsFired) * 100) : 0;
+    const totalGames = (stats?.wins || 0) + (stats?.losses || 0);
+    const winRate = totalGames > 0 ? Math.round(((stats?.wins || 0) / totalGames) * 100) : 0;
+    const accuracy = (stats?.shotsFired || 0) > 0 ? Math.round(((stats?.shotsHit || 0) / (stats?.shotsFired || 1)) * 100) : 0;
+    const totalPlaytimeSecs = currentUserProfile?.totalTimePlayed || stats?.totalPlaytime || (((stats?.totalRounds || 0)) * 90);
+    const playHours = Math.floor(totalPlaytimeSecs / 3600);
+    const playMins = Math.floor((totalPlaytimeSecs % 3600) / 60);
+    const formattedPlaytime = playHours > 0 ? `${playHours}h ${playMins}m` : `${playMins}m`;
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/55 backdrop-blur-md pointer-events-auto p-1 sm:p-2.5 animate-in fade-in duration-300">
-            <div className="w-[96vw] h-[90vh] max-w-[96vw] max-h-[96vh] md:w-[90vw] md:h-[90vh] bg-stone-950/40 backdrop-blur-2xl border-[2px] border-stone-700/80 shadow-[0_36px_100px_rgba(0,0,0,0.9)] flex flex-col relative overflow-hidden rounded-2xl ring-2 ring-white/10">
+        <div 
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/55 backdrop-blur-md pointer-events-auto p-1 sm:p-2.5 animate-in fade-in duration-300"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Agent Service Record"
+            style={{
+                paddingTop: 'max(env(safe-area-inset-top, 0px), 8px)',
+                paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 8px)',
+                paddingLeft: 'max(env(safe-area-inset-left, 0px), 8px)',
+                paddingRight: 'max(env(safe-area-inset-right, 0px), 8px)'
+            }}
+            onClick={(e) => {
+                if (e.target === e.currentTarget) {
+                    audioManager.playSound('click');
+                    onClose();
+                }
+            }}
+        >
+            <div className="w-full max-w-[min(96vw,calc(100vw-16px))] h-[90vh] max-h-[96vh] md:w-[90vw] md:h-[90vh] bg-stone-950/40 backdrop-blur-2xl border-[2px] border-stone-700/80 shadow-[0_36px_100px_rgba(0,0,0,0.9)] flex flex-col relative overflow-hidden rounded-2xl ring-2 ring-white/10">
 
                 {/* Decorative Elements */}
                 <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-yellow-500/20 to-transparent pointer-events-none" />
                 <div className="absolute -top-24 -right-24 w-48 h-48 bg-yellow-500/5 blur-[80px] rounded-full pointer-events-none" />
 
-                {/* Header */}
-                <div className="p-3 border-b border-stone-800/50 flex justify-between items-center bg-stone-950/20 backdrop-blur-md">
-                    <div className="flex items-center gap-2">
-                        <div className="p-1.5 bg-yellow-500/10 rounded-lg border border-yellow-500/20">
-                            <Trophy className="text-yellow-500" size={18} />
+                {/* Header with Player Profile & Avatar */}
+                <div className="p-3 sm:p-4 border-b border-stone-800/60 flex flex-col sm:flex-row justify-between sm:items-center gap-3 bg-stone-950/80 backdrop-blur-md">
+                    <div className="flex items-center gap-3">
+                        <div className="relative shrink-0">
+                            <div className="w-12 h-12 rounded-2xl overflow-hidden bg-stone-900 border border-stone-750 p-0.5 shadow-lg">
+                                <img
+                                    src={playerAvatar}
+                                    alt={playerDisplayName}
+                                    className="w-full h-full object-cover rounded-xl"
+                                />
+                            </div>
+                            <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-stone-950 shadow-sm" title="Active" />
                         </div>
-                        <div>
-                            <h2 className="text-lg font-black text-white tracking-[0.2em] uppercase leading-tight">CAREER LOG</h2>
-                            <p className="text-[9px] text-stone-500 font-bold tracking-[0.4em] uppercase">Tactical Performance Data</p>
+
+                        <div className="flex flex-col">
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <h2 className="text-base sm:text-lg font-black text-white tracking-wider uppercase leading-tight">
+                                    {playerDisplayName}
+                                </h2>
+                                {isDev ? (
+                                    <span className="px-1.5 py-0.5 bg-red-955 border border-red-800 text-red-400 text-[7px] font-bold tracking-widest rounded uppercase">
+                                        DEV
+                                    </span>
+                                ) : (
+                                    <span className="px-1.5 py-0.5 bg-stone-900 border border-stone-750 text-stone-400 text-[7px] font-bold tracking-widest rounded uppercase">
+                                        COMBAT AGENT
+                                    </span>
+                                )}
+                            </div>
+
+                            <div className="flex items-center gap-2.5 text-[9px] text-stone-400 font-mono mt-0.5">
+                                <button
+                                    onClick={() => {
+                                        audioManager.playSound('click');
+                                        navigator.clipboard?.writeText(playerIdentifier);
+                                        setCopiedId(true);
+                                        setTimeout(() => setCopiedId(false), 2000);
+                                    }}
+                                    className="inline-flex items-center gap-1.5 bg-stone-900/90 hover:bg-stone-800 border border-stone-800 hover:border-stone-700 px-2.5 py-1.5 min-h-[44px] rounded-lg text-stone-300 font-bold transition-all cursor-pointer"
+                                    title="Click to copy Player ID"
+                                >
+                                    <span>{playerIdentifier}</span>
+                                    {copiedId ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                                </button>
+                                <span className="text-stone-600">•</span>
+                                <span className="flex items-center gap-1 text-stone-400">
+                                    <Clock size={11} className="text-stone-500" />
+                                    <span>Playtime: <strong className="text-stone-200">{formattedPlaytime}</strong></span>
+                                </span>
+                            </div>
                         </div>
                     </div>
-                    <button
-                        onClick={() => {
-                            audioManager.playSound('click');
-                            onClose();
-                        }}
-                        className="p-1.5 text-stone-500 hover:text-white hover:bg-white/5 rounded-full transition-all active:scale-95"
-                    >
-                        <X size={18} />
-                    </button>
+
+                    <div className="flex items-center self-end sm:self-auto gap-2">
+                        <button
+                            onClick={() => {
+                                audioManager.playSound('click');
+                                onClose();
+                            }}
+                            className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center text-stone-400 hover:text-white bg-stone-900/80 hover:bg-stone-800 border border-stone-800 rounded-xl transition-all cursor-pointer shadow-md"
+                            title="Close"
+                        >
+                            <X size={20} />
+                        </button>
+                    </div>
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-hide custom-scrollbar">
@@ -300,18 +398,14 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ onClose, stats: initialS
                         </div>
                         <div className="space-y-2">
                             {stats.matchHistory && stats.matchHistory.length > 0 ? (
-                                stats.matchHistory.slice(0, 6).map((match, i) => (
+                                stats.matchHistory.slice(0, 10).map((match, i) => (
                                     <div 
                                         key={i} 
                                         onClick={() => {
-                                            if (match.isMultiplayer) {
-                                                audioManager.playSound('click');
-                                                setSelectedMPMatch(match);
-                                            }
+                                            audioManager.playSound('click');
+                                            setSelectedMatch(match);
                                         }}
-                                        className={`bg-stone-900/20 p-2.5 px-3.5 border border-white/5 rounded-xl flex justify-between items-center transition-all group ${
-                                            match.isMultiplayer ? 'cursor-pointer hover:border-cyan-500/40 hover:bg-stone-900/35' : 'hover:bg-white/5'
-                                        }`}
+                                        className="bg-stone-900/20 hover:bg-stone-900/40 p-2.5 px-3.5 border border-white/5 hover:border-cyan-500/40 rounded-xl flex justify-between items-center transition-all cursor-pointer group"
                                     >
                                         <div className="flex items-center gap-3">
                                             <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-black text-[11px] border ${match.result === 'WIN' ? 'bg-green-500/10 text-green-500 border-green-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20'}`}>
@@ -326,14 +420,32 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ onClose, stats: initialS
                                                         <span className="text-[7px] bg-cyan-950/50 text-cyan-400 border border-cyan-900/30 px-1.5 py-0.5 rounded font-black tracking-widest uppercase animate-pulse">MP</span>
                                                     ) : match.isHardMode ? (
                                                         <span className="text-[7px] bg-red-955/20 text-red-500 border border-red-900/30 px-1.5 py-0.5 rounded font-black tracking-widest uppercase">HardMode</span>
-                                                    ) : null}
+                                                    ) : (
+                                                        <span className="text-[7px] bg-stone-800 text-stone-400 px-1.5 py-0.5 rounded font-black tracking-widest uppercase">SOLO</span>
+                                                    )}
                                                 </div>
                                                 <span className="text-[8px] text-stone-600 font-mono tracking-tighter uppercase">
                                                     {match.timestamp ? new Date(match.timestamp).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : 'Unknown Date'}
                                                 </span>
                                             </div>
                                         </div>
-                                        <div className="flex gap-4 items-center">
+                                        <div className="flex gap-3 sm:gap-4 items-center">
+                                            {/* Accuracy Ratio */}
+                                            {(() => {
+                                                const fired = match.shotsFired || 0;
+                                                const hit = match.shotsHit || 0;
+                                                const acc = fired > 0 ? Math.round((hit / fired) * 100) : 0;
+                                                return (
+                                                    <div className="hidden xs:flex flex-col items-end">
+                                                        <span className="text-[7px] text-stone-600 font-bold uppercase tracking-widest">Accuracy</span>
+                                                        <span className="text-xs font-black text-cyan-400 font-mono flex items-center gap-1">
+                                                            <Target size={11} className="text-cyan-500" />
+                                                            <span>{acc}%</span>
+                                                            <span className="text-[7.5px] text-stone-500 font-normal">({hit}/{fired})</span>
+                                                        </span>
+                                                    </div>
+                                                );
+                                            })()}
                                             <div className="hidden sm:flex flex-col items-end">
                                                 <span className="text-[7px] text-stone-600 font-bold uppercase tracking-widest">Score</span>
                                                 <span className="text-sm font-black text-yellow-500/80">{match.totalScore?.toLocaleString() || 0}</span>
@@ -365,89 +477,230 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ onClose, stats: initialS
                         Return to Hub
                     </button>
                 </div>
-                {/* Multiplayer Match Summary Popup */}
-                {selectedMPMatch && (
+
+                {/* Universal Combat Report Modal */}
+                {selectedMatch && (
                     <>
-                        <div className="fixed inset-0 bg-black/80 z-[120] cursor-default" onClick={() => setSelectedMPMatch(null)} />
-                        <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[95vw] sm:w-[90vw] max-w-4xl max-h-[85vh] overflow-y-auto bg-stone-950 border border-cyan-900/40 p-6 rounded-2xl shadow-[0_0_50px_rgba(6,182,212,0.15)] z-[130] font-mono text-stone-300">
+                        <div className="fixed inset-0 bg-black/85 z-[120] cursor-default backdrop-blur-sm" onClick={() => setSelectedMatch(null)} />
+                        <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[95vw] sm:w-[90vw] max-w-4xl max-h-[88vh] overflow-y-auto bg-stone-950 border border-stone-800 p-4 sm:p-6 rounded-2xl shadow-[0_0_60px_rgba(0,0,0,0.85)] z-[130] font-mono text-stone-300 custom-scrollbar">
                             {/* Header */}
-                            <div className="flex justify-between items-center border-b border-stone-900 pb-3 mb-4">
-                                <div className="flex items-center gap-2">
-                                    <Swords className="text-cyan-400" size={14} />
-                                    <span className="font-black text-xs tracking-wider uppercase text-white">MULTIPLAYER SUMMARY</span>
+                            <div className="flex justify-between items-center border-b border-stone-800 pb-3 mb-4">
+                                <div className="flex items-center gap-2.5 flex-wrap">
+                                    <Swords className="text-cyan-400" size={16} />
+                                    <span className="font-black text-xs sm:text-sm tracking-wider uppercase text-white">
+                                        OPERATIONAL COMBAT REPORT
+                                    </span>
+                                    <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${
+                                        selectedMatch.result === 'WIN' ? 'bg-emerald-955 border border-emerald-700 text-emerald-300' : 'bg-red-955 border border-red-700 text-red-300'
+                                    }`}>
+                                        {selectedMatch.result === 'WIN' ? 'VICTORY' : 'ELIMINATED'}
+                                    </span>
+                                    <span className="text-[8px] px-1.5 py-0.5 rounded bg-stone-900 border border-stone-800 text-stone-400 uppercase font-black">
+                                        {selectedMatch.isMultiplayer ? 'MULTIPLAYER' : selectedMatch.isHardMode ? 'HARD PROTOCOL' : 'CAMPAIGN DUEL'}
+                                    </span>
                                 </div>
-                                <button onClick={() => setSelectedMPMatch(null)} className="text-stone-500 hover:text-white transition-colors cursor-pointer">
-                                    <X size={14} />
+                                <button 
+                                    onClick={() => {
+                                        audioManager.playSound('click');
+                                        setSelectedMatch(null);
+                                    }} 
+                                    className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center text-stone-500 hover:text-white rounded-full hover:bg-white/5 transition-colors cursor-pointer"
+                                    aria-label="Close match details"
+                                >
+                                    <X size={20} />
                                 </button>
                             </div>
 
-                            {/* Details */}
+                            {/* Details Container */}
                             <div className="space-y-4 text-left">
-                                <div className="flex justify-between text-[7px] sm:text-[8px] text-stone-500 border-b border-stone-900/50 pb-2 gap-2">
-                                    <span className="truncate">DATE: {selectedMPMatch.timestamp ? new Date(selectedMPMatch.timestamp).toLocaleString() : 'UNKNOWN'}</span>
-                                    <span className="text-cyan-400 font-bold whitespace-nowrap">SCORE: {selectedMPMatch.totalScore?.toLocaleString() || 0}</span>
+                                <div className="flex justify-between text-[8px] sm:text-[9px] text-stone-500 border-b border-stone-900 pb-2 gap-2 flex-wrap">
+                                    <span>TIMESTAMP: {selectedMatch.timestamp ? new Date(selectedMatch.timestamp).toLocaleString() : 'UNKNOWN'}</span>
+                                    <span className="text-yellow-400 font-bold">RATING SCORE: {selectedMatch.totalScore?.toLocaleString() || 0} PTS</span>
                                 </div>
 
-                                {/* Deployed list */}
-                                <div className="space-y-1.5">
-                                    <span className="text-[7px] sm:text-[8px] text-stone-500 uppercase tracking-widest font-black block">DEPLOYED AGENTS</span>
-                                    <div className="space-y-1">
-                                        {selectedMPMatch.mpPlayers && selectedMPMatch.mpPlayers.map((player: any, idx: number) => (
-                                            <div key={idx} className="flex justify-between items-center p-2 bg-stone-900/20 border border-stone-900/40 rounded-lg text-[9px] sm:text-[10px] gap-2">
-                                                <div className="flex items-center gap-1.5 min-w-0">
-                                                    <span className="font-bold text-stone-200 truncate">{player.name}</span>
-                                                    {player.isHost && (
-                                                        <span className="text-[6px] bg-red-955/20 text-red-400 px-1 py-0.5 rounded border border-red-900/30 font-bold">HOST</span>
-                                                    )}
-                                                    {player.isMe && (
-                                                        <span className="text-[6px] bg-cyan-950/20 text-cyan-400 px-1 py-0.5 rounded border border-cyan-900/30 font-bold">YOU</span>
-                                                    )}
-                                                </div>
-                                                <span className={`font-black tracking-widest uppercase text-[8px] sm:text-[9px] whitespace-nowrap ${
-                                                    player.result === 'WIN' ? 'text-green-400' :
-                                                    player.result === 'LOSS' ? 'text-red-450' : 'text-stone-500'
-                                                }`}>
-                                                    {player.result}
-                                                </span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
+                                {/* Deployed Agents list if Multiplayer */}
+                                {selectedMatch.isMultiplayer && selectedMatch.mpPlayers && selectedMatch.mpPlayers.length > 0 && (
+                                    <div className="space-y-1.5">
+                                        <span className="text-[7.5px] sm:text-[8.5px] text-stone-500 uppercase tracking-widest font-black block">
+                                            DEPLOYED AGENTS ROSTER
+                                        </span>
+                                        <div className="space-y-1">
+                                            {selectedMatch.mpPlayers.map((player: any, idx: number) => {
+                                                const pName = player.displayName || player.name || player.username || 'Agent';
+                                                const pId = player.playerId || getPlayerId({ username: player.username || pName });
+                                                const isDev = pName.toLowerCase() === 'aadish' || (player.username && player.username.toLowerCase() === 'aadish');
+                                                const avatarUrl = isDev 
+                                                    ? 'https://avatars.githubusercontent.com/u/101470733' 
+                                                    : (player.avatarUrl || getDicebearUrl(player.avatarStyle || 'thumbs', player.username || pName));
 
-                                {/* Player stats */}
-                                <div className="space-y-1.5 pt-2 border-t border-stone-900/60">
-                                    <span className="text-[7px] sm:text-[8px] text-stone-500 uppercase tracking-widest font-black block">PERFORMANCE REPORT</span>
-                                    <div className="grid grid-cols-2 gap-2 text-[8px] sm:text-[9px]">
-                                        <div className="p-2 bg-stone-950 border border-stone-900/50 rounded flex justify-between">
-                                            <span className="text-stone-500">RDS SURVIVED</span>
-                                            <span className="text-stone-200 font-bold">{selectedMPMatch.roundsSurvived}</span>
+                                                return (
+                                                    <div key={idx} className="flex justify-between items-center p-2 bg-stone-900/25 border border-stone-850 rounded-xl text-[9.5px]">
+                                                        <div className="flex items-center gap-2.5 min-w-0">
+                                                            <div className="w-7 h-7 rounded-full overflow-hidden bg-stone-900 border border-stone-750 shrink-0">
+                                                                <img src={avatarUrl} alt={pName} className="w-full h-full object-cover" />
+                                                            </div>
+                                                            <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
+                                                                <span className="font-bold text-stone-200 truncate">{pName}</span>
+                                                                <span className="text-[7.5px] text-stone-400 font-mono tracking-wider bg-stone-950 px-1.5 py-0.5 rounded border border-stone-800">{pId}</span>
+                                                                {player.isHost && (
+                                                                    <span className="text-[6.5px] bg-red-955 border border-red-800 text-red-400 px-1 py-0.2 rounded font-bold">HOST</span>
+                                                                )}
+                                                                {player.isMe && (
+                                                                    <span className="text-[6.5px] bg-cyan-950 border border-cyan-800 text-cyan-400 px-1 py-0.2 rounded font-bold">YOU</span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                        <span className={`font-black tracking-widest uppercase text-[9px] ${
+                                                            player.result === 'WIN' ? 'text-green-400' :
+                                                            player.result === 'LOSS' ? 'text-red-450' : 'text-stone-500'
+                                                        }`}>
+                                                            {player.result || 'FINISHED'}
+                                                        </span>
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
-                                        <div className="p-2 bg-stone-950 border border-stone-900/50 rounded flex justify-between">
-                                            <span className="text-stone-500">PRECISION</span>
-                                            <span className="text-stone-200 font-bold">
-                                                {selectedMPMatch.shotsFired > 0 ? Math.round((selectedMPMatch.shotsHit / selectedMPMatch.shotsFired) * 100) : 0}%
+                                    </div>
+                                )}
+
+                                {/* Performance grid */}
+                                <div className="space-y-2 pt-2 border-t border-stone-900">
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-[7.5px] sm:text-[8.5px] text-stone-500 uppercase tracking-widest font-black block">
+                                            COMBAT PERFORMANCE METRICS
+                                        </span>
+                                        {(() => {
+                                            const fired = selectedMatch.shotsFired || 0;
+                                            const hit = selectedMatch.shotsHit || 0;
+                                            const acc = fired > 0 ? Math.round((hit / fired) * 100) : 0;
+                                            const grade = acc >= 90 ? 'S' : acc >= 75 ? 'A' : acc >= 50 ? 'B' : 'C';
+                                            const gradeColor = grade === 'S' ? 'bg-amber-500/20 text-amber-300 border-amber-400' :
+                                                               grade === 'A' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400' :
+                                                               grade === 'B' ? 'bg-cyan-500/20 text-cyan-300 border-cyan-400' :
+                                                               'bg-stone-800 text-stone-400 border-stone-700';
+                                            return (
+                                                <span className={`px-2 py-0.5 rounded border text-[8px] font-black tracking-widest font-mono flex items-center gap-1 ${gradeColor}`}>
+                                                    <Target size={10} />
+                                                    <span>RANK {grade} TACTICAL</span>
+                                                </span>
+                                            );
+                                        })()}
+                                    </div>
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[8.5px] sm:text-[9.5px]">
+                                        <div className="p-2.5 bg-stone-950 border border-stone-850 rounded-xl flex flex-col justify-between">
+                                            <span className="text-stone-500 uppercase text-[7.5px]">RDS SURVIVED</span>
+                                            <span className="text-white font-bold text-base mt-1">{selectedMatch.roundsSurvived}</span>
+                                        </div>
+                                        <div className="p-2.5 bg-stone-950 border border-stone-850 rounded-xl flex flex-col justify-between">
+                                            <span className="text-stone-500 uppercase text-[7.5px]">PRECISION</span>
+                                            <div className="flex items-baseline gap-1 mt-1">
+                                                <span className="text-white font-bold text-base">
+                                                    {selectedMatch.shotsFired > 0 ? Math.round((selectedMatch.shotsHit / selectedMatch.shotsFired) * 100) : 0}%
+                                                </span>
+                                                <span className="text-[7.5px] text-stone-500 font-mono">({selectedMatch.shotsHit}/{selectedMatch.shotsFired})</span>
+                                            </div>
+                                        </div>
+                                        <div className="p-2.5 bg-stone-950 border border-stone-850 rounded-xl flex flex-col justify-between">
+                                            <span className="text-stone-500 uppercase text-[7.5px]">LETHALITY</span>
+                                            <div className="flex items-baseline gap-1 mt-1">
+                                                <span className="text-green-400 font-bold text-base">{selectedMatch.damageDealt}</span>
+                                                <span className="text-[7.5px] text-stone-500">DMG DEALT</span>
+                                            </div>
+                                        </div>
+                                        <div className="p-2.5 bg-stone-950 border border-stone-850 rounded-xl flex flex-col justify-between">
+                                            <span className="text-stone-500 uppercase text-[7.5px]">DAMAGE TAKEN</span>
+                                            <div className="flex items-baseline gap-1 mt-1">
+                                                <span className={`${selectedMatch.damageTaken > 0 ? 'text-red-400' : 'text-stone-400'} font-bold text-base`}>{selectedMatch.damageTaken}</span>
+                                                <span className="text-[7.5px] text-stone-500">HP LOST</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Ballistic Accuracy Ratio Meter Bar */}
+                                    {(() => {
+                                        const fired = selectedMatch.shotsFired || 0;
+                                        const hit = selectedMatch.shotsHit || 0;
+                                        const missed = Math.max(0, fired - hit);
+                                        const acc = fired > 0 ? Math.round((hit / fired) * 100) : 0;
+                                        return (
+                                            <div className="p-2.5 bg-stone-950/80 border border-stone-850 rounded-xl space-y-1.5">
+                                                <div className="flex justify-between items-center text-[7.5px] sm:text-[8px] uppercase font-bold text-stone-400">
+                                                    <span className="flex items-center gap-1.5 text-cyan-400 font-black">
+                                                        <Target size={11} /> BALLISTIC ACCURACY RATIO
+                                                    </span>
+                                                    <div className="flex items-center gap-2 font-mono">
+                                                        <span className="text-emerald-400">{hit} HITS ({acc}%)</span>
+                                                        <span className="text-stone-600">•</span>
+                                                        <span className="text-stone-500">{missed} BLANKS / MISSES</span>
+                                                    </div>
+                                                </div>
+                                                <div className="w-full h-2 bg-stone-900 rounded-full overflow-hidden border border-stone-800 flex">
+                                                    <div 
+                                                        className="h-full bg-gradient-to-r from-cyan-500 to-emerald-400 transition-all duration-500" 
+                                                        style={{ width: `${acc}%` }}
+                                                    />
+                                                    <div 
+                                                        className="h-full bg-stone-800 transition-all duration-500" 
+                                                        style={{ width: `${100 - acc}%` }}
+                                                    />
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
+
+                                    {selectedMatch.selfShots > 0 && (
+                                        <div className="p-2 bg-red-955/20 border border-red-900/40 rounded-xl flex justify-between items-center text-[8px] sm:text-[9px]">
+                                            <span className="text-red-400 font-bold">DESPERATE GAMBLES (SELF-SHOTS):</span>
+                                            <span className="text-red-300 font-mono font-black">{selectedMatch.selfShots} TIMES (-{selectedMatch.selfShots * 50} PTS)</span>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Items Deployed with Icons */}
+                                {selectedMatch.itemsUsed && Object.keys(selectedMatch.itemsUsed).length > 0 && (
+                                    renderItemsUsed(selectedMatch.itemsUsed)
+                                )}
+
+                                {/* Score Breakdown */}
+                                <div className="space-y-1.5 pt-2 border-t border-stone-900">
+                                    <span className="text-[7.5px] sm:text-[8.5px] text-stone-500 uppercase tracking-widest font-black block">
+                                        SCORE VALUATION BREAKDOWN
+                                    </span>
+                                    <div className="p-3 bg-stone-950/80 border border-stone-850 rounded-xl space-y-1.5 text-[8px] sm:text-[9px]">
+                                        <div className="flex justify-between border-b border-stone-900 pb-1">
+                                            <span className="text-stone-400">Outcome Bonus:</span>
+                                            <span className={selectedMatch.result === 'WIN' ? 'text-green-400 font-bold' : 'text-stone-500'}>
+                                                {selectedMatch.result === 'WIN' ? '+1,000 PTS' : '+0 PTS'}
                                             </span>
                                         </div>
-                                        <div className="p-2 bg-stone-950 border border-stone-900/50 rounded flex justify-between">
-                                            <span className="text-stone-500">DMG DEALT</span>
-                                            <span className="text-stone-200 font-bold">{selectedMPMatch.damageDealt}</span>
+                                        <div className="flex justify-between border-b border-stone-900 pb-1">
+                                            <span className="text-stone-400">Rounds Survived ({selectedMatch.roundsSurvived}):</span>
+                                            <span className="text-stone-200">+{selectedMatch.roundsSurvived * 100} PTS</span>
                                         </div>
-                                        <div className="p-2 bg-stone-950 border border-stone-900/50 rounded flex justify-between">
-                                            <span className="text-stone-500">DMG TAKEN</span>
-                                            <span className="text-stone-200 font-bold">{selectedMPMatch.damageTaken}</span>
+                                        <div className="flex justify-between border-b border-stone-900 pb-1">
+                                            <span className="text-stone-400">Shots Hit ({selectedMatch.shotsHit}):</span>
+                                            <span className="text-stone-200">+{selectedMatch.shotsHit * 20} PTS</span>
                                         </div>
-                                        <div className="p-2 bg-stone-950 border border-stone-900/50 rounded flex justify-between col-span-2">
-                                            <span className="text-stone-500">SELF SHOTS</span>
-                                            <span className={`${selectedMPMatch.selfShots > 0 ? 'text-red-400' : 'text-stone-400'} font-bold`}>{selectedMPMatch.selfShots}</span>
+                                        <div className="flex justify-between border-b border-stone-900 pb-1">
+                                            <span className="text-stone-400">Damage Dealt ({selectedMatch.damageDealt}):</span>
+                                            <span className="text-stone-200">+{selectedMatch.damageDealt * 50} PTS</span>
+                                        </div>
+                                        <div className="flex justify-between pt-1 text-xs font-black text-yellow-400">
+                                            <span>FINAL CALCULATED SCORE:</span>
+                                            <span>{selectedMatch.totalScore?.toLocaleString() || 0} PTS</span>
                                         </div>
                                     </div>
                                 </div>
-
-                                {selectedMPMatch.itemsUsed && Object.keys(selectedMPMatch.itemsUsed).length > 0 && renderItemsUsed(selectedMPMatch.itemsUsed)}
                             </div>
 
-                            <button onClick={() => setSelectedMPMatch(null)} className="w-full mt-4 py-2 bg-cyan-950/20 border border-cyan-850 hover:bg-cyan-900/20 text-cyan-400 font-black text-[8px] sm:text-[9px] tracking-wider uppercase rounded-xl transition-all cursor-pointer">
-                                DISMISS LOG
+                            <button 
+                                onClick={() => {
+                                    audioManager.playSound('click');
+                                    setSelectedMatch(null);
+                                }} 
+                                className="w-full mt-4 py-3 min-h-[44px] bg-stone-900 hover:bg-stone-850 border border-stone-700 text-stone-200 hover:text-white font-black text-[9px] sm:text-[10px] tracking-wider uppercase rounded-xl transition-all cursor-pointer flex items-center justify-center"
+                            >
+                                DISMISS REPORT
                             </button>
                         </div>
                     </>

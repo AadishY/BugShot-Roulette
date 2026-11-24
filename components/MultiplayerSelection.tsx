@@ -1,6 +1,16 @@
-import React, { useState, useEffect } from 'react';
-import { Users, Plus, Key, ArrowLeft, Swords, AlertTriangle, RefreshCw } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Users, Plus, Key, ArrowLeft, Swords, AlertTriangle, RefreshCw, Search, Shield, Lock, Globe, X, Sliders, Dices } from 'lucide-react';
 import { audioManager } from '../utils/audioManager';
+
+const TACTICAL_PREFIXES = ['VIPER', 'GHOST', 'SHADOW', 'BLACKOUT', 'OMEGA', 'NIGHTFALL', 'DEADLOCK', 'CYBER', 'VOID', 'PHANTOM', 'IRON'];
+const TACTICAL_SUFFIXES = ['BUNKER', 'SECTOR', 'OUTPOST', 'CORRIDOR', 'VAULT', 'SANCTUARY', 'REDOUBT', 'HQ', 'CITADEL'];
+
+const generateRandomBunkerName = () => {
+    const pre = TACTICAL_PREFIXES[Math.floor(Math.random() * TACTICAL_PREFIXES.length)];
+    const suf = TACTICAL_SUFFIXES[Math.floor(Math.random() * TACTICAL_SUFFIXES.length)];
+    const num = Math.floor(Math.random() * 90 + 10);
+    return `${pre} ${suf} #${num}`;
+};
 
 interface MultiplayerSelectionProps {
     playerName: string;
@@ -30,15 +40,35 @@ export const MultiplayerSelection: React.FC<MultiplayerSelectionProps> = ({
     const [activeRooms, setActiveRooms] = useState<any[]>([]);
     const [isLoadingRooms, setIsLoadingRooms] = useState(false);
 
+    // Room Creation Dialog State
+    const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+    const [customRoomName, setCustomRoomName] = useState(`${playerName}'s Bunker`);
+    const [isPrivateRoom, setIsPrivateRoom] = useState(false);
+    const [maxPlayers, setMaxPlayers] = useState<2 | 3 | 4>(4);
+    const [startingHp, setStartingHp] = useState<number>(4);
+    const [itemsPerShipment, setItemsPerShipment] = useState<number>(4);
+    const [roundsToWin, setRoundsToWin] = useState<number>(3);
+
+    // Browser Search & Filter State
+    const [searchQuery, setSearchQuery] = useState('');
+    const [roomFilter, setRoomFilter] = useState<'all' | 'open' | 'playing'>('all');
+
     const [scale, setScale] = useState(1);
+    const [isMobile, setIsMobile] = useState(false);
 
     useEffect(() => {
         const handleResize = () => {
-            const hScale = Math.min(1, (window.innerHeight - 20) / 640);
-            const wScale = Math.min(1, (window.innerWidth - 20) / 980);
-            let newScale = Math.min(hScale, wScale);
-            newScale = Math.max(newScale, 0.4);
-            setScale(newScale);
+            const mobile = window.innerWidth < 768 || window.innerHeight < 550;
+            setIsMobile(mobile);
+            if (mobile) {
+                setScale(1);
+            } else {
+                const hScale = Math.min(1, (window.innerHeight - 20) / 640);
+                const wScale = Math.min(1, (window.innerWidth - 20) / 980);
+                let newScale = Math.min(hScale, wScale);
+                newScale = Math.max(newScale, 0.55);
+                setScale(newScale);
+            }
         };
         window.addEventListener('resize', handleResize);
         handleResize();
@@ -49,6 +79,28 @@ export const MultiplayerSelection: React.FC<MultiplayerSelectionProps> = ({
         // Clear errors when this screen mounts
         clearError();
     }, [clearError]);
+
+    // Keyboard support: Escape exits dialogs or returns to main menu
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                if (isCreateDialogOpen) {
+                    audioManager.playSound('click');
+                    setIsCreateDialogOpen(false);
+                } else if (isBrowserOpen) {
+                    audioManager.playSound('click');
+                    setIsBrowserOpen(false);
+                } else if (error) {
+                    clearError();
+                } else {
+                    audioManager.playSound('click');
+                    onBack();
+                }
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isCreateDialogOpen, isBrowserOpen, error, onBack, clearError]);
 
     const handleJoinSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -83,45 +135,87 @@ export const MultiplayerSelection: React.FC<MultiplayerSelectionProps> = ({
         }
     };
 
+    const handleConfirmCreate = () => {
+        audioManager.playSound('click');
+        const settings = {
+            name: customRoomName.trim() || `${playerName}'s Bunker`,
+            roomName: customRoomName.trim() || `${playerName}'s Bunker`,
+            isPrivate: isPrivateRoom,
+            maxPlayers,
+            rounds: roundsToWin,
+            hp: startingHp,
+            itemsPerShipment,
+            isAdvanced: false
+        };
+        try {
+            localStorage.setItem('aadish_roulette_last_lobby_settings', JSON.stringify(settings));
+        } catch (e) {
+            console.error("Failed to save room settings:", e);
+        }
+        setIsCreateDialogOpen(false);
+        onCreateRoom();
+    };
+
+    const filteredRooms = useMemo(() => {
+        return activeRooms.filter((room) => {
+            if (roomFilter === 'open' && room.isPlaying) return false;
+            if (roomFilter === 'playing' && !room.isPlaying) return false;
+            if (searchQuery.trim()) {
+                const q = searchQuery.toLowerCase().trim();
+                const matchesName = (room.name || '').toLowerCase().includes(q);
+                const matchesId = (room.id || '').toLowerCase().includes(q);
+                const matchesHost = (room.hostName || '').toLowerCase().includes(q);
+                return matchesName || matchesId || matchesHost;
+            }
+            return true;
+        });
+    }, [activeRooms, roomFilter, searchQuery]);
+
     return (
         <div 
-            style={{ transform: `scale(${scale})`, transformOrigin: 'center center' }}
-            className="flex flex-col w-[960px] h-[600px] shrink-0 bg-stone-950/90 backdrop-blur-md border-2 border-cyan-500/20 rounded-xl overflow-hidden shadow-[0_0_60px_rgba(6,182,212,0.15)] animate-in zoom-in-95 duration-500 font-mono text-stone-300 relative"
+            style={isMobile ? {
+                paddingTop: 'max(env(safe-area-inset-top, 0px), 8px)',
+                paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 8px)',
+                paddingLeft: 'max(env(safe-area-inset-left, 0px), 8px)',
+                paddingRight: 'max(env(safe-area-inset-right, 0px), 8px)'
+            } : { transform: `scale(${scale})`, transformOrigin: 'center center' }}
+            className="flex flex-col w-full max-w-[min(96vw,960px)] max-h-[92dvh] md:h-[600px] shrink-0 bg-stone-950/90 backdrop-blur-md border-2 border-cyan-500/20 rounded-xl overflow-hidden shadow-[0_0_60px_rgba(6,182,212,0.15)] animate-in zoom-in-95 duration-500 font-mono text-stone-300 relative"
         >
             {/* Header */}
-            <div className="p-5 border-b border-stone-850 bg-stone-900/20 flex justify-between items-center relative">
+            <div className="p-3.5 sm:p-5 border-b border-stone-850 bg-stone-900/20 flex justify-between items-center relative shrink-0">
                 {/* Visual Accent Ticks */}
                 <div className="absolute top-2 left-2 w-2 h-2 border-t border-l border-cyan-500/40" />
                 <div className="absolute top-2 right-2 w-2 h-2 border-t border-r border-cyan-500/40" />
 
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2.5 sm:gap-3">
                     <button 
                         onClick={() => {
                             audioManager.playSound('click');
                             onBack();
                         }} 
-                        className="p-2 hover:bg-stone-900 border border-stone-800 hover:border-cyan-500/50 text-stone-400 hover:text-cyan-400 rounded-lg transition-colors cursor-pointer"
+                        className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center hover:bg-stone-900 border border-stone-800 hover:border-cyan-500/50 text-stone-400 hover:text-cyan-400 rounded-xl transition-colors cursor-pointer"
                         title="Return to Menu"
+                        aria-label="Return to Menu"
                     >
                         <ArrowLeft size={16} />
                     </button>
                     <div>
-                        <h1 className="text-xl font-black tracking-widest uppercase text-white flex items-center gap-2">
-                            <Swords size={20} className="text-cyan-400 animate-pulse" />
+                        <h1 className="text-base sm:text-xl font-black tracking-widest uppercase text-white flex items-center gap-2">
+                            <Swords size={18} className="text-cyan-400 animate-pulse sm:w-5 sm:h-5" />
                             MULTIPLAYER PROTOCOL
                         </h1>
-                        <p className="text-[10px] text-stone-500 tracking-wider uppercase mt-0.5">
+                        <p className="text-[9px] sm:text-[10px] text-stone-500 tracking-wider uppercase mt-0.5">
                             AGENT IDENTITY: <span className="text-cyan-500 font-bold">{playerName}</span>
                         </p>
                     </div>
                 </div>
-                <div className="px-3 py-1 bg-cyan-950/20 border border-cyan-900/30 rounded text-cyan-400 text-[10px] font-bold uppercase tracking-wider block">
+                <div className="px-2.5 py-1 bg-cyan-950/20 border border-cyan-900/30 rounded text-cyan-400 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider block">
                     PROT_VER: v2.5.0
                 </div>
             </div>
 
             {/* Content Options */}
-            <div className="flex-1 p-6 flex flex-row gap-5 justify-center items-stretch overflow-hidden">
+            <div className="flex-1 p-3 sm:p-6 flex flex-col md:flex-row gap-3 sm:gap-5 justify-start md:justify-center items-stretch overflow-y-auto md:overflow-hidden custom-scrollbar">
                 
                 {/* Quick Join Card */}
                 <div className="flex-1 border border-stone-850 hover:border-cyan-500/35 bg-stone-900/10 hover:bg-cyan-950/5 p-6 rounded-xl flex flex-col justify-between transition-all duration-300 transform hover:scale-[1.01] group relative">
@@ -144,7 +238,7 @@ export const MultiplayerSelection: React.FC<MultiplayerSelectionProps> = ({
                                 onQuickJoin();
                             }}
                             disabled={isConnecting}
-                            className="flex-1 py-3 bg-cyan-955/45 hover:bg-cyan-900/70 border border-cyan-800 hover:border-cyan-400 text-cyan-400 hover:text-white font-black text-xs tracking-widest rounded-xl transition-all cursor-pointer active:scale-98 disabled:opacity-50 flex items-center justify-center gap-2"
+                            className="flex-1 py-3 min-h-[44px] bg-cyan-955/45 hover:bg-cyan-900/70 border border-cyan-800 hover:border-cyan-400 text-cyan-400 hover:text-white font-black text-xs tracking-widest rounded-xl transition-all cursor-pointer active:scale-98 disabled:opacity-50 flex items-center justify-center gap-2"
                         >
                             {isConnecting ? <RefreshCw size={14} className="animate-spin" /> : null}
                             <span>QUICK JOIN</span>
@@ -155,7 +249,7 @@ export const MultiplayerSelection: React.FC<MultiplayerSelectionProps> = ({
                                 handleOpenBrowser();
                             }}
                             disabled={isConnecting}
-                            className="flex-1 py-3 bg-stone-900/60 hover:bg-cyan-950/20 border border-stone-850 hover:border-cyan-800 text-stone-400 hover:text-cyan-400 font-black text-xs tracking-widest rounded-xl transition-all cursor-pointer active:scale-98 disabled:opacity-50 flex items-center justify-center gap-2"
+                            className="flex-1 py-3 min-h-[44px] bg-stone-900/60 hover:bg-cyan-950/20 border border-stone-850 hover:border-cyan-800 text-stone-400 hover:text-cyan-400 font-black text-xs tracking-widest rounded-xl transition-all cursor-pointer active:scale-98 disabled:opacity-50 flex items-center justify-center gap-2"
                         >
                             <span>SHOW ROOMS</span>
                         </button>
@@ -163,15 +257,15 @@ export const MultiplayerSelection: React.FC<MultiplayerSelectionProps> = ({
                 </div>
 
                 {/* Create Room Card */}
-                <div className="flex-1 border border-stone-850 hover:border-cyan-500/35 bg-stone-900/10 hover:bg-cyan-955/5 p-6 rounded-xl flex flex-col justify-between transition-all duration-300 transform hover:scale-[1.01] group relative">
-                    <div className="space-y-4">
-                        <div className="inline-flex items-center justify-center p-3 bg-cyan-950/30 border border-cyan-800/30 rounded-xl text-cyan-400 group-hover:scale-110 transition-transform duration-300">
-                            <Plus size={24} />
+                <div className="flex-1 border border-stone-850 hover:border-cyan-500/35 bg-stone-900/10 hover:bg-cyan-955/5 p-4 sm:p-6 rounded-xl flex flex-col justify-between transition-all duration-300 transform hover:scale-[1.01] group relative">
+                    <div className="space-y-3 sm:space-y-4">
+                        <div className="inline-flex items-center justify-center p-2.5 sm:p-3 bg-cyan-950/30 border border-cyan-800/30 rounded-xl text-cyan-400 group-hover:scale-110 transition-transform duration-300">
+                            <Plus size={22} className="sm:w-6 sm:h-6" />
                         </div>
                         <div>
-                            <h2 className="text-sm font-black text-white tracking-widest uppercase">HOST STAGE</h2>
-                            <p className="text-[10px] text-stone-500 uppercase leading-relaxed mt-2 tracking-wide">
-                                Establish a secured private match cluster. Generates a unique 4-digit communication code to broadcast to your contact.
+                            <h2 className="text-xs sm:text-sm font-black text-white tracking-widest uppercase">HOST STAGE</h2>
+                            <p className="text-[9.5px] sm:text-[10px] text-stone-500 uppercase leading-relaxed mt-1 sm:mt-2 tracking-wide">
+                                Configure a custom bunker cluster. Set participant limits (2, 3, 4P), custom starting HP, and shipment rations.
                             </p>
                         </div>
                     </div>
@@ -179,25 +273,25 @@ export const MultiplayerSelection: React.FC<MultiplayerSelectionProps> = ({
                     <button
                         onClick={() => {
                             audioManager.playSound('click');
-                            onCreateRoom();
+                            setIsCreateDialogOpen(true);
                         }}
                         disabled={isConnecting}
-                        className="mt-6 w-full py-3 bg-cyan-955/45 hover:bg-cyan-900/70 border border-cyan-800 hover:border-cyan-400 text-cyan-400 hover:text-white font-black text-xs tracking-widest rounded-xl transition-all cursor-pointer active:scale-98 disabled:opacity-50 flex items-center justify-center gap-2"
+                        className="mt-4 sm:mt-6 w-full py-3 min-h-[44px] bg-cyan-955/45 hover:bg-cyan-900/70 border border-cyan-800 hover:border-cyan-400 text-cyan-400 hover:text-white font-black text-xs tracking-widest rounded-xl transition-all cursor-pointer active:scale-98 disabled:opacity-50 flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(6,182,212,0.15)]"
                     >
-                        {isConnecting ? <RefreshCw size={14} className="animate-spin" /> : null}
-                        <span>ESTABLISH LOBBY</span>
+                        {isConnecting ? <RefreshCw size={14} className="animate-spin" /> : <Sliders size={14} className="shrink-0" />}
+                        <span>CONFIGURE & HOST</span>
                     </button>
                 </div>
 
                 {/* Join Room Card */}
-                <div className="flex-1 border border-stone-850 hover:border-cyan-500/35 bg-stone-900/10 hover:bg-cyan-955/5 p-6 rounded-xl flex flex-col justify-between transition-all duration-300 transform hover:scale-[1.01] group relative">
-                    <div className="space-y-4">
-                        <div className="inline-flex items-center justify-center p-3 bg-cyan-950/30 border border-cyan-800/30 rounded-xl text-cyan-400 group-hover:scale-110 transition-transform duration-300">
-                            <Key size={24} />
+                <div className="flex-1 border border-stone-850 hover:border-cyan-500/35 bg-stone-900/10 hover:bg-cyan-955/5 p-4 sm:p-6 rounded-xl flex flex-col justify-between transition-all duration-300 transform hover:scale-[1.01] group relative">
+                    <div className="space-y-3 sm:space-y-4">
+                        <div className="inline-flex items-center justify-center p-2.5 sm:p-3 bg-cyan-950/30 border border-cyan-800/30 rounded-xl text-cyan-400 group-hover:scale-110 transition-transform duration-300">
+                            <Key size={22} className="sm:w-6 sm:h-6" />
                         </div>
                         <div>
-                            <h2 className="text-sm font-black text-white tracking-widest uppercase">JOIN LOBBY</h2>
-                            <p className="text-[10px] text-stone-500 uppercase leading-relaxed mt-2 tracking-wide">
+                            <h2 className="text-xs sm:text-sm font-black text-white tracking-widest uppercase">JOIN LOBBY</h2>
+                            <p className="text-[9.5px] sm:text-[10px] text-stone-500 uppercase leading-relaxed mt-1 sm:mt-2 tracking-wide">
                                 Access an established corridor via a specific 4-digit code. Ensure your coordinates are exact.
                             </p>
                         </div>
@@ -208,10 +302,13 @@ export const MultiplayerSelection: React.FC<MultiplayerSelectionProps> = ({
                             <span className="absolute left-3 text-cyan-600 font-bold text-sm select-none">[</span>
                             <input
                                 type="text"
+                                inputMode="numeric"
+                                pattern="[0-9]*"
+                                maxLength={4}
                                 value={roomCode}
                                 onChange={handleRoomCodeChange}
                                 placeholder="ROOM CODE"
-                                className="w-full bg-stone-950 border border-stone-800 hover:border-stone-700 focus:border-cyan-500/60 px-6 py-2.5 text-center text-sm font-bold tracking-[0.4em] uppercase rounded-lg outline-none transition-all placeholder-stone-700 text-cyan-400"
+                                className="w-full min-h-[44px] bg-stone-950 border border-stone-800 hover:border-stone-700 focus:border-cyan-500/60 px-6 py-2.5 text-center text-sm font-bold tracking-[0.4em] uppercase rounded-lg outline-none transition-all placeholder-stone-700 text-cyan-400"
                                 required
                             />
                             <span className="absolute right-3 text-cyan-600 font-bold text-sm select-none">]</span>
@@ -220,7 +317,7 @@ export const MultiplayerSelection: React.FC<MultiplayerSelectionProps> = ({
                         <button
                             type="submit"
                             disabled={isConnecting || roomCode.length !== 4}
-                            className="w-full py-3 bg-cyan-500 text-black disabled:bg-stone-900 disabled:text-stone-600 disabled:border-stone-850 border border-cyan-400 font-black text-xs tracking-widest rounded-xl transition-all cursor-pointer active:scale-98 shadow-[0_0_20px_rgba(6,182,212,0.15)] disabled:shadow-none"
+                            className="w-full py-3 min-h-[44px] bg-cyan-500 text-black disabled:bg-stone-900 disabled:text-stone-600 disabled:border-stone-850 border border-cyan-400 font-black text-xs tracking-widest rounded-xl transition-all cursor-pointer active:scale-98 shadow-[0_0_20px_rgba(6,182,212,0.15)] disabled:shadow-none"
                         >
                             JOIN DEPLOYMENT
                         </button>
@@ -238,9 +335,246 @@ export const MultiplayerSelection: React.FC<MultiplayerSelectionProps> = ({
                 </div>
             )}
 
+            {/* Room Creation Customization Dialog */}
+            {isCreateDialogOpen && (
+                <div className="absolute inset-0 z-50 bg-stone-950/95 backdrop-blur-md flex flex-col p-4 sm:p-6 font-mono text-stone-300 animate-in fade-in zoom-in-95 duration-200">
+                    {/* Visual Border Accents */}
+                    <div className="absolute top-2 left-2 w-2 h-2 border-t border-l border-cyan-500/40" />
+                    <div className="absolute top-2 right-2 w-2 h-2 border-t border-r border-cyan-500/40" />
+                    <div className="absolute bottom-2 left-2 w-2 h-2 border-b border-l border-cyan-500/40" />
+                    <div className="absolute bottom-2 right-2 w-2 h-2 border-b border-r border-cyan-500/40" />
+
+                    {/* Dialog Header */}
+                    <div className="flex justify-between items-center border-b border-stone-850 pb-3 mb-3">
+                        <div className="flex items-center gap-2.5">
+                            <div className="p-1.5 bg-cyan-950/30 border border-cyan-800/40 rounded-lg text-cyan-400">
+                                <Sliders size={16} />
+                            </div>
+                            <div>
+                                <h2 className="text-sm sm:text-base font-black text-white tracking-widest uppercase">CREATE CUSTOM BUNKER</h2>
+                                <p className="text-[8px] sm:text-[9px] text-stone-500 tracking-wider uppercase">Set deployment parameters before opening corridor</p>
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => {
+                                audioManager.playSound('click');
+                                setIsCreateDialogOpen(false);
+                            }}
+                            className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center hover:bg-stone-900 border border-stone-800 text-stone-400 hover:text-white rounded-xl transition-colors cursor-pointer"
+                            title="Close"
+                            aria-label="Close"
+                        >
+                            <X size={16} />
+                        </button>
+                    </div>
+
+                    {/* Form Controls */}
+                    <div className="flex-1 overflow-y-auto space-y-4 pr-1 custom-scrollbar">
+                        {/* Room Name Input */}
+                        <div className="space-y-1.5">
+                            <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block">Bunker Codename</label>
+                            <div className="flex gap-2 items-center">
+                                <input
+                                    type="text"
+                                    maxLength={24}
+                                    value={customRoomName}
+                                    onChange={(e) => setCustomRoomName(e.target.value)}
+                                    placeholder="Enter bunker codename..."
+                                    className="flex-1 min-h-[44px] bg-stone-900/80 border border-stone-800 focus:border-cyan-500/60 rounded-xl px-3 py-2 text-xs font-bold text-white placeholder-stone-600 outline-none uppercase tracking-wide"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        audioManager.playSound('click');
+                                        setCustomRoomName(generateRandomBunkerName());
+                                    }}
+                                    className="px-3.5 py-2.5 min-h-[44px] bg-stone-900 hover:bg-stone-850 border border-stone-800 hover:border-cyan-500/50 text-stone-400 hover:text-cyan-400 rounded-xl flex items-center gap-1.5 transition-all text-[9px] font-bold uppercase tracking-wider shrink-0 cursor-pointer active:scale-95"
+                                    title="Generate Tactical Codename"
+                                    aria-label="Generate Tactical Codename"
+                                >
+                                    <Dices size={14} className="text-cyan-400" />
+                                    <span>RANDOM</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Privacy & Max Players row */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            {/* Privacy Toggle */}
+                            <div className="space-y-1.5">
+                                <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block">Corridor Visibility</label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            audioManager.playSound('click');
+                                            setIsPrivateRoom(false);
+                                        }}
+                                        className={`py-2.5 px-3 min-h-[44px] rounded-xl border text-[9px] font-black tracking-widest uppercase flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                                            !isPrivateRoom
+                                                ? 'bg-cyan-950/40 border-cyan-500 text-cyan-300 shadow-[0_0_10px_rgba(6,182,212,0.2)]'
+                                                : 'bg-stone-900/50 border-stone-850 text-stone-500 hover:text-stone-300'
+                                        }`}
+                                    >
+                                        <Globe size={12} />
+                                        <span>PUBLIC</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            audioManager.playSound('click');
+                                            setIsPrivateRoom(true);
+                                        }}
+                                        className={`py-2.5 px-3 min-h-[44px] rounded-xl border text-[9px] font-black tracking-widest uppercase flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                                            isPrivateRoom
+                                                ? 'bg-amber-955/40 border-amber-500 text-amber-300 shadow-[0_0_10px_rgba(245,158,11,0.2)]'
+                                                : 'bg-stone-900/50 border-stone-850 text-stone-500 hover:text-stone-300'
+                                        }`}
+                                    >
+                                        <Lock size={12} />
+                                        <span>PRIVATE</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Max Players */}
+                            <div className="space-y-1.5">
+                                <label className="text-[9px] font-bold text-stone-400 uppercase tracking-wider block">Agent Capacity</label>
+                                <div className="grid grid-cols-3 gap-1.5">
+                                    {([2, 3, 4] as const).map((count) => (
+                                        <button
+                                            key={count}
+                                            type="button"
+                                            onClick={() => {
+                                                audioManager.playSound('click');
+                                                setMaxPlayers(count);
+                                            }}
+                                            className={`py-2.5 min-h-[44px] rounded-xl border text-[9px] font-black tracking-widest uppercase transition-all cursor-pointer ${
+                                                maxPlayers === count
+                                                    ? 'bg-cyan-950/40 border-cyan-500 text-cyan-300 shadow-[0_0_10px_rgba(6,182,212,0.2)]'
+                                                    : 'bg-stone-900/50 border-stone-850 text-stone-500 hover:text-stone-300'
+                                            }`}
+                                        >
+                                            {count}P {count === 2 ? 'DUEL' : count === 3 ? 'TRIAD' : 'SQUAD'}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Starting HP Slider */}
+                        <div className="p-3 bg-stone-900/30 border border-stone-800 rounded-xl space-y-2">
+                            <div className="flex justify-between items-center text-[9px] uppercase font-bold text-stone-400">
+                                <span>Starting Vitality</span>
+                                <div className="flex items-center gap-2">
+                                    <div className="flex gap-1 items-center">
+                                        {startingHp === 9 ? (
+                                            <span className="text-[7.5px] text-cyan-300 bg-cyan-950/60 px-1.5 py-0.5 rounded border border-cyan-700 animate-pulse font-mono font-bold">2-6 HP (RANDOM)</span>
+                                        ) : (
+                                            Array.from({ length: startingHp }).map((_, i) => (
+                                                <span key={i} className="w-2 h-3 bg-cyan-400 rounded-xs inline-block shadow-[0_0_6px_rgba(6,182,212,0.6)]" />
+                                            ))
+                                        )}
+                                    </div>
+                                    <span className="text-cyan-400 font-mono font-black text-xs">{startingHp === 9 ? 'RANDOM' : `${startingHp} HP`}</span>
+                                </div>
+                            </div>
+                            <input
+                                type="range"
+                                min="2"
+                                max="9"
+                                value={startingHp}
+                                onChange={(e) => setStartingHp(parseInt(e.target.value))}
+                                className="w-full accent-cyan-500 cursor-pointer h-2 bg-stone-900 rounded-lg appearance-none min-h-[44px] py-3.5"
+                                style={{ touchAction: 'pan-x' }}
+                            />
+                            <div className="flex justify-between text-[7.5px] text-stone-500 font-mono font-bold">
+                                <span>2 HP (Hardcore)</span>
+                                <span>4 HP (Standard)</span>
+                                <span>9 (Random 2-6)</span>
+                            </div>
+                        </div>
+
+                        {/* Shipment Items Slider */}
+                        <div className="p-3 bg-stone-900/30 border border-stone-800 rounded-xl space-y-2">
+                            <div className="flex justify-between items-center text-[9px] uppercase font-bold text-stone-400">
+                                <span>Items per Shipment</span>
+                                <div className="flex items-center gap-1.5">
+                                    {itemsPerShipment === 9 ? (
+                                        <span className="text-[7.5px] text-cyan-300 bg-cyan-950/60 px-1.5 py-0.5 rounded border border-cyan-700 animate-pulse font-mono font-bold">1-5 ITEMS (RANDOM)</span>
+                                    ) : (
+                                        <span className="text-cyan-400 font-mono font-black text-xs">{itemsPerShipment} ITEMS</span>
+                                    )}
+                                </div>
+                            </div>
+                            <input
+                                type="range"
+                                min="0"
+                                max="9"
+                                value={itemsPerShipment}
+                                onChange={(e) => setItemsPerShipment(parseInt(e.target.value))}
+                                className="w-full accent-cyan-500 cursor-pointer h-2 bg-stone-900 rounded-lg appearance-none min-h-[44px] py-3.5"
+                                style={{ touchAction: 'pan-x' }}
+                            />
+                            <div className="flex justify-between text-[7.5px] text-stone-500 font-mono font-bold">
+                                <span>0 (No Items)</span>
+                                <span>4 (Standard)</span>
+                                <span>9 (Random 1-5)</span>
+                            </div>
+                        </div>
+
+                        {/* Rounds to Win */}
+                        <div className="p-3 bg-stone-900/20 border border-stone-850 rounded-xl space-y-1.5">
+                            <div className="flex justify-between items-center text-[9px] uppercase font-bold text-stone-400">
+                                <span>Rounds to Win Match</span>
+                                <span className="text-cyan-400 font-mono font-black">{roundsToWin} {roundsToWin === 1 ? 'ROUND' : 'ROUNDS'}</span>
+                            </div>
+                            <input
+                                type="range"
+                                min="1"
+                                max="7"
+                                step="2"
+                                value={roundsToWin}
+                                onChange={(e) => setRoundsToWin(parseInt(e.target.value))}
+                                className="w-full accent-cyan-500 cursor-pointer h-2 bg-stone-900 rounded-lg appearance-none min-h-[44px] py-3.5"
+                                style={{ touchAction: 'pan-x' }}
+                            />
+                            <div className="flex justify-between text-[7.5px] text-stone-600 font-mono">
+                                <span>Best of 1</span>
+                                <span>Best of 3</span>
+                                <span>Best of 7</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Dialog Actions */}
+                    <div className="pt-3 border-t border-stone-850 flex gap-2.5">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                audioManager.playSound('click');
+                                setIsCreateDialogOpen(false);
+                            }}
+                            className="flex-1 py-3 min-h-[44px] bg-stone-900 hover:bg-stone-850 border border-stone-800 text-stone-400 hover:text-white font-black text-xs tracking-widest uppercase rounded-xl transition-all cursor-pointer flex items-center justify-center"
+                        >
+                            CANCEL
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleConfirmCreate}
+                            disabled={isConnecting}
+                            className="flex-[2] py-3 min-h-[44px] bg-cyan-500 hover:bg-cyan-400 text-black font-black text-xs tracking-widest uppercase rounded-xl transition-all cursor-pointer shadow-[0_0_20px_rgba(6,182,212,0.3)] disabled:opacity-50 flex items-center justify-center gap-2"
+                        >
+                            {isConnecting ? <RefreshCw size={14} className="animate-spin" /> : <Plus size={14} />}
+                            <span>DEPLOY BUNKER</span>
+                        </button>
+                    </div>
+                </div>
+            )}
+
             {/* Active Rooms Browser Overlay Panel */}
             {isBrowserOpen && (
-                <div className="absolute inset-0 z-50 bg-stone-950 flex flex-col p-6 font-mono text-stone-300 animate-in fade-in duration-200">
+                <div className="absolute inset-0 z-50 bg-stone-950 flex flex-col p-4 sm:p-6 font-mono text-stone-300 animate-in fade-in duration-200">
                     {/* Visual Border Accents */}
                     <div className="absolute top-2 left-2 w-2 h-2 border-t border-l border-cyan-500/40" />
                     <div className="absolute top-2 right-2 w-2 h-2 border-t border-r border-cyan-500/40" />
@@ -248,37 +582,72 @@ export const MultiplayerSelection: React.FC<MultiplayerSelectionProps> = ({
                     <div className="absolute bottom-2 right-2 w-2 h-2 border-b border-r border-cyan-500/40" />
 
                     {/* Header */}
-                    <div className="flex justify-between items-center border-b border-stone-850 pb-4 mb-4">
+                    <div className="flex flex-col sm:flex-row justify-between sm:items-center border-b border-stone-850 pb-3 mb-3 gap-2">
                         <div className="flex items-center gap-3">
                             <button
                                 onClick={() => {
                                     audioManager.playSound('click');
                                     setIsBrowserOpen(false);
                                 }}
-                                className="p-2 hover:bg-stone-900 border border-stone-800 hover:border-cyan-500/50 text-stone-400 hover:text-cyan-400 rounded-lg transition-colors cursor-pointer"
+                                className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center hover:bg-stone-900 border border-stone-800 hover:border-cyan-500/50 text-stone-400 hover:text-cyan-400 rounded-xl transition-colors cursor-pointer"
                                 title="Back to Protocol Selection"
+                                aria-label="Back to Protocol Selection"
                             >
-                                <ArrowLeft size={14} />
+                                <ArrowLeft size={16} />
                             </button>
                             <div>
-                                <h2 className="text-md font-black text-white tracking-wider uppercase">ACTIVE NETWORKS BROWSER</h2>
-                                <p className="text-[9px] text-stone-500 tracking-wider uppercase">
-                                    QUERYING ONLINE CHANNELS...
+                                <h2 className="text-sm sm:text-md font-black text-white tracking-wider uppercase">ACTIVE NETWORKS BROWSER</h2>
+                                <p className="text-[8px] sm:text-[9px] text-stone-500 tracking-wider uppercase">
+                                    LIVE SIMULATION CLUSTERS ({filteredRooms.length} FOUND)
                                 </p>
                             </div>
                         </div>
 
-                        <button
-                            onClick={() => {
-                                audioManager.playSound('click');
-                                fetchRooms();
-                            }}
-                            disabled={isLoadingRooms}
-                            className="px-3 py-1.5 hover:bg-stone-900 border border-stone-850 hover:border-cyan-500/50 text-cyan-400 hover:text-white rounded-lg transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1.5 text-[10px] font-bold tracking-widest uppercase"
-                        >
-                            <RefreshCw size={12} className={isLoadingRooms ? 'animate-spin' : ''} />
-                            <span>REFRESH</span>
-                        </button>
+                        <div className="flex items-center gap-2">
+                            {/* Search Filter Input */}
+                            <div className="relative flex items-center">
+                                <Search size={12} className="absolute left-2.5 text-stone-500" />
+                                <input
+                                    type="text"
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    placeholder="Filter by name / ID..."
+                                    className="bg-stone-900/80 border border-stone-800 focus:border-cyan-500/60 pl-7 pr-2.5 py-2 min-h-[44px] text-[10px] text-stone-200 uppercase rounded-xl outline-none w-36 sm:w-48 tracking-wider placeholder-stone-600"
+                                />
+                            </div>
+
+                            <button
+                                onClick={() => {
+                                    audioManager.playSound('click');
+                                    fetchRooms();
+                                }}
+                                disabled={isLoadingRooms}
+                                className="px-3.5 py-2.5 min-h-[44px] hover:bg-stone-900 border border-stone-850 hover:border-cyan-500/50 text-cyan-400 hover:text-white rounded-xl transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1.5 text-[9px] font-bold tracking-widest uppercase"
+                            >
+                                <RefreshCw size={13} className={isLoadingRooms ? 'animate-spin' : ''} />
+                                <span>REFRESH</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Filter Tabs */}
+                    <div className="flex gap-2 mb-3 border-b border-stone-900/60 pb-2">
+                        {(['all', 'open', 'playing'] as const).map((tab) => (
+                            <button
+                                key={tab}
+                                onClick={() => {
+                                    audioManager.playSound('click');
+                                    setRoomFilter(tab);
+                                }}
+                                className={`px-3.5 py-2 min-h-[44px] rounded-xl text-[8.5px] sm:text-[9.5px] font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center ${
+                                    roomFilter === tab
+                                        ? 'bg-cyan-950/40 border border-cyan-500/60 text-cyan-300'
+                                        : 'bg-stone-900/30 border border-stone-850 text-stone-500 hover:text-stone-300'
+                                }`}
+                            >
+                                {tab === 'all' ? 'ALL ROOMS' : tab === 'open' ? 'OPEN / WAITING' : 'IN MATCH'}
+                            </button>
+                        ))}
                     </div>
 
                     {/* Rooms List */}
@@ -288,19 +657,19 @@ export const MultiplayerSelection: React.FC<MultiplayerSelectionProps> = ({
                                 <RefreshCw size={24} className="text-cyan-500 animate-spin" />
                                 <span className="text-[10px] text-stone-500 uppercase tracking-widest animate-pulse">Scanning Net Nodes...</span>
                             </div>
-                        ) : activeRooms.length === 0 ? (
+                        ) : filteredRooms.length === 0 ? (
                             <div className="flex flex-col items-center justify-center h-48 border border-dashed border-stone-850 rounded-xl text-stone-600 space-y-2 text-center p-4">
-                                <span className="text-xs font-bold uppercase tracking-wider">// NO PUBLIC CORRIDORS FOUND</span>
+                                <span className="text-xs font-bold uppercase tracking-wider">// NO MATCHING CORRIDORS FOUND</span>
                                 <span className="text-[9px] uppercase tracking-wide max-w-xs leading-relaxed text-stone-500">
                                     Establish a new lobby corridor to allow other agents to scan and link to your simulation instance.
                                 </span>
                             </div>
                         ) : (
-                            <div className="grid grid-cols-2 gap-3 pb-4">
-                                {activeRooms.map((room) => (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-4">
+                                {filteredRooms.map((room) => (
                                     <div 
                                         key={room.id}
-                                        className="border border-stone-850 hover:border-cyan-500/30 bg-stone-900/10 hover:bg-cyan-950/5 p-4 rounded-xl flex flex-col justify-between gap-4 transition-all duration-300 group"
+                                        className="border border-stone-850 hover:border-cyan-500/30 bg-stone-900/10 hover:bg-cyan-950/5 p-4 rounded-xl flex flex-col justify-between gap-3 transition-all duration-300 group"
                                     >
                                         <div className="space-y-2">
                                             <div className="flex justify-between items-start gap-2">
@@ -313,12 +682,12 @@ export const MultiplayerSelection: React.FC<MultiplayerSelectionProps> = ({
                                                     </span>
                                                 ) : (
                                                     <span className="px-2 py-0.5 bg-cyan-950/40 border border-cyan-900/30 rounded text-[9px] font-bold text-cyan-400 uppercase tracking-wider shrink-0">
-                                                        {room.playerCount} / {room.maxPlayers} CONNECTED
+                                                        {room.playerCount} / {room.maxPlayers || 4} CONNECTED
                                                     </span>
                                                 )}
                                             </div>
                                             
-                                            <div className="flex flex-wrap gap-x-3 gap-y-1.5 text-[9px] font-mono text-stone-500 uppercase">
+                                            <div className="flex flex-wrap gap-x-2.5 gap-y-1 text-[8.5px] font-mono text-stone-500 uppercase">
                                                 <span className="border border-stone-850 px-1 rounded bg-stone-950 text-stone-400">ID: {room.id}</span>
                                                 <span>•</span>
                                                 <span>HP: {room.settings?.hp === 9 ? 'RANDOM' : (room.settings?.hp || 4)}</span>
@@ -340,7 +709,7 @@ export const MultiplayerSelection: React.FC<MultiplayerSelectionProps> = ({
                                                     onJoinRoom(room.id);
                                                     setIsBrowserOpen(false);
                                                 }}
-                                                className="w-full py-2 border border-cyan-800/40 group-hover:border-cyan-500/60 bg-cyan-950/20 group-hover:bg-cyan-950/50 hover:bg-cyan-900 text-cyan-400 group-hover:text-cyan-300 hover:text-white font-black text-[10px] tracking-widest rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                                                className="w-full py-2.5 min-h-[44px] border border-cyan-800/40 group-hover:border-cyan-500/60 bg-cyan-950/20 group-hover:bg-cyan-950/50 hover:bg-cyan-900 text-cyan-400 group-hover:text-cyan-300 hover:text-white font-black text-[10px] tracking-widest rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5"
                                             >
                                                 <span>ESTABLISH UPLINK</span>
                                             </button>
@@ -356,7 +725,7 @@ export const MultiplayerSelection: React.FC<MultiplayerSelectionProps> = ({
             {/* Proper Kicking Message Overlay */}
             {error && error.toLowerCase().includes('kick') && (
                 <div className="absolute inset-0 z-[200] flex items-center justify-center bg-black/90 backdrop-blur-md animate-in fade-in duration-300">
-                    <div className="w-[360px] sm:w-[400px] bg-stone-950 border-2 border-red-500/30 p-6 rounded-xl shadow-[0_0_50px_rgba(239,68,68,0.2)] text-center space-y-4 font-mono select-none">
+                    <div className="w-full max-w-[min(360px,calc(100vw-32px))] sm:max-w-md bg-stone-950 border-2 border-red-500/30 p-6 rounded-xl shadow-[0_0_50px_rgba(239,68,68,0.2)] text-center space-y-4 font-mono select-none">
                         <div className="inline-flex p-3 bg-red-950/40 border border-red-500/40 text-red-500 rounded-full animate-bounce">
                             <AlertTriangle size={28} />
                         </div>
@@ -369,7 +738,7 @@ export const MultiplayerSelection: React.FC<MultiplayerSelectionProps> = ({
                                 audioManager.playSound('click');
                                 clearError();
                             }}
-                            className="w-full py-2.5 bg-red-950/40 hover:bg-red-900 border border-red-800 hover:border-red-400 text-red-400 hover:text-white font-black text-xs tracking-widest rounded-xl transition-all cursor-pointer"
+                            className="w-full py-2.5 min-h-[44px] flex items-center justify-center bg-red-950/40 hover:bg-red-900 border border-red-800 hover:border-red-400 text-red-400 hover:text-white font-black text-xs tracking-widest rounded-xl transition-all cursor-pointer active:scale-95"
                         >
                             ACKNOWLEDGE PROTOCOL
                         </button>

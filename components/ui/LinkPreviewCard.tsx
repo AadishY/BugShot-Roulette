@@ -15,10 +15,9 @@ interface LinkPreviewCardProps {
 // Global cache to prevent redundant HTTP requests when rendering multiple instances of the same URL
 const previewCache: Record<string, LinkPreviewData | null> = {};
 
-const params = new URLSearchParams(window.location.search);
-const isDiscord = params.has('frame_id') || params.has('instance_id') || window.location.search.includes('platform=') || window.location.hostname.includes('discordsays.com');
+const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 const SERVER_URL = import.meta.env.VITE_SERVER_URL || 
-    (isDiscord ? window.location.origin : 'https://yoakatsuki-buckshot.hf.space');
+    (isLocal ? 'http://localhost:3001' : (import.meta.env.VITE_HF_BACKEND_URL || 'https://yoakatsuki-buckshot.hf.space'));
 
 export const LinkPreviewCard: React.FC<LinkPreviewCardProps> = ({ url }) => {
     const [data, setData] = useState<LinkPreviewData | null>(null);
@@ -53,7 +52,9 @@ export const LinkPreviewCard: React.FC<LinkPreviewCardProps> = ({ url }) => {
                     }
                 }
             } catch (err) {
-                console.warn("Failed to extract link details:", err);
+                if (import.meta.env.DEV) {
+                    console.warn("Failed to extract link details:", err);
+                }
                 if (isMounted) {
                     previewCache[url] = null;
                     setData(null);

@@ -1,10 +1,11 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { GameState, PlayerState, LogEntry, TurnOwner, ItemType, AimTarget, ShellType, CameraView, GameSettings, ChatMessage } from '../types';
+import { GameState, PlayerState, LogEntry, TurnOwner, ItemType, AimTarget, ShellType, CameraView, GameSettings, ChatMessage, isUltraPerf, isLowPerf } from '../types';
 import { Settings as SettingsIcon, Skull, Send, Smile, Minimize2 } from 'lucide-react';
 import { audioManager } from '../utils/audioManager';
 import { StatusDisplay } from './ui/StatusDisplay';
 import { Inventory } from './ui/Inventory';
 import { Controls } from './ui/Controls';
+import { LogsDisplay } from './ui/LogsDisplay';
 import { BootScreen } from './ui/BootScreen';
 import { IntroScreen } from './ui/IntroScreen';
 import ShellBackground from './ui/ShellBackground';
@@ -118,6 +119,7 @@ export const GameUI: React.FC<GameUIProps> = ({
     player3,
     player4
 }) => {
+    const isLowGraphics = isLowPerf(settings) || isUltraPerf(settings);
     const [inputName, setInputName] = useState(playerName || '');
     const [isChatMinimized, setIsChatMinimized] = useState(true);
     const [unreadCount, setUnreadCount] = useState(0);
@@ -175,6 +177,10 @@ export const GameUI: React.FC<GameUIProps> = ({
         return () => {
             Object.values(stickerTimeoutsRef.current).forEach(window.clearTimeout);
             stickerTimeoutsRef.current = {};
+            if (chatPreviewTimeoutRef.current) {
+                window.clearTimeout(chatPreviewTimeoutRef.current);
+                chatPreviewTimeoutRef.current = null;
+            }
         };
     }, []);
 
@@ -272,7 +278,8 @@ export const GameUI: React.FC<GameUIProps> = ({
     useEffect(() => {
         if (triggerHeal > 0) {
             setSmokeActive(true);
-            setTimeout(() => setSmokeActive(false), 2000);
+            const timer = window.setTimeout(() => setSmokeActive(false), 2000);
+            return () => window.clearTimeout(timer);
         }
     }, [triggerHeal]);
 
@@ -280,9 +287,25 @@ export const GameUI: React.FC<GameUIProps> = ({
     useEffect(() => {
         if (triggerDrink > 0) {
             setDrinkActive(true);
-            setTimeout(() => setDrinkActive(false), 1500);
+            const timer = window.setTimeout(() => setDrinkActive(false), 1500);
+            return () => window.clearTimeout(timer);
         }
     }, [triggerDrink]);
+
+    // Keyboard navigation: Escape key dismisses sticker drawers or open chat
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                if (isStickersOpen) {
+                    setIsStickersOpen(false);
+                } else if (!isChatMinimized) {
+                    setIsChatMinimized(true);
+                }
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isStickersOpen, isChatMinimized]);
 
     const isGunHeld = cameraView === 'GUN' || cameraView === 'PLAYER3_GUN' || cameraView === 'DEALER_GUN' || aimTarget === 'CHOOSING' || aimTarget === 'OPPONENT' || aimTarget === 'SELF' || aimTarget === 'LEFT' || aimTarget === 'RIGHT';
     const isMyTurn = (gameState.turnOwner === 'PLAYER' && (gameState.phase === 'PLAYER_TURN' || gameState.phase === 'LOOTING'));
@@ -295,12 +318,13 @@ export const GameUI: React.FC<GameUIProps> = ({
         return () => window.removeEventListener('resize', handleResize);
     }, []);
 
-    const isVeryNarrow = screenSize.w < 400;
+    const isVeryNarrow = screenSize.w < 380;
     const isMobileViewport = screenSize.w < 768;
+    const isLandscapeMobile = screenSize.h < 500 && screenSize.w > screenSize.h;
 
     // Auto-adjust scale for small screens if needed, otherwise use user setting
     const baseScale = isMobileViewport ? Math.min(settings.uiScale, 0.75) : settings.uiScale;
-    const finalScale = isVeryNarrow ? baseScale * 0.85 : baseScale;
+    const finalScale = isVeryNarrow ? baseScale * 0.8 : (isLandscapeMobile ? baseScale * 0.72 : baseScale);
     const showExternalSettingsButton = finalScale < 0.45;
     const isHudHidden = finalScale <= 0;
 
@@ -320,7 +344,7 @@ export const GameUI: React.FC<GameUIProps> = ({
         <>
             {/* Falling Shells Background - Pauses drawing when inactive to free GPU and improve performance, while keeping context alive to avoid context recreation lag/errors */}
             <div className={`absolute inset-0 bg-black transition-opacity ${gameState.phase === 'BOOT' || gameState.phase === 'INTRO' ? 'opacity-100 duration-1000' : 'opacity-0 duration-0 pointer-events-none'}`}>
-                {!settings.ultraPerformance && (
+                {!isUltraPerf(settings) && (
                     <ShellBackground active={gameState.phase === 'INTRO' || gameState.phase === 'BOOT'} />
                 )}
             </div>
@@ -342,20 +366,42 @@ export const GameUI: React.FC<GameUIProps> = ({
             {showFlash && <div className="absolute inset-0 z-50 flash-screen" />}
             {showFlashbang && <div className="absolute inset-0 z-50 flashbang-screen" />}
             {smokeActive && (
-                <div
-                    className="absolute inset-x-0 bottom-0 z-30 pointer-events-none animate-[pulse_2s_ease-out]"
-                    style={{
-                        height: '72%',
-                        clipPath: 'polygon(0 18%, 100% 18%, 100% 100%, 0 100%)',
-                        background: 'linear-gradient(180deg, rgba(255,255,255,0.0) 0%, rgba(148,163,184,0.14) 40%, rgba(30,30,30,0.42) 70%, rgba(15,23,42,0.62) 100%)',
-                        mixBlendMode: 'hard-light',
-                        backdropFilter: 'blur(2px)'
-                    }}
-                />
+                <>
+                    <div
+                        className="absolute inset-x-0 bottom-0 z-30 pointer-events-none animate-[pulse_2s_ease-out]"
+                        style={{
+                            height: '72%',
+                            clipPath: 'polygon(0 18%, 100% 18%, 100% 100%, 0 100%)',
+                            background: 'linear-gradient(180deg, rgba(255,255,255,0.0) 0%, rgba(148,163,184,0.18) 40%, rgba(30,30,30,0.5) 70%, rgba(15,23,42,0.7) 100%)',
+                            mixBlendMode: 'hard-light',
+                            backdropFilter: isLowGraphics ? 'none' : 'blur(3px)'
+                        }}
+                    />
+                    <div className="absolute top-[35%] left-1/2 -translate-x-1/2 z-40 pointer-events-none hud-hardware-accel animate-in fade-in zoom-in duration-300">
+                        <div className="flex items-center gap-2 bg-emerald-955/90 border border-emerald-500/50 px-4 py-1.5 rounded-full shadow-[0_0_20px_rgba(16,185,129,0.3)]">
+                            <Icons.Cigs size={16} className="text-emerald-400" />
+                            <span className="text-emerald-300 font-mono font-black text-xs md:text-sm tracking-wider uppercase">
+                                +1 HP RECOVERED
+                            </span>
+                        </div>
+                    </div>
+                </>
             )}
-            {drinkActive && <div className="absolute inset-0 z-30 pointer-events-none bg-yellow-600/10 backdrop-blur-[3px]" />}
+            {drinkActive && (
+                <>
+                    <div className={`absolute inset-0 z-30 pointer-events-none ${isLowGraphics ? 'bg-stone-900/95' : 'bg-amber-600/15 backdrop-blur-[2px]'} animate-pulse`} />
+                    <div className="absolute top-[35%] left-1/2 -translate-x-1/2 z-40 pointer-events-none hud-hardware-accel animate-in fade-in zoom-in duration-300">
+                        <div className="flex items-center gap-2 bg-amber-955/90 border border-amber-500/50 px-4 py-1.5 rounded-full shadow-[0_0_20px_rgba(245,158,11,0.3)]">
+                            <Icons.Beer size={16} className="text-amber-400" />
+                            <span className="text-amber-300 font-mono font-black text-xs md:text-sm tracking-wider uppercase">
+                                SHELL RACKED & EJECTED
+                            </span>
+                        </div>
+                    </div>
+                </>
+            )}
             {showBlood && (
-                <div className="absolute inset-0 pointer-events-none z-40 blood-overlay blood-active">
+                <div className="absolute inset-0 pointer-events-none z-40 blood-overlay blood-active hud-hardware-accel">
                     <div className="absolute inset-0 opacity-40 bg-[url('https://www.transparenttextures.com/patterns/black-linen-2.png')] mix-blend-multiply" />
                 </div>
             )}
@@ -375,23 +421,83 @@ export const GameUI: React.FC<GameUIProps> = ({
             )}
 
             {/* Scaled UI */}
-            <div className={`absolute z-20 pointer-events-none ${gameState.isHardMode ? 'vhs-flicker' : ''}`} style={uiStyle}>
+            <div className={`absolute z-20 pointer-events-none hud-hardware-accel ${gameState.isHardMode ? 'vhs-flicker' : ''}`} style={uiStyle}>
                 {/* Dynamic Scanline for Hard Mode */}
                 {gameState.isHardMode && <div className="scan-line" />}
 
-                {/* Known Shell - Mobile Optimized */}
+                {/* Known Shell - High-Impact Tactical Chamber HUD */}
                 {knownShell && (
-                    <div className="absolute inset-0 z-30 pointer-events-none flex items-center justify-center px-4">
-                        <div className="text-2xl md:text-7xl font-black tracking-widest bg-black/80 px-3 py-2 md:px-8 md:py-4 border-y-2 md:border-y-4 border-stone-100 animate-[text-pop_0.3s_ease-out] text-center">
-                            CHAMBER: <RenderColoredText text={knownShell} />
+                    <div className="absolute inset-0 z-30 pointer-events-none flex items-center justify-center px-4 hud-hardware-accel animate-in fade-in zoom-in-95 duration-200">
+                        <div
+                            className={`flex flex-col items-center justify-center px-6 py-4 md:px-12 md:py-7 border-2 md:border-4 rounded-2xl md:rounded-3xl shadow-2xl relative overflow-hidden ${
+                                isLowGraphics ? 'bg-stone-900/95' : 'backdrop-blur-2xl'
+                            } ${
+                                knownShell === 'LIVE'
+                                    ? 'bg-red-955/92 border-red-500/90 shadow-[0_0_60px_rgba(239,68,68,0.6)]'
+                                    : 'bg-cyan-955/92 border-cyan-500/90 shadow-[0_0_60px_rgba(6,182,212,0.6)]'
+                            }`}
+                        >
+                            {/* Cathode Scanline Pattern */}
+                            <div className="absolute inset-0 bg-[linear-gradient(transparent_0%,rgba(255,255,255,0.06)_50%,transparent_100%)] bg-[length:100%_4px] pointer-events-none" />
+
+                            <div className="flex items-center gap-2 md:gap-3 mb-1.5 relative z-10">
+                                <Icons.Shell
+                                    size={20}
+                                    className={`md:w-7 md:h-7 ${
+                                        knownShell === 'LIVE'
+                                            ? 'text-red-500 fill-red-500/40 animate-pulse'
+                                            : 'text-cyan-400 fill-cyan-400/40 animate-pulse'
+                                    }`}
+                                />
+                                <span
+                                    className={`text-[9px] md:text-sm font-mono font-black tracking-[0.3em] uppercase ${
+                                        knownShell === 'LIVE' ? 'text-red-400' : 'text-cyan-300'
+                                    }`}
+                                >
+                                    BALLISTIC SCAN COMPLETE • CHAMBER VERIFIED
+                                </span>
+                            </div>
+
+                            <div
+                                className={`text-2xl sm:text-4xl md:text-6xl font-black tracking-widest uppercase italic leading-none relative z-10 ${
+                                    knownShell === 'LIVE'
+                                        ? 'text-red-400 drop-shadow-[0_0_25px_rgba(239,68,68,0.85)] animate-pulse'
+                                        : 'text-cyan-300 drop-shadow-[0_0_25px_rgba(6,182,212,0.85)]'
+                                }`}
+                            >
+                                {knownShell === 'LIVE' ? '⚠️ LIVE ROUND IN CHAMBER ⚠️' : '❄️ BLANK ROUND IN CHAMBER ❄️'}
+                            </div>
+
+                            <div className="mt-2 md:mt-3 flex items-center gap-2 relative z-10">
+                                <div
+                                    className={`h-[1px] w-12 md:w-24 ${
+                                        knownShell === 'LIVE' ? 'bg-red-500/50' : 'bg-cyan-500/50'
+                                    }`}
+                                />
+                                <span className="text-[7.5px] md:text-[9.5px] font-mono tracking-widest text-stone-300 uppercase">
+                                    NEXT FIRING RESOLUTION CONFIRMED
+                                </span>
+                                <div
+                                    className={`h-[1px] w-12 md:w-24 ${
+                                        knownShell === 'LIVE' ? 'bg-red-500/50' : 'bg-cyan-500/50'
+                                    }`}
+                                />
+                            </div>
                         </div>
                     </div>
                 )}
 
                 {/* Cuffs Indicators */}
                 {(player.isHandcuffed || dealer.isHandcuffed) && (
-                    <div className={`absolute ${player.isHandcuffed ? 'bottom-[30%] left-4 md:left-[20%]' : 'top-[20%] right-4 md:right-[20%]'} z-20 animate-pulse pointer-events-none`}>
-                        <div className="text-sm md:text-2xl font-black text-stone-100 bg-red-600 px-2 py-0.5 md:px-4 md:py-1 rotate-12 shadow-lg border border-white">CUFFED</div>
+                    <div
+                        className={`absolute ${
+                            player.isHandcuffed ? 'bottom-[30%] left-4 md:left-[15%]' : 'top-[22%] right-4 md:right-[15%]'
+                        } z-20 animate-pulse pointer-events-none hud-hardware-accel cuffs-indicator`}
+                    >
+                        <div className="flex items-center gap-1.5 xs:gap-2 bg-red-955/95 border-2 border-red-500 px-3 py-1.5 md:px-5 md:py-2 rotate-6 shadow-[0_0_30px_rgba(239,68,68,0.6)] rounded-xl text-red-200 font-mono font-black text-xs md:text-lg tracking-widest uppercase">
+                            <Icons.Cuffs size={18} className="text-red-400 shrink-0 md:w-5 md:h-5 animate-pulse" />
+                            <span>RESTRAINED: TURN LOCKED</span>
+                        </div>
                     </div>
                 )}
 
@@ -405,24 +511,24 @@ export const GameUI: React.FC<GameUIProps> = ({
 
                 {/* Overlay Text - Centered Announcements */}
                 {overlayText && !showLootOverlay && (
-                    <div className={`absolute inset-0 z-50 flex justify-center pointer-events-none px-4 ${
+                    <div className={`absolute inset-0 z-50 flex justify-center pointer-events-none px-4 hud-hardware-accel announcement-overlay ${
                         gameState.phase === 'CARD_SELECT' ? 'items-start pt-12 md:pt-16' : 'items-center'
                     }`}>
                         {overlayText.startsWith('ROUND') || (overlayText.includes('LIVE') && overlayText.includes('|')) ? (
                             <div className="flex flex-col items-center">
                                 {overlayText.startsWith('ROUND') ? (
-                                    <div className="flex flex-col items-center gap-6 animate-in zoom-in-95 duration-1000">
-                                        <div className="h-[2px] w-[300px] lg:w-[800px] bg-gradient-to-r from-transparent via-white/60 to-transparent shadow-[0_0_20px_rgba(255,255,255,0.3)]" />
+                                    <div className="flex flex-col items-center gap-4 sm:gap-6 animate-in zoom-in-95 duration-1000 max-w-[95vw]">
+                                        <div className="h-[2px] w-[min(280px,90vw)] lg:w-[800px] bg-gradient-to-r from-transparent via-white/60 to-transparent shadow-[0_0_20px_rgba(255,255,255,0.3)]" />
                                         <div className="relative group">
                                             <div className="absolute inset-0 blur-[100px] bg-white/20 animate-pulse" />
-                                            <h1 className="text-6xl lg:text-9xl font-black tracking-[0.6em] lg:tracking-[1.2em] text-white drop-shadow-[0_0_40px_rgba(255,255,255,0.5)] transition-all uppercase italic text-center select-none">
+                                            <h1 className="text-4xl sm:text-6xl lg:text-9xl font-black tracking-[0.3em] sm:tracking-[0.6em] lg:tracking-[1.2em] text-white drop-shadow-[0_0_40px_rgba(255,255,255,0.5)] transition-all uppercase italic text-center select-none">
                                                 {overlayText}
                                             </h1>
                                         </div>
-                                        <div className="h-[2px] w-[300px] lg:w-[800px] bg-gradient-to-r from-transparent via-white/60 to-transparent shadow-[0_0_20px_rgba(255,255,255,0.3)]" />
-                                        <div className="flex flex-col items-center mt-2">
-                                            <span className="text-[12px] lg:text-sm font-black tracking-[0.6em] text-white/60 uppercase animate-pulse">Synchronizing Protocol</span>
-                                            <div className="flex gap-1 mt-4">
+                                        <div className="h-[2px] w-[min(280px,90vw)] lg:w-[800px] bg-gradient-to-r from-transparent via-white/60 to-transparent shadow-[0_0_20px_rgba(255,255,255,0.3)]" />
+                                        <div className="flex flex-col items-center mt-1 sm:mt-2">
+                                            <span className="text-[10px] sm:text-xs lg:text-sm font-black tracking-[0.4em] sm:tracking-[0.6em] text-white/60 uppercase animate-pulse">Synchronizing Protocol</span>
+                                            <div className="flex gap-1 mt-3 sm:mt-4">
                                                 {[...Array(3)].map((_, i) => (
                                                     <div key={i} className="w-1.5 h-1.5 bg-white/40 rounded-full animate-bounce" style={{ animationDelay: `${i * 0.1}s` }} />
                                                 ))}
@@ -430,12 +536,12 @@ export const GameUI: React.FC<GameUIProps> = ({
                                         </div>
                                     </div>
                                 ) : (
-                                    <div className="flex flex-col items-center gap-5 bg-gradient-to-b from-stone-950/92 to-black/98 backdrop-blur-3xl px-12 sm:px-20 py-8 sm:py-12 rounded-[2.5rem] border border-stone-850 shadow-[0_0_100px_rgba(0,0,0,0.95)] ring-1 ring-white/5 animate-in zoom-in-95 duration-1000">
-                                        <div className="flex items-center gap-10 sm:gap-20">
+                                    <div className={`flex flex-col items-center gap-3 sm:gap-5 ${isLowGraphics ? 'bg-stone-900/95' : 'bg-gradient-to-b from-stone-950/92 to-black/98 backdrop-blur-3xl'} px-4 sm:px-12 md:px-20 py-4 sm:py-8 md:py-12 rounded-[1.5rem] sm:rounded-[2.5rem] border border-stone-850 shadow-[0_0_100px_rgba(0,0,0,0.95)] ring-1 ring-white/5 animate-in zoom-in-95 duration-1000 max-w-[95vw]`}>
+                                        <div className="flex items-center gap-4 sm:gap-10 md:gap-20">
                                             <div className="flex flex-col items-center group">
-                                                <div className="flex items-center gap-3 sm:gap-5">
+                                                <div className="flex items-center gap-2 sm:gap-3 md:gap-5">
                                                     {/* Red Shell SVG */}
-                                                    <svg className="w-8 h-12 text-red-500 drop-shadow-[0_0_15px_rgba(239,68,68,0.8)] animate-pulse" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                                    <svg className="w-6 h-9 sm:w-8 sm:h-12 text-red-500 drop-shadow-[0_0_15px_rgba(239,68,68,0.8)] animate-pulse shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                                                         <path d="M8 17h8v3a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-3z" fill="currentColor" fillOpacity="0.45" />
                                                         <rect x="8" y="3" width="8" height="14" rx="1" fill="currentColor" fillOpacity="0.15" />
                                                         <line x1="10" y1="7" x2="14" y2="7" />
@@ -444,20 +550,20 @@ export const GameUI: React.FC<GameUIProps> = ({
                                                     </svg>
                                                     <div className="relative">
                                                         <div className="absolute inset-0 blur-3xl bg-red-600/30 group-hover:bg-red-600/50 transition-colors" />
-                                                        <span className="relative text-red-500 text-6xl sm:text-8xl font-black drop-shadow-[0_0_25px_rgba(239,68,68,0.75)] italic tracking-tighter transition-transform group-hover:scale-110 leading-none">
+                                                        <span className="relative text-red-500 text-5xl sm:text-7xl md:text-8xl font-black drop-shadow-[0_0_25px_rgba(239,68,68,0.75)] italic tracking-tighter transition-transform group-hover:scale-110 leading-none">
                                                             {overlayText.split('|')[0].trim().split(' ')[0]}
                                                         </span>
                                                     </div>
                                                 </div>
-                                                <span className="text-[10px] sm:text-xs font-black tracking-[0.45em] text-red-400/90 uppercase mt-4">Live Shells</span>
+                                                <span className="text-[9px] sm:text-xs font-black tracking-[0.3em] sm:tracking-[0.45em] text-red-400/90 uppercase mt-2 sm:mt-4">Live Shells</span>
                                             </div>
                                             
-                                            <div className="w-[1px] h-24 bg-gradient-to-b from-transparent via-stone-800 to-transparent" />
+                                            <div className="w-[1px] h-16 sm:h-24 bg-gradient-to-b from-transparent via-stone-800 to-transparent" />
                                             
                                             <div className="flex flex-col items-center group">
-                                                <div className="flex items-center gap-3 sm:gap-5">
+                                                <div className="flex items-center gap-2 sm:gap-3 md:gap-5">
                                                     {/* Blue Shell SVG */}
-                                                    <svg className="w-8 h-12 text-cyan-400 drop-shadow-[0_0_15px_rgba(34,211,238,0.8)] animate-pulse" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                                    <svg className="w-6 h-9 sm:w-8 sm:h-12 text-cyan-400 drop-shadow-[0_0_15px_rgba(34,211,238,0.8)] animate-pulse shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                                                         <path d="M8 17h8v3a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-3z" fill="currentColor" fillOpacity="0.45" />
                                                         <rect x="8" y="3" width="8" height="14" rx="1" fill="currentColor" fillOpacity="0.15" />
                                                         <line x1="10" y1="7" x2="14" y2="7" />
@@ -466,17 +572,17 @@ export const GameUI: React.FC<GameUIProps> = ({
                                                     </svg>
                                                     <div className="relative">
                                                         <div className="absolute inset-0 blur-3xl bg-cyan-600/20 group-hover:bg-cyan-600/40 transition-colors" />
-                                                        <span className="relative text-cyan-400 text-6xl sm:text-8xl font-black drop-shadow-[0_0_25px_rgba(34,211,238,0.75)] italic tracking-tighter transition-transform group-hover:scale-110 leading-none">
+                                                        <span className="relative text-cyan-400 text-5xl sm:text-7xl md:text-8xl font-black drop-shadow-[0_0_25px_rgba(34,211,238,0.75)] italic tracking-tighter transition-transform group-hover:scale-110 leading-none">
                                                             {overlayText.split('|')[1].trim().split(' ')[0]}
                                                         </span>
                                                     </div>
                                                 </div>
-                                                <span className="text-[10px] sm:text-xs font-black tracking-[0.45em] text-cyan-400/80 uppercase mt-4">Blanks</span>
+                                                <span className="text-[9px] sm:text-xs font-black tracking-[0.3em] sm:tracking-[0.45em] text-cyan-400/80 uppercase mt-2 sm:mt-4">Blanks</span>
                                             </div>
                                         </div>
-                                        <div className="mt-2 flex flex-col items-center gap-4 w-full">
-                                            <div className="h-[1px] w-64 bg-gradient-to-r from-transparent via-stone-800 to-transparent" />
-                                            <span className="text-[9.5px] font-black tracking-[0.8em] text-stone-400 uppercase flex items-center justify-center gap-2 mt-1 select-none">
+                                        <div className="mt-1 sm:mt-2 flex flex-col items-center gap-2 sm:gap-4 w-full">
+                                            <div className="h-[1px] w-48 sm:w-64 bg-gradient-to-r from-transparent via-stone-800 to-transparent" />
+                                            <span className="text-[8.5px] sm:text-[9.5px] font-black tracking-[0.5em] sm:tracking-[0.8em] text-stone-400 uppercase flex items-center justify-center gap-2 mt-0.5 sm:mt-1 select-none">
                                                 <span className="w-1.5 h-1.5 bg-red-650 rounded-full animate-ping shrink-0" />
                                                 <span>CHAMBER_SYNCHRONIZED</span>
                                             </span>
@@ -489,32 +595,53 @@ export const GameUI: React.FC<GameUIProps> = ({
                                 const [_, itemType, ownerName, friendlyName] = overlayText.split('::');
                                 const IconComponent = Icons[itemType as keyof typeof Icons] || Icons.Crusher;
                                 return (
-                                    <div className="flex flex-col items-center text-center bg-black/95 px-10 py-6 border-y-2 border-red-500/35 backdrop-blur-md rounded-xl pop-in max-w-lg shadow-[0_0_50px_rgba(239,68,68,0.25)] border-red-650">
-                                        <div className="text-red-500 animate-pulse mb-3 drop-shadow-[0_0_10px_rgba(239,68,68,0.5)]">
-                                            <IconComponent size={64} />
+                                    <div className={`flex flex-col items-center text-center ${isLowGraphics ? 'bg-stone-900/95' : 'bg-black/95 backdrop-blur-xl'} px-8 sm:px-12 py-5 sm:py-7 border-2 border-red-500/50 rounded-2xl pop-in max-w-lg shadow-[0_0_60px_rgba(239,68,68,0.35)]`}>
+                                        <div className="text-red-500 animate-pulse mb-2 drop-shadow-[0_0_15px_rgba(239,68,68,0.6)]">
+                                            <IconComponent size={56} className="md:w-16 md:h-16" />
                                         </div>
-                                        <div className="text-lg md:text-4xl font-black tracking-[0.15em] text-stone-100 drop-shadow-[0_0_20px_rgba(255,255,255,0.4)] uppercase italic leading-none">
-                                            🔨 CRUSHED 🔨
+                                        <div className="text-base sm:text-2xl md:text-3xl font-black tracking-[0.2em] text-stone-100 drop-shadow-[0_0_20px_rgba(255,255,255,0.4)] uppercase italic leading-tight">
+                                            ITEM CRUSHED
                                         </div>
-                                        <div className="text-xs md:text-lg font-bold tracking-[0.1em] text-stone-300 mt-3 uppercase not-italic">
-                                            Destroyed {ownerName} <span className="text-red-400 font-extrabold">{friendlyName}</span>!
+                                        <div className="text-xs sm:text-sm md:text-base font-bold tracking-[0.1em] text-stone-300 mt-2 uppercase not-italic">
+                                            Destroyed {ownerName}&apos;s <span className="text-red-400 font-extrabold">{friendlyName}</span>!
                                         </div>
                                     </div>
                                 );
                             })()
+                        ) : overlayText.startsWith('📞') ? (
+                            <div className={`flex flex-col items-center text-center ${isLowGraphics ? 'bg-stone-900/95' : 'bg-black/95 backdrop-blur-xl'} px-6 sm:px-10 py-5 sm:py-7 border-2 border-cyan-500/50 rounded-2xl pop-in max-w-lg shadow-[0_0_60px_rgba(6,182,212,0.35)] relative overflow-hidden`}>
+                                <div className="absolute inset-0 bg-[linear-gradient(transparent_0%,rgba(6,182,212,0.04)_50%,transparent_100%)] bg-[length:100%_4px] pointer-events-none" />
+                                <div className="flex items-center gap-2 text-cyan-400 font-mono text-xs sm:text-sm tracking-[0.3em] uppercase mb-1.5 relative z-10">
+                                    <Icons.Phone size={18} className="animate-pulse" />
+                                    <span>INTERCEPTED TRANSMISSION</span>
+                                </div>
+                                {/* Satellite audio signal waveform bars */}
+                                <div className="flex items-center gap-1 my-2 relative z-10">
+                                    {[10, 22, 8, 26, 16, 10, 24, 14, 28, 12, 20, 8].map((h, i) => (
+                                        <div key={i} className="w-1 bg-cyan-400/80 rounded-full animate-pulse" style={{ height: `${h}px`, animationDelay: `${i * 0.08}s` }} />
+                                    ))}
+                                </div>
+                                <div className="text-xl sm:text-3xl md:text-4xl font-mono font-black tracking-wider text-white uppercase mt-1 relative z-10">
+                                    <RenderColoredText text={overlayText.replace('📞', '').trim()} />
+                                </div>
+                                <div className="mt-3 flex items-center gap-2 text-[9px] font-mono text-stone-400 tracking-widest uppercase relative z-10">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping" />
+                                    <span>ENCRYPTED SATELLITE RELAY • 142.85 MHz</span>
+                                </div>
+                            </div>
                         ) : (
-                            <div className="relative -top-16 flex flex-col items-center text-center bg-black/90 px-8 py-4 border-y-2 border-stone-100/20 backdrop-blur-md rounded-sm pop-in md:-top-20">
+                            <div className={`relative -top-16 flex flex-col items-center text-center ${isLowGraphics ? 'bg-stone-900/95' : 'bg-black/90 backdrop-blur-xl'} px-6 sm:px-10 py-3.5 sm:py-5 border-y-2 border-stone-200/30 rounded-xl pop-in md:-top-20 shadow-2xl`}>
                                 {overlayText.includes('\n') ? (
                                     <>
-                                        <div className="text-lg md:text-5xl font-black tracking-[0.2em] text-stone-100 drop-shadow-[0_0_20px_rgba(255,255,255,0.4)] uppercase italic">
+                                        <div className="text-base sm:text-3xl md:text-5xl font-black tracking-[0.2em] text-stone-100 drop-shadow-[0_0_20px_rgba(255,255,255,0.4)] uppercase italic">
                                             <RenderColoredText text={overlayText.split('\n')[0]} />
                                         </div>
-                                        <div className="text-xs md:text-lg font-bold tracking-[0.15em] text-stone-400 mt-2 uppercase not-italic">
+                                        <div className="text-xs sm:text-sm md:text-lg font-bold tracking-[0.15em] text-stone-400 mt-2 uppercase not-italic">
                                             <RenderColoredText text={overlayText.split('\n')[1]} />
                                         </div>
                                     </>
                                 ) : (
-                                    <div className="text-lg md:text-5xl font-black tracking-[0.2em] text-stone-100 drop-shadow-[0_0_20px_rgba(255,255,255,0.4)] uppercase italic">
+                                    <div className="text-base sm:text-3xl md:text-5xl font-black tracking-[0.2em] text-stone-100 drop-shadow-[0_0_20px_rgba(255,255,255,0.4)] uppercase italic">
                                         <RenderColoredText text={overlayText} />
                                     </div>
                                 )}
@@ -542,11 +669,18 @@ export const GameUI: React.FC<GameUIProps> = ({
 
                 {/* Main HUD */}
                 {gameState.phase !== 'INTRO' && gameState.phase !== 'BOOT' && gameState.phase !== 'GAME_OVER' && !showLootOverlay && (
-                    <div className="absolute inset-0 z-20 p-2 pb-0 md:p-8 md:pb-0 flex flex-col justify-between pointer-events-none">
+                    <div
+                        className="absolute inset-0 z-20 p-1.5 xs:p-2 pb-0 md:p-8 md:pb-0 flex flex-col justify-between pointer-events-none hud-hardware-accel"
+                        style={{
+                            paddingTop: 'max(env(safe-area-inset-top, 0px), 8px)',
+                            paddingLeft: 'max(env(safe-area-inset-left, 0px), 8px)',
+                            paddingRight: 'max(env(safe-area-inset-right, 0px), 8px)'
+                        }}
+                    >
                         
                         {gameState.phase === 'CARD_SELECT' && (
                             <div className="absolute top-[20%] left-1/2 transform -translate-x-1/2 z-30 flex flex-col items-center animate-in fade-in zoom-in duration-500 pointer-events-none">
-                                <div className="px-6 py-2 bg-black/85 border border-purple-500/35 rounded-full shadow-[0_0_30px_rgba(168,85,247,0.2)] backdrop-blur-md">
+                                <div className={`px-6 py-2 ${isLowGraphics ? 'bg-stone-900/95' : 'bg-black/85 backdrop-blur-md'} border border-purple-500/35 rounded-full shadow-[0_0_30px_rgba(168,85,247,0.2)]`}>
                                     <span className="text-xs md:text-xl font-black tracking-[0.3em] uppercase text-purple-400 animate-pulse">
                                         {gameState.turnOwner === 'PLAYER' ? '🔮 SELECT A TAROT CARD 🔮' : `🔮 ${gameState.opponentName?.toUpperCase() || 'DEALER'} CHOOSING CARD... 🔮`}
                                     </span>
@@ -555,23 +689,36 @@ export const GameUI: React.FC<GameUIProps> = ({
                         )}
 
                         {/* Top Bar */}
-                        <div className="flex justify-between items-start gap-2">
+                        <div className="flex justify-between items-start gap-1 sm:gap-2 w-full max-w-full">
                             <StatusDisplay player={player} dealer={dealer} player3={player3} player4={player4} playerName={playerName} gameState={gameState} settings={settings} />
-                            {!showExternalSettingsButton && (
-                                <button onClick={() => {
-                                    audioManager.playSound('click');
-                                    onOpenSettings();
-                                }} className="pointer-events-auto p-1 md:p-2 text-stone-600 hover:text-white transition-colors shrink-0">
-                                    <SettingsIcon size={18} className="md:w-5 md:h-5" />
-                                </button>
-                            )}
+                            <div className="flex items-center gap-1.5 shrink-0 pointer-events-auto">
+                                <LogsDisplay logs={logs} />
+                                {!showExternalSettingsButton && (
+                                    <button
+                                        onClick={() => {
+                                            audioManager.playSound('click');
+                                            onOpenSettings();
+                                        }}
+                                        className="pointer-events-auto w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center p-2 text-stone-400 hover:text-white transition-colors shrink-0 rounded-full hover:bg-white/5 active:scale-95"
+                                        title="Settings"
+                                        aria-label="Settings"
+                                    >
+                                        <SettingsIcon size={20} className="md:w-5 md:h-5" />
+                                    </button>
+                                )}
+                            </div>
                         </div>
 
                         {/* Bottom UI Area - Vertically stacked Controls & Inventory */}
-                        <div className="mt-auto w-full flex flex-col items-center gap-2 md:gap-4 pointer-events-none pb-0 md:pb-0 z-30">
+                        <div
+                            className="mt-auto w-full flex flex-col items-center gap-1.5 md:gap-4 pointer-events-none pb-0 md:pb-0 z-30 hud-hardware-accel"
+                            style={{
+                                paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 2px)'
+                            }}
+                        >
                             {/* Controls */}
                             {gameState.phase !== 'STEALING' && gameState.phase !== 'CARD_SELECT' && isMyTurn && !showLootOverlay && (
-                                <div className="pointer-events-auto">
+                                <div className="pointer-events-auto w-full max-w-full flex justify-center">
                                     <Controls
                                         isGunHeld={isGunHeld}
                                         isProcessing={isProcessing}
@@ -591,7 +738,7 @@ export const GameUI: React.FC<GameUIProps> = ({
                             )}
 
                             {/* Inventory */}
-                            <div className="pointer-events-auto">
+                            <div className="pointer-events-auto w-full max-w-full flex justify-center min-w-0">
                                 {gameState.phase === 'STEALING' && gameState.turnOwner === 'PLAYER' ? (
                                     <Inventory
                                         player={dealer} // Show DEALER items to steal
@@ -617,7 +764,7 @@ export const GameUI: React.FC<GameUIProps> = ({
                                             audioManager.playSound('grab');
                                             const item = player.items[idx];
                                             const targetedItems = ['CUFFS', 'ADRENALINE', 'CRUSHER', 'FLASHBANG'];
-                                            if (gameState.isThreePlayer && targetedItems.includes(item)) {
+                                            if ((gameState.isThreePlayer || gameState.isFourPlayer) && targetedItems.includes(item)) {
                                                 setPendingItemIndex(idx);
                                             } else {
                                                 onUseItem(idx);
@@ -636,7 +783,7 @@ export const GameUI: React.FC<GameUIProps> = ({
 
             {/* Global Stealing Screen Overlay - Priority Layer Outside UI Scale */}
             {gameState.phase === 'STEALING' && gameState.turnOwner === 'PLAYER' && (
-                <div className="fixed inset-0 z-[150] flex flex-col items-center justify-start md:justify-center bg-red-950/40 backdrop-blur-[16px] px-6 pointer-events-auto animate-in fade-in duration-700 overflow-y-auto">
+                <div className={`fixed inset-0 z-[150] flex flex-col items-center justify-start md:justify-center ${isLowGraphics ? 'bg-stone-900/95' : 'bg-red-950/40 backdrop-blur-[16px]'} px-6 pointer-events-auto animate-in fade-in duration-700 overflow-y-auto hud-hardware-accel`}>
                     {/* Atmospheric Overlays */}
                     <div className="absolute inset-0 opacity-20 pointer-events-none bg-[radial-gradient(circle_at_center,rgba(220,38,38,0.3),transparent_70%)]" />
                     <div className="absolute inset-0 opacity-[0.05] pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/black-linen-2.png')] animate-[pulse_4s_infinite]" />
@@ -658,18 +805,27 @@ export const GameUI: React.FC<GameUIProps> = ({
                         {/* Extraction Grid */}
                         <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-4 md:gap-8 w-full max-w-6xl mx-auto">
                             {(() => {
-                                const targetItems = (gameState.isThreePlayer && gameState.adrenalineTargetOwner === 'PLAYER3' && player3)
+                                const targetItems = (gameState.adrenalineTargetOwner === 'PLAYER3' && player3)
                                     ? player3.items
+                                    : (gameState.adrenalineTargetOwner === 'PLAYER4' && player4)
+                                    ? player4.items
                                     : dealer.items;
 
                                 if (targetItems.length === 0) {
                                     return (
-                                        <div className="col-span-full py-32 text-center bg-black/40 rounded-3xl border border-white/5 backdrop-blur-xl">
+                                        <div className={`col-span-full py-20 text-center ${isLowGraphics ? 'bg-stone-900/95' : 'bg-black/40 backdrop-blur-xl'} rounded-3xl border border-white/5 flex flex-col items-center`}>
                                             <div className="mb-4 inline-block p-4 rounded-full bg-stone-900/60 border border-white/10">
                                                 <Icons.Adrenaline size={48} className="text-stone-700 opacity-50" />
                                             </div>
                                             <p className="text-stone-500 font-black tracking-[0.4em] uppercase italic text-2xl">Vault Empty</p>
                                             <p className="text-stone-700 text-sm mt-2 font-bold tracking-widest uppercase truncate px-4">Subject Has No Extractable Assets</p>
+                                            <button
+                                                type="button"
+                                                onClick={() => onStealItem && onStealItem(-1)}
+                                                className="mt-6 px-6 py-2.5 bg-red-950/80 hover:bg-red-900 border border-red-700/60 text-red-200 font-bold uppercase text-xs tracking-widest rounded-xl transition-all active:scale-95 cursor-pointer shadow-lg"
+                                            >
+                                                Return To Match
+                                            </button>
                                         </div>
                                     );
                                 }
@@ -681,6 +837,7 @@ export const GameUI: React.FC<GameUIProps> = ({
                                         <button
                                             key={idx}
                                             onClick={() => !isStealLocked && onStealItem && onStealItem(idx)}
+                                            onMouseEnter={() => !isStealLocked && audioManager.playSound('click')}
                                             disabled={isStealLocked}
                                             className={`group relative flex flex-col items-center justify-center aspect-[5/7] rounded-2xl border transition-all duration-700 overflow-hidden ${isStealLocked
                                                 ? 'bg-black/80 border-white/5 cursor-not-allowed grayscale-[0.8] opacity-60'
@@ -720,7 +877,8 @@ export const GameUI: React.FC<GameUIProps> = ({
                                                                                                         item === 'CRUSHER' ? 'text-amber-600' :
                                                                                                             (item as ItemType) === 'TOTEM' ? 'text-amber-400' :
                                                                                                                 item === 'MIRROR' ? 'text-indigo-400' :
-                                                                                                                    item === 'DECK_CARD' ? 'text-purple-400' : 'text-stone-300'
+                                                                                                                    item === 'DECK_CARD' ? 'text-purple-400' :
+                                                                                                                        item === 'JACKPOT' ? 'text-yellow-400' : 'text-stone-300'
                                                         }`}>
                                                         {item === 'BEER' && <Icons.Beer size={56} />}
                                                         {item === 'CIGS' && <Icons.Cigs size={56} />}
@@ -739,6 +897,7 @@ export const GameUI: React.FC<GameUIProps> = ({
                                                         {(item as ItemType) === 'TOTEM' && <Icons.Totem size={56} />}
                                                         {item === 'MIRROR' && <Icons.Mirror size={56} />}
                                                         {item === 'DECK_CARD' && <Icons.DeckCard size={56} />}
+                                                        {item === 'JACKPOT' && <Icons.Jackpot size={56} />}
                                                     </div>
                                                     <span className="text-[10px] md:text-sm font-black text-stone-200 tracking-[0.2em] uppercase group-hover:text-white transition-colors">
                                                         {item.replace('_', ' ')}
@@ -768,10 +927,19 @@ export const GameUI: React.FC<GameUIProps> = ({
                             })()}
                         </div>
 
-                        <div className="mt-16 text-stone-600 text-[10px] font-bold tracking-[0.5em] uppercase flex items-center gap-6">
-                            <div className="h-[1px] w-12 bg-stone-800" />
-                            Operation Immediate Extraction
-                            <div className="h-[1px] w-12 bg-stone-800" />
+                        <div className="mt-10 flex flex-col items-center gap-4">
+                            <button
+                                type="button"
+                                onClick={() => onStealItem && onStealItem(-1)}
+                                className="px-6 py-2.5 bg-stone-900/80 hover:bg-red-950/60 border border-stone-750 hover:border-red-700/50 text-stone-300 hover:text-red-200 font-bold uppercase text-xs tracking-widest rounded-xl transition-all active:scale-95 cursor-pointer shadow-md"
+                            >
+                                Cancel Extraction
+                            </button>
+                            <div className="text-stone-600 text-[10px] font-bold tracking-[0.5em] uppercase flex items-center gap-6">
+                                <div className="h-[1px] w-12 bg-stone-800" />
+                                Operation Immediate Extraction
+                                <div className="h-[1px] w-12 bg-stone-800" />
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -783,10 +951,14 @@ export const GameUI: React.FC<GameUIProps> = ({
                         audioManager.playSound('click');
                         onOpenSettings();
                     }}
-                    className="fixed top-4 right-4 z-[220] pointer-events-auto p-2 md:p-3 text-stone-600 hover:text-white bg-black/60 hover:bg-black/80 rounded-full transition-colors shadow-xl"
+                    className="fixed z-[220] pointer-events-auto w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center text-stone-400 hover:text-white bg-black/60 hover:bg-black/80 rounded-full transition-colors shadow-xl"
+                    style={{
+                        top: 'max(env(safe-area-inset-top, 0px), 16px)',
+                        right: 'max(env(safe-area-inset-right, 0px), 16px)'
+                    }}
                     aria-label="Open settings"
                 >
-                    <SettingsIcon size={18} className="md:w-5 md:h-5" />
+                    <SettingsIcon size={20} className="md:w-5 md:h-5" />
                 </button>
             )}
 
@@ -802,7 +974,13 @@ export const GameUI: React.FC<GameUIProps> = ({
                 <>
                     {/* Render ChatBox & Stickers toggle buttons when both are minimized */}
                     {isChatMinimized && !isStickersOpen && (
-                        <div className="absolute bottom-4 left-4 z-[100] pointer-events-auto select-none flex flex-col items-start gap-2">
+                        <div
+                            className="absolute z-[100] pointer-events-auto select-none flex flex-col items-start gap-2"
+                            style={{
+                                bottom: 'max(env(safe-area-inset-bottom, 0px), 16px)',
+                                left: 'max(env(safe-area-inset-left, 0px), 16px)'
+                            }}
+                        >
                             {/* Stickers Toggle Button (Stacked above ChatBox toggle button) */}
                             <button
                                 onClick={() => {
@@ -810,10 +988,11 @@ export const GameUI: React.FC<GameUIProps> = ({
                                     setIsStickersOpen(true);
                                     setIsChatMinimized(true);
                                 }}
-                                className="bg-stone-950/90 border border-cyan-500/30 hover:border-cyan-400 rounded-xl p-2.5 sm:p-3 text-cyan-500 hover:text-cyan-400 backdrop-blur-md shadow-[0_0_20px_rgba(6,182,212,0.15)] hover:shadow-[0_0_30px_rgba(6,182,212,0.3)] transition-all duration-300 active:scale-95 cursor-pointer flex items-center justify-center group"
+                                className={`w-11 h-11 min-w-[44px] min-h-[44px] ${isLowGraphics ? 'bg-stone-900/95' : 'bg-stone-950/90 backdrop-blur-md'} border border-cyan-500/30 hover:border-cyan-400 rounded-xl text-cyan-500 hover:text-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.15)] hover:shadow-[0_0_30px_rgba(6,182,212,0.3)] transition-all duration-300 active:scale-95 cursor-pointer flex items-center justify-center group`}
                                 title="Stickers"
+                                aria-label="Open Stickers"
                             >
-                                <Smile size={14} className="animate-pulse text-cyan-500 sm:w-[16px] sm:h-[16px]" />
+                                <Smile size={18} className="animate-pulse text-cyan-500" />
                             </button>
 
                             {/* ChatBox Toggle Button */}
@@ -823,10 +1002,11 @@ export const GameUI: React.FC<GameUIProps> = ({
                                     setIsChatMinimized(false);
                                     setIsStickersOpen(false);
                                 }}
-                                className="relative bg-stone-950/90 border border-cyan-500/30 hover:border-cyan-400 rounded-xl px-4 py-2.5 text-[9px] sm:text-[10px] font-black tracking-[0.2em] uppercase text-cyan-500 hover:text-cyan-400 backdrop-blur-md shadow-[0_0_20px_rgba(6,182,212,0.15)] hover:shadow-[0_0_30px_rgba(6,182,212,0.3)] transition-all duration-300 active:scale-95 cursor-pointer flex items-center gap-2 group"
+                                className={`relative min-h-[44px] ${isLowGraphics ? 'bg-stone-900/95' : 'bg-stone-950/90 backdrop-blur-md'} border border-cyan-500/30 hover:border-cyan-400 rounded-xl px-4 py-2.5 text-[9px] sm:text-[10px] font-black tracking-[0.2em] uppercase text-cyan-500 hover:text-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.15)] hover:shadow-[0_0_30px_rgba(6,182,212,0.3)] transition-all duration-300 active:scale-95 cursor-pointer flex items-center gap-2 group`}
+                                aria-label="Open ChatBox"
                             >
                                 <span className="absolute inset-0 rounded-xl border border-cyan-500/20 animate-ping opacity-75 pointer-events-none group-hover:animate-none" />
-                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="animate-pulse">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="animate-pulse shrink-0">
                                     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
                                 </svg>
                                 <span>ChatBox</span>
@@ -845,9 +1025,15 @@ export const GameUI: React.FC<GameUIProps> = ({
 
                     {/* Chat Overlay Active (Hides stickers button) */}
                     {!isChatMinimized && (
-                        <div className="absolute bottom-4 left-4 z-[100] w-[260px] sm:w-[320px] md:w-[360px] h-[180px] sm:h-[240px] md:h-[300px] pointer-events-auto transition-all duration-300 animate-in fade-in duration-200">
+                        <div
+                            className="absolute z-[100] w-[min(340px,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] h-[190px] sm:h-[240px] md:h-[300px] pointer-events-auto transition-all duration-300 animate-in fade-in duration-200"
+                            style={{
+                                bottom: 'max(calc(env(safe-area-inset-bottom, 0px) + env(keyboard-inset-height, 0px)), 16px)',
+                                left: 'max(env(safe-area-inset-left, 0px), 16px)'
+                            }}
+                        >
                             <div className="h-full flex flex-col justify-end">
-                                <div className="bg-gradient-to-t from-black/90 to-black/50 backdrop-blur-3xl border border-white/[0.06] rounded-3xl overflow-hidden flex flex-col h-full shadow-[0_24px_80px_rgba(0,0,0,0.65)] group/chat transition-all hover:border-cyan-400/30">
+                                <div className={`${isLowGraphics ? 'bg-stone-900/95' : 'bg-gradient-to-t from-black/90 to-black/50 backdrop-blur-3xl'} border border-white/[0.06] rounded-3xl overflow-hidden flex flex-col h-full shadow-[0_24px_80px_rgba(0,0,0,0.65)] group/chat transition-all hover:border-cyan-400/30`}>
                                     <div className="px-3 py-1.5 sm:px-4 sm:py-2 bg-white/5 border-b border-white/[0.02] flex justify-between items-center select-none">
                                         <span className="text-[9px] sm:text-[10px] font-black tracking-[0.3em] text-stone-550 uppercase">ChatBox</span>
                                         <div className="flex items-center gap-3">
@@ -856,16 +1042,16 @@ export const GameUI: React.FC<GameUIProps> = ({
                                                     audioManager.playSound('click');
                                                     setIsChatMinimized(true);
                                                 }}
-                                                className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[8px] sm:text-[9px] font-black uppercase tracking-[0.22em] text-stone-100 transition-all duration-200 hover:bg-cyan-500/15 hover:border-cyan-400/40 hover:text-cyan-300 shadow-sm shadow-cyan-500/10"
+                                                className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3.5 py-2 min-h-[44px] text-[8px] sm:text-[9px] font-black uppercase tracking-[0.2em] text-stone-100 transition-all duration-200 hover:bg-cyan-500/15 hover:border-cyan-400/40 hover:text-cyan-300 shadow-sm shadow-cyan-500/10 cursor-pointer"
                                             >
-                                                <Minimize2 size={12} className="text-cyan-300" />
-                                                Minimize
+                                                <Minimize2 size={12} className="text-cyan-300 shrink-0" />
+                                                <span>Minimize</span>
                                             </button>
                                         </div>
                                     </div>
                                     <div
                                         ref={chatScrollRef}
-                                        className="flex-1 overflow-y-auto p-2.5 sm:p-4 space-y-2 sm:space-y-3 text-[10px] sm:text-[11px] md:text-xs scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent hover:scrollbar-thumb-white/20"
+                                        className="flex-1 overflow-y-auto p-2.5 sm:p-4 space-y-2 sm:space-y-3 text-[10px] sm:text-[11px] md:text-xs scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent hover:scrollbar-thumb-white/20 custom-scrollbar"
                                     >
                                         {messages
                                             .filter(m => m.sender !== 'SYSTEM' && m.text && !m.text.startsWith('SYSTEM:') && !m.text.startsWith('[STICKER]:'))
@@ -890,7 +1076,7 @@ export const GameUI: React.FC<GameUIProps> = ({
                                                 setChatDraft('');
                                             }
                                         }}
-                                        className="p-2 sm:p-3 bg-white/5 border-t border-white/5 flex gap-2"
+                                        className="p-2 sm:p-3 bg-white/5 border-t border-white/5 flex gap-2 keyboard-aware-bottom"
                                     >
                                         <input
                                             name="chat-input"
@@ -899,12 +1085,13 @@ export const GameUI: React.FC<GameUIProps> = ({
                                             onChange={(e) => setChatDraft(e.target.value)}
                                             autoComplete="off"
                                             placeholder="TYPE A MESSAGE..."
-                                            className="flex-1 bg-black/40 border border-white/[0.04] rounded-lg px-3 py-1.5 sm:px-4 sm:py-2 text-[9px] sm:text-[10px] md:text-xs text-stone-100 placeholder:text-stone-755 focus:outline-none focus:border-white/15 transition-all focus:bg-black/50 shadow-inner"
+                                            className="flex-1 bg-black/40 border border-white/[0.04] rounded-lg px-3 py-1.5 sm:px-4 sm:py-2 min-h-[44px] text-[9px] sm:text-[10px] md:text-xs text-stone-100 placeholder:text-stone-755 focus:outline-none focus:border-white/15 transition-all focus:bg-black/50 shadow-inner"
                                             onKeyDown={(e) => e.stopPropagation()}
                                         />
                                         <button
                                             type="submit"
-                                            className="inline-flex items-center justify-center rounded-lg border border-white/[0.08] bg-cyan-500/10 text-cyan-200 hover:bg-cyan-500/20 px-3 py-1.5 text-[9px] sm:text-[10px] md:text-xs font-black uppercase tracking-[0.2em] transition-all duration-200 hover:text-white"
+                                            className="inline-flex items-center justify-center rounded-lg border border-white/[0.08] bg-cyan-500/10 text-cyan-200 hover:bg-cyan-500/20 px-3.5 py-2 min-h-[44px] min-w-[44px] text-[9px] sm:text-[10px] md:text-xs font-black uppercase tracking-[0.2em] transition-all duration-200 hover:text-white cursor-pointer"
+                                            aria-label="Send message"
                                         >
                                             <Send size={14} />
                                         </button>
@@ -918,9 +1105,15 @@ export const GameUI: React.FC<GameUIProps> = ({
                     {isStickersOpen && (
                         <>
                             {/* Sticker Panel overlay container */}
-                            <div className="absolute bottom-4 left-4 z-[100] w-[260px] sm:w-[320px] md:w-[360px] h-[180px] sm:h-[240px] md:h-[300px] pointer-events-auto transition-all duration-300 animate-in fade-in duration-200">
+                            <div
+                                className="absolute z-[100] w-[min(340px,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] h-[190px] sm:h-[240px] md:h-[300px] pointer-events-auto transition-all duration-300 animate-in fade-in duration-200"
+                                style={{
+                                    bottom: 'max(calc(env(safe-area-inset-bottom, 0px) + env(keyboard-inset-height, 0px)), 16px)',
+                                    left: 'max(env(safe-area-inset-left, 0px), 16px)'
+                                }}
+                            >
                                 <div className="h-full flex flex-col justify-end">
-                                    <div className="bg-gradient-to-t from-black/80 to-black/40 backdrop-blur-2xl border border-white/5 rounded-xl overflow-hidden flex flex-col h-full shadow-[0_20px_50px_rgba(0,0,0,0.5)] transition-all hover:border-white/10">
+                                    <div className={`${isLowGraphics ? 'bg-stone-900/95' : 'bg-gradient-to-t from-black/80 to-black/40 backdrop-blur-2xl'} border border-white/5 rounded-2xl overflow-hidden flex flex-col h-full shadow-[0_20px_50px_rgba(0,0,0,0.5)] transition-all hover:border-white/10`}>
                                         <div className="px-3 py-1.5 sm:px-4 sm:py-2 bg-white/5 border-b border-white/5 flex justify-between items-center select-none">
                                             <span className="text-[9px] sm:text-[10px] font-black tracking-[0.3em] text-stone-500 uppercase">Stickers</span>
                                             <div className="flex items-center gap-3">
@@ -929,7 +1122,7 @@ export const GameUI: React.FC<GameUIProps> = ({
                                                         audioManager.playSound('click');
                                                         setIsStickersOpen(false);
                                                     }}
-                                                    className="text-stone-550 hover:text-white transition-colors text-[8px] sm:text-[9px] uppercase tracking-widest font-black cursor-pointer bg-transparent border-none outline-none"
+                                                    className="text-stone-550 hover:text-white transition-colors text-[8px] sm:text-[9px] uppercase tracking-widest font-black cursor-pointer bg-transparent border-none outline-none py-1.5 px-3 min-h-[44px] flex items-center justify-center"
                                                 >
                                                     Minimize
                                                 </button>
@@ -945,7 +1138,7 @@ export const GameUI: React.FC<GameUIProps> = ({
                                                             if (onSendMessage) onSendMessage('[STICKER]:' + stk);
                                                             setIsStickersOpen(false);
                                                         }}
-                                                        className="w-12 h-12 sm:w-16 sm:h-16 flex items-center justify-center rounded border border-white/10 bg-black/40 hover:bg-white/5 hover:border-cyan-500/50 p-1.5 transition-all active:scale-95 cursor-pointer"
+                                                        className="w-12 h-12 min-w-[48px] min-h-[48px] sm:w-16 sm:h-16 flex items-center justify-center rounded-xl border border-white/10 bg-black/40 hover:bg-white/5 hover:border-cyan-500/50 p-1.5 transition-all active:scale-95 cursor-pointer"
                                                         title={stk}
                                                     >
                                                         <img src={`/sticker/${stk}`} alt={stk} className="w-full h-full object-contain rounded" />
@@ -958,16 +1151,23 @@ export const GameUI: React.FC<GameUIProps> = ({
                             </div>
 
                             {/* ChatBox Toggle Button shown next to Sticker overlay so user can switch back */}
-                            <div className="absolute bottom-4 left-[280px] sm:left-[340px] md:left-[380px] z-[100] pointer-events-auto select-none">
+                            <div
+                                className="absolute bottom-4 right-4 sm:bottom-4 sm:left-[360px] md:left-[380px] sm:right-auto z-[100] pointer-events-auto select-none"
+                                style={{
+                                    bottom: 'max(calc(env(safe-area-inset-bottom, 0px) + env(keyboard-inset-height, 0px)), 16px)',
+                                    right: 'max(env(safe-area-inset-right, 0px), 16px)'
+                                }}
+                            >
                                 <button
                                     onClick={() => {
                                         audioManager.playSound('click');
                                         setIsChatMinimized(false);
                                         setIsStickersOpen(false);
                                     }}
-                                    className="bg-stone-950/90 border border-cyan-500/30 hover:border-cyan-400 rounded-xl px-4 py-2.5 text-[9px] sm:text-[10px] font-black tracking-[0.2em] uppercase text-cyan-500 hover:text-cyan-400 backdrop-blur-md shadow-[0_0_20px_rgba(6,182,212,0.15)] active:scale-95 transition-all duration-300 cursor-pointer flex items-center gap-2 group"
+                                    className={`bg-stone-950/90 ${isLowGraphics ? 'bg-stone-900/95' : 'backdrop-blur-md'} border border-cyan-500/30 hover:border-cyan-400 rounded-xl px-4 py-2.5 min-h-[44px] text-[9px] sm:text-[10px] font-black tracking-[0.2em] uppercase text-cyan-500 hover:text-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.15)] active:scale-95 transition-all duration-300 cursor-pointer flex items-center gap-2 group`}
+                                    aria-label="Open ChatBox"
                                 >
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
                                         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
                                     </svg>
                                     <span>ChatBox</span>
@@ -1036,27 +1236,50 @@ export const GameUI: React.FC<GameUIProps> = ({
                 </>
             )}
             {pendingItemIndex !== null && (
-                <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[250] flex flex-col items-center justify-center pointer-events-auto animate-in fade-in duration-300">
-                    <div className="bg-stone-900 border-2 border-stone-800 p-6 md:p-10 rounded-2xl max-w-md w-full mx-4 shadow-[0_0_50px_rgba(0,0,0,0.8)] border-y-white/10 text-center">
-                        <h2 className="text-2xl md:text-3xl font-black text-white tracking-widest uppercase mb-2">SELECT TARGET</h2>
-                        <p className="text-stone-400 text-xs md:text-sm font-bold tracking-wider uppercase mb-8">
-                            Select who to target with {player.items[pendingItemIndex].replace('_', ' ')}
+                <div className={`fixed inset-0 ${isLowGraphics ? 'bg-stone-900/95' : 'bg-black/85 backdrop-blur-md'} z-[250] flex flex-col items-center justify-center pointer-events-auto animate-in fade-in duration-300 hud-hardware-accel`}>
+                    <div className="bg-stone-950 border-2 border-stone-800 p-6 md:p-8 rounded-2xl max-w-md w-full mx-4 shadow-[0_0_60px_rgba(0,0,0,0.9)] border-y-white/10 text-center">
+                        <h2 className="text-xl md:text-2xl font-black text-white tracking-widest uppercase mb-1.5">
+                            SELECT TARGET FOR {player.items[pendingItemIndex].replace('_', ' ')}
+                        </h2>
+                        <p className="text-stone-400 text-[10px] md:text-xs font-bold tracking-wider uppercase mb-6">
+                            Target tactical disruption at an opponent
                         </p>
-                        <div className="flex flex-col gap-4">
+                        <div className="flex flex-col gap-3">
                             {gameState.multiplayerState?.players
                                 .filter((p: any) => p.id !== gameState.localPlayerId)
                                 .map((targetPlayer: any) => {
-                                    // Target relative owner check to determine HP
+                                    // Target relative owner check to determine HP and seat identity
                                     const playersList = gameState.multiplayerState?.players || [];
                                     const myId = gameState.localPlayerId || '';
                                     const myIndex = playersList.findIndex((p: any) => p.id === myId);
                                     let targetHp = 1;
+                                    let seatName = 'SEAT 02 • FRONT';
+                                    let seatBorderClass = 'border-red-500/70 text-red-200 hover:bg-red-955/80 hover:border-red-400 shadow-[0_0_15px_rgba(239,68,68,0.2)]';
+                                    let hpBadgeClass = 'text-red-400 bg-red-955/80 border-red-500/40';
+
                                     if (myIndex !== -1) {
-                                        const frontOpponent = playersList[(myIndex + 2) % 3];
-                                        const sideOpponent = playersList[(myIndex + 1) % 3];
-                                        if (frontOpponent && targetPlayer.id === frontOpponent.id) targetHp = dealer.hp;
-                                        else if (sideOpponent && targetPlayer.id === sideOpponent.id && player3) targetHp = player3.hp;
-                                        else targetHp = player.hp;
+                                        const size = playersList.length || 3;
+                                        const frontOpponent = playersList[(myIndex + 2) % size];
+                                        const leftOpponent = playersList[(myIndex + 1) % size];
+                                        const rightOpponent = size >= 4 ? playersList[(myIndex + 3) % size] : null;
+                                        if (frontOpponent && targetPlayer.id === frontOpponent.id) {
+                                            targetHp = dealer.hp;
+                                            seatName = 'SEAT 02 • FRONT';
+                                            seatBorderClass = 'border-red-500/70 text-red-200 hover:bg-red-955/80 hover:border-red-400 shadow-[0_0_15px_rgba(239,68,68,0.2)]';
+                                            hpBadgeClass = 'text-red-400 bg-red-955/80 border-red-500/40';
+                                        } else if (leftOpponent && targetPlayer.id === leftOpponent.id && player3) {
+                                            targetHp = player3.hp;
+                                            seatName = 'SEAT 03 • LEFT';
+                                            seatBorderClass = 'border-amber-500/70 text-amber-200 hover:bg-amber-955/80 hover:border-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.2)]';
+                                            hpBadgeClass = 'text-amber-400 bg-amber-955/80 border-amber-500/40';
+                                        } else if (rightOpponent && targetPlayer.id === rightOpponent.id && player4) {
+                                            targetHp = player4.hp;
+                                            seatName = 'SEAT 04 • RIGHT';
+                                            seatBorderClass = 'border-purple-500/70 text-purple-200 hover:bg-purple-955/80 hover:border-purple-400 shadow-[0_0_15px_rgba(168,85,247,0.2)]';
+                                            hpBadgeClass = 'text-purple-400 bg-purple-955/80 border-purple-500/40';
+                                        } else {
+                                            targetHp = player.hp;
+                                        }
                                     }
                                     const isTargetDead = targetHp <= 0;
                                     
@@ -1069,13 +1292,24 @@ export const GameUI: React.FC<GameUIProps> = ({
                                                 onUseItem(pendingItemIndex, targetPlayer.id);
                                                 setPendingItemIndex(null);
                                             }}
-                                            className={`w-full py-4 px-6 border-2 font-black tracking-widest text-lg uppercase rounded-xl transition-all duration-300 ${
+                                            onMouseEnter={() => !isTargetDead && audioManager.playSound('click')}
+                                            className={`w-full py-3 px-5 border-2 font-black tracking-wider uppercase rounded-xl transition-all duration-200 flex items-center justify-between ${
                                                 isTargetDead
-                                                    ? 'bg-stone-950/50 border-stone-900/60 text-stone-600 cursor-not-allowed italic'
-                                                    : 'bg-stone-950 border-stone-800 text-stone-200 hover:border-white hover:bg-stone-100 hover:text-stone-950 active:scale-95'
+                                                    ? 'bg-stone-955/40 border-stone-900/60 text-stone-600 cursor-not-allowed italic'
+                                                    : `bg-stone-950/90 ${seatBorderClass} active:scale-98`
                                             }`}
                                         >
-                                            {targetPlayer.name} {isTargetDead && '(KNOCKED OUT)'}
+                                            <div className="flex flex-col items-start">
+                                                <span className="text-[7.5px] font-mono font-bold tracking-widest text-stone-400">
+                                                    {seatName}
+                                                </span>
+                                                <span className="text-sm md:text-base font-black text-white">
+                                                    {targetPlayer.name} {isTargetDead && '(KNOCKED OUT)'}
+                                                </span>
+                                            </div>
+                                            <span className={`text-xs font-mono font-black px-2 py-0.5 rounded border ${hpBadgeClass}`}>
+                                                HP: {Math.max(0, targetHp)}
+                                            </span>
                                         </button>
                                     );
                                 })}
@@ -1085,7 +1319,7 @@ export const GameUI: React.FC<GameUIProps> = ({
                                 audioManager.playSound('click');
                                 setPendingItemIndex(null);
                             }}
-                            className="mt-8 text-xs font-black tracking-widest text-stone-500 hover:text-white uppercase transition-colors"
+                            className="mt-6 text-xs font-black tracking-widest text-stone-400 hover:text-white uppercase transition-colors"
                         >
                             [ CANCEL ]
                         </button>

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
-import { CameraView, TurnOwner, AimTarget, AnimationState, GameSettings, SceneContext, PlayerState, GameState, PlayerModelKey } from '../types';
+import { CameraView, TurnOwner, AimTarget, AnimationState, GameSettings, SceneContext, PlayerState, GameState, PlayerModelKey, isUltraPerf, isLowPerf, isBalancedPerf, isHighPerf } from '../types';
 
 import { updateScene } from '../utils/sceneLogic';
 import { initThreeScene, cleanScene } from '../utils/three/sceneSetup';
@@ -45,18 +45,20 @@ const calculatePixelScale = (settings: GameSettings, width: number) => {
         isMob = true;
     }
 
-    const isLowEndDevice = (isMob && (isAndroid || pixelRatio < 2 || navigator.hardwareConcurrency < 6)) || !!settings.ultraPerformance || !!settings.balancedPerformance;
+    const isUltra = isUltraPerf(settings);
+    const isLow = isLowPerf(settings);
+    const isBalanced = isBalancedPerf(settings) && !isLow;
 
     let mobilePixelScale = 2;
     if (isMob) {
-        mobilePixelScale = settings.ultraPerformance ? 5.5 : (settings.balancedPerformance ? 4.5 : (isLowEndDevice ? 4.5 : 2.8));
+        mobilePixelScale = isUltra ? 4.8 : (isLow ? 3.4 : (isBalanced ? 2.4 : 1.6));
     } else if (isTab) {
-        mobilePixelScale = settings.ultraPerformance ? 4.0 : (settings.balancedPerformance ? 3.0 : 2.2);
+        mobilePixelScale = isUltra ? 3.6 : (isLow ? 2.6 : (isBalanced ? 2.0 : 1.4));
     }
     mobilePixelScale = Math.max(mobilePixelScale, settings.pixelScale || 0);
 
-    const desktopProfileMin = settings.ultraPerformance ? 5.0 : (settings.balancedPerformance ? 4.0 : 0);
-    const desktopPixelScale = settings.pixelScale || 3;
+    const desktopProfileMin = isUltra ? 4.2 : (isLow ? 3.2 : (isBalanced ? 2.4 : 0));
+    const desktopPixelScale = settings.pixelScale || 2.4;
     const desktopBaseScale = desktopProfileMin > 0 ? Math.max(desktopProfileMin, desktopPixelScale) : desktopPixelScale;
 
     const baseScale = (isMob || isTab) ? mobilePixelScale : desktopBaseScale;
@@ -79,17 +81,30 @@ const syncResolution = (container: HTMLDivElement, sceneContext: SceneContext, s
     const isMobile = /android|webos|iphone|ipod|blackberry|iemobile|opera mini/i.test(ua) || width < 900;
     const isTablet = /ipad|tablet|playbook|silk/i.test(ua) || (ua.includes('macintosh') && 'ontouchend' in document);
 
+    const isUltra = isUltraPerf(settings);
+    const isLow = isLowPerf(settings);
+    const isBalanced = isBalancedPerf(settings) && !isLow;
+
     const pxScale = calculatePixelScale(settings, width);
-    const maxPixelRatio = settings.ultraPerformance || settings.balancedPerformance
-        ? 1.0
-        : (isMobile ? Math.min(window.devicePixelRatio, 1.5) : (isTablet ? 1.2 : Math.min(window.devicePixelRatio, 2)));
+    const isLowEndDevice = (isMobile && (width < 600 || window.devicePixelRatio < 2 || (typeof navigator !== 'undefined' && navigator.hardwareConcurrency && navigator.hardwareConcurrency < 6))) || isUltra || isLow;
+    const maxPixelRatio = isUltra
+        ? (isLowEndDevice ? 0.85 : 1.0)
+        : (isLow 
+            ? (isLowEndDevice ? 0.85 : 1.0) 
+            : (isBalanced 
+                ? (isMobile ? 1.25 : 1.35) 
+                : (isMobile ? Math.min(window.devicePixelRatio, 1.6) : Math.min(window.devicePixelRatio, 2.0))));
     const customHeadModels = Object.values(scene.userData.multiplayerDebugModels || {}).some((model: any) =>
         ['ASP', 'YUVRAJ', 'AADISH', 'YASH'].includes(model)
     );
     const shouldUseAutoRendering = true;
-    renderer.setPixelRatio(maxPixelRatio);
+    scene.userData.basePixelRatio = maxPixelRatio;
+    const dynamicScale = scene.userData.dynamicPixelRatioScale ?? 1.0;
+    const effectivePixelRatio = Math.max(0.75, Math.min(maxPixelRatio, maxPixelRatio * dynamicScale));
+    renderer.setPixelRatio(effectivePixelRatio);
     renderer.setSize(width / pxScale, height / pxScale, false);
     renderer.domElement.style.imageRendering = 'auto';
+    renderer.domElement.style.touchAction = 'none';
 
     const aspect = width / height;
     camera.aspect = aspect;
@@ -178,6 +193,11 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
     const sceneRef = useRef<SceneContext | null>(null);
     const tagProjectionVec = useRef(new THREE.Vector3());
     const worldPositionVec = useRef(new THREE.Vector3());
+    const _headBox3 = useRef(new THREE.Box3());
+    const prevTagsRef = useRef<{ name: string, x: number, y: number, visible: boolean }[]>([]);
+    const _tagsScratch = useRef<{ name: string, x: number, y: number, visible: boolean }[]>([]);
+    const tagsOutputPool = useRef<{ name: string, x: number, y: number, visible: boolean }[]>([]);
+    const containerRectRef = useRef<DOMRect | null>(null);
 
 
 
@@ -203,28 +223,18 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
             const context = initThreeScene(containerRef.current, propsRef.current);
             if (context) {
                 sceneRef.current = context;
+                context.renderer.domElement.style.touchAction = 'none';
+                context.renderer.domElement.style.userSelect = 'none';
+                (context.renderer.domElement.style as any).webkitUserSelect = 'none';
+                (context.renderer.domElement.style as any).webkitTouchCallout = 'none';
                 updateCameraResponsive();
 
-                // Warm up shaders later, after the first frame, so startup feels snappier.
+                // Precompile shaders and render an initial warmup frame while loading overlay is active
                 try {
-                    const renderer = context.renderer;
-                    const scene = context.scene;
-                    const camera = context.camera;
-                    const warmup = () => {
-                        if (!sceneRef.current || sceneRef.current.renderer !== renderer) return;
-                        try {
-                            renderer.compile(scene, camera);
-                        } catch (e) {
-                            console.warn('WebGL warmup deferred:', e);
-                        }
-                    };
-                    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
-                        (window as Window & typeof globalThis & { requestIdleCallback: (cb: IdleRequestCallback, options?: IdleRequestOptions) => number }).requestIdleCallback(() => warmup(), { timeout: 1000 });
-                    } else {
-                        setTimeout(warmup, 250);
-                    }
+                    context.renderer.compile(context.scene, context.camera);
+                    context.renderer.render(context.scene, context.camera);
                 } catch (e) {
-                    console.error('WebGL Warmup Error:', e);
+                    console.warn('WebGL precompile warning:', e);
                 }
             }
         };
@@ -247,6 +257,15 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
         let nameTagFrameCounter = 0;
         const nameTagUpdateInterval = 3;
 
+        // Dynamic Performance Scaling on Mobile / Low-End Devices
+        // Lightweight rolling delta measurement over the last 60 frames
+        const FRAME_DELTA_HISTORY_SIZE = 60;
+        const frameDeltas = new Float32Array(FRAME_DELTA_HISTORY_SIZE);
+        let frameDeltaIndex = 0;
+        let frameDeltaCount = 0;
+        let lastAdaptiveScaleTime = performance.now();
+        let dynamicPixelRatioScale = 1.0;
+
         const handleVisibilityChange = () => {
             if (document.hidden || document.visibilityState !== 'visible') {
                 isTabVisible = false;
@@ -257,6 +276,9 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
                 fpsTimeStart = performance.now();
                 frameCount = 0;
                 fpsAverages = [];
+                frameDeltaIndex = 0;
+                frameDeltaCount = 0;
+                frameDeltas.fill(0);
             }
         };
         document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -267,7 +289,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
             if (propsRef.current.isPaused) {
                 lastTime = currentTime; lastFrameTime = currentTime; return;
             }
-            if (!isTabVisible || document.hidden || document.visibilityState !== 'visible') {
+            if (!isTabVisible || document.hidden || document.visibilityState !== 'visible' || sceneRef.current.scene.userData?.isContextLost) {
                 lastTime = currentTime; 
                 lastFrameTime = currentTime; 
                 fpsTimeStart = currentTime;
@@ -277,13 +299,13 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
 
             const phase = propsRef.current.gameState?.phase;
             const isInMenu = phase === 'BOOT' || phase === 'INTRO' || phase === 'LOAD';
-            const frameStart = performance.now();
 
-            const isUltra = !!propsRef.current.settings?.ultraPerformance;
-            const isBalanced = !!propsRef.current.settings?.balancedPerformance;
-            const currentTargetFPS = isInMenu ? 24 : (isUltra ? 30 : (isBalanced ? 45 : (isMobile && (isAndroid || window.devicePixelRatio < 2) ? 40 : 55)));
+            const isUltra = isUltraPerf(propsRef.current.settings);
+            const isLow = isLowPerf(propsRef.current.settings);
+            const isBalanced = isBalancedPerf(propsRef.current.settings) && !isLow;
+            const currentTargetFPS = isInMenu ? 30 : (isUltra ? 35 : (isLow ? 50 : 60));
             const currentFrameInterval = 1000 / currentTargetFPS;
-            const shouldLimitFrame = isInMenu || isUltra || isBalanced || (isMobile && (isAndroid || window.devicePixelRatio < 2));
+            const shouldLimitFrame = isInMenu || isUltra || isLow;
 
             // Frame Limiting Logic (Enforce based on performance settings to save battery/thermal)
             if (shouldLimitFrame) {
@@ -312,7 +334,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
                     const currentSettings = propsRef.current.settings;
                     
                     const alreadyShownWarning = sessionStorage.getItem('aadish_roulette_perf_warning_shown') === 'true';
-                    if (avgFps < 20 && !currentSettings.ultraPerformance && !hasShownPerfWarning && !alreadyShownWarning) {
+                    if (avgFps < 20 && !isUltra && !hasShownPerfWarning && !alreadyShownWarning) {
                         hasShownPerfWarning = true;
                         try {
                             sessionStorage.setItem('aadish_roulette_perf_warning_shown', 'true');
@@ -327,9 +349,65 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
             }
 
             const rawDelta = (currentTime - lastTime) / 1000;
-            // Cap delta to prevent huge jumps and negative values
-            const delta = Math.max(0.0, Math.min(rawDelta, 0.1));
+            // Cap delta to prevent huge jumps and negative values: smooth frame times
+            const delta = Math.max(0.001, Math.min(rawDelta, 0.05));
             lastTime = currentTime;
+
+            // Rolling 60-frame delta history for lightweight dynamic FPS monitoring
+            frameDeltas[frameDeltaIndex] = delta;
+            frameDeltaIndex = (frameDeltaIndex + 1) % FRAME_DELTA_HISTORY_SIZE;
+            if (frameDeltaCount < FRAME_DELTA_HISTORY_SIZE) {
+                frameDeltaCount++;
+            }
+
+            // Dynamic FPS monitoring and adaptive pixel ratio scaling
+            if (frameDeltaCount >= FRAME_DELTA_HISTORY_SIZE && (currentTime - lastAdaptiveScaleTime > 1500)) {
+                let sumDelta = 0;
+                for (let i = 0; i < FRAME_DELTA_HISTORY_SIZE; i++) {
+                    sumDelta += frameDeltas[i];
+                }
+                const avgFrameTimeSec = sumDelta / FRAME_DELTA_HISTORY_SIZE;
+                const dynamicFps = avgFrameTimeSec > 0 ? (1 / avgFrameTimeSec) : 60;
+                const isTargetMobileOrLow = isMobile || isLowEndMobile || isLow || isUltra;
+
+                if (isTargetMobileOrLow && sceneRef.current) {
+                    const scene = sceneRef.current.scene;
+                    const renderer = sceneRef.current.renderer;
+                    const baseRatio = (scene.userData.basePixelRatio as number) || 1.0;
+                    const minScale = isUltra ? 0.60 : (isLow ? 0.70 : 0.75);
+
+                    // If average frame rate drops below 30 FPS on mobile/low-end devices, adaptively lower pixel ratio
+                    if (dynamicFps < 30) {
+                        if (dynamicPixelRatioScale > minScale) {
+                            dynamicPixelRatioScale = Math.max(minScale, dynamicPixelRatioScale - 0.08);
+                            scene.userData.dynamicPixelRatioScale = dynamicPixelRatioScale;
+                            lastAdaptiveScaleTime = currentTime;
+
+                            const adaptedRatio = Math.max(0.60, Math.min(baseRatio, baseRatio * dynamicPixelRatioScale));
+                            renderer.setPixelRatio(adaptedRatio);
+                            if (containerRef.current && containerRef.current.clientWidth > 0 && containerRef.current.clientHeight > 0) {
+                                const pxScale = calculatePixelScale(propsRef.current.settings, containerRef.current.clientWidth);
+                                renderer.setSize(containerRef.current.clientWidth / pxScale, containerRef.current.clientHeight / pxScale, false);
+                            }
+                            scene.userData.dynamicPixelRatio = adaptedRatio;
+                            scene.userData.performanceMode = true;
+                        }
+                    } else if (dynamicFps >= 55 && dynamicPixelRatioScale < 1.0 && (currentTime - lastAdaptiveScaleTime > 5000)) {
+                        // Frame rate has recovered and stabilized, smoothly recover pixel ratio
+                        dynamicPixelRatioScale = Math.min(1.0, dynamicPixelRatioScale + 0.05);
+                        scene.userData.dynamicPixelRatioScale = dynamicPixelRatioScale;
+                        lastAdaptiveScaleTime = currentTime;
+
+                        const adaptedRatio = Math.max(0.60, Math.min(baseRatio, baseRatio * dynamicPixelRatioScale));
+                        renderer.setPixelRatio(adaptedRatio);
+                        if (containerRef.current && containerRef.current.clientWidth > 0 && containerRef.current.clientHeight > 0) {
+                            const pxScale = calculatePixelScale(propsRef.current.settings, containerRef.current.clientWidth);
+                            renderer.setSize(containerRef.current.clientWidth / pxScale, containerRef.current.clientHeight / pxScale, false);
+                        }
+                        scene.userData.dynamicPixelRatio = adaptedRatio;
+                    }
+                }
+            }
 
             time += delta;
 
@@ -343,6 +421,11 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
                 sceneRef.current.scene.userData.performanceMode = false;
             }
 
+            // Smooth ceiling fan rotation inside managed render loop
+            if (sceneRef.current?.scene.userData.fanGroup) {
+                sceneRef.current.scene.userData.fanGroup.rotation.y += delta * 0.6;
+            }
+
             if (sceneRef.current && propsRef.current.onUpdateNameTags) {
                 const shouldReduceNameTags = !!sceneRef.current.scene.userData.performanceMode;
                 if (++nameTagFrameCounter % (shouldReduceNameTags ? 4 : nameTagUpdateInterval) !== 0) {
@@ -351,7 +434,9 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
 
                 const { scene, camera, dealerGroup } = sceneRef.current;
                 const worldPos = worldPositionVec.current;
-                const tagsList: { name: string, x: number, y: number, visible: boolean }[] = [];
+                const bbox3 = _headBox3.current;
+                const tagsList = _tagsScratch.current;
+                tagsList.length = 0;
 
                 const getCachedHead = (cacheKey: string, groupName: string) => {
                     if (scene.userData[cacheKey] === undefined) {
@@ -364,18 +449,20 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
                 const addHeadTag = (head: THREE.Object3D | null, label: string) => {
                     if (!head) return;
 
-                    const bbox = new THREE.Box3().setFromObject(head);
-                    if (bbox.isEmpty()) {
-                        head.getWorldPosition(worldPos);
-                        worldPos.y += 2.4;
-                    } else {
-                        const topY = bbox.max.y;
-                        const headHeight = bbox.max.y - bbox.min.y;
-                        const x = (bbox.min.x + bbox.max.x) * 0.5;
-                        const z = (bbox.min.z + bbox.max.z) * 0.5;
-                        worldPos.set(x, topY + Math.max(0.08, headHeight * 0.08), z);
+                    head.getWorldPosition(worldPos);
+                    // Cache head vertical tag offset once to eliminate heavy setFromObject geometry hierarchy traversal on every frame
+                    if (head.userData._headTagOffset === undefined) {
+                        bbox3.setFromObject(head);
+                        if (bbox3.isEmpty()) {
+                            head.userData._headTagOffset = 2.4;
+                        } else {
+                            const topY = bbox3.max.y;
+                            const headHeight = bbox3.max.y - bbox3.min.y;
+                            head.userData._headTagOffset = (topY - worldPos.y) + Math.max(0.08, headHeight * 0.08);
+                        }
                     }
 
+                    worldPos.y += head.userData._headTagOffset;
                     worldPos.project(camera);
 
                     const x = (worldPos.x * 0.5 + 0.5) * 100;
@@ -412,29 +499,63 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
                     addHeadTag(player4Head, player4Name);
                 }
 
-                propsRef.current.onUpdateNameTags(tagsList);
+                // Throttle state updates: only notify parent if tags or positions changed measurably
+                let hasChanged = tagsList.length !== prevTagsRef.current.length;
+                if (!hasChanged) {
+                    for (let i = 0; i < tagsList.length; i++) {
+                        const cur = tagsList[i];
+                        const prev = prevTagsRef.current[i];
+                        if (cur.name !== prev.name || cur.visible !== prev.visible || Math.abs(cur.x - prev.x) > 0.08 || Math.abs(cur.y - prev.y) > 0.08) {
+                            hasChanged = true;
+                            break;
+                        }
+                    }
+                }
+                if (hasChanged) {
+                    const pool = tagsOutputPool.current;
+                    while (pool.length < tagsList.length) {
+                        pool.push({ name: '', x: 0, y: 0, visible: false });
+                    }
+                    pool.length = tagsList.length;
+                    for (let i = 0; i < tagsList.length; i++) {
+                        pool[i].name = tagsList[i].name;
+                        pool[i].x = tagsList[i].x;
+                        pool[i].y = tagsList[i].y;
+                        pool[i].visible = tagsList[i].visible;
+                    }
+                    prevTagsRef.current = pool;
+                    propsRef.current.onUpdateNameTags(pool);
+                }
             }
         };
 
         const updateCameraResponsive = () => {
             if (!containerRef.current || !sceneRef.current) return;
+            containerRectRef.current = containerRef.current.getBoundingClientRect();
             syncResolution(containerRef.current, sceneRef.current, propsRef.current.settings);
         };
+
+        let checkInterval: any = null;
+        let touchTimeout: any = null;
 
         // Initialize immediately if possible to avoid flash
         if (containerRef.current && containerRef.current.clientWidth > 0) {
             initThree();
             animate();
         } else {
-            // Fallback for edge cases
-            const checkInterval = setInterval(() => {
+            // Fallback for edge cases when layout takes a few frames
+            checkInterval = setInterval(() => {
                 if (containerRef.current && containerRef.current.clientWidth > 0) {
-                    initThree();
-                    animate();
-                    clearInterval(checkInterval);
+                    if (!sceneRef.current) {
+                        initThree();
+                        animate();
+                    }
+                    if (checkInterval) {
+                        clearInterval(checkInterval);
+                        checkInterval = null;
+                    }
                 }
             }, 16);
-            return () => clearInterval(checkInterval);
         }
 
         const resizeObserver = new ResizeObserver(() => {
@@ -443,6 +564,10 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
             } else if (containerRef.current && containerRef.current.clientWidth > 0) {
                 initThree();
                 animate();
+                if (checkInterval) {
+                    clearInterval(checkInterval);
+                    checkInterval = null;
+                }
             }
         });
         if (containerRef.current) resizeObserver.observe(containerRef.current);
@@ -453,7 +578,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
         const updateHoverIndex = () => {
             if (!sceneRef.current) return;
             const currentGameState = propsRef.current.gameState;
-            if (currentGameState.phase === 'CARD_SELECT' && currentGameState.turnOwner === 'PLAYER' && currentGameState.selectedCardIndex === null) {
+            if (currentGameState.phase === 'CARD_SELECT' && currentGameState.turnOwner === 'PLAYER' && currentGameState.selectedCardIndex == null) {
                 if (sceneRef.current.itemDeckCards) {
                     sceneRef.current.raycaster.setFromCamera(sceneRef.current.mouse, sceneRef.current.camera);
                     const intersects = sceneRef.current.raycaster.intersectObjects(sceneRef.current.itemDeckCards, true);
@@ -478,7 +603,11 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
 
         const handleMouseMove = (e: MouseEvent) => {
             if (!containerRef.current || !sceneRef.current || isTouchInteraction) return;
-            const rect = containerRef.current.getBoundingClientRect();
+            let rect = containerRectRef.current;
+            if (!rect || rect.width === 0) {
+                rect = containerRef.current.getBoundingClientRect();
+                containerRectRef.current = rect;
+            }
             sceneRef.current.mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
             sceneRef.current.mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
             updateHoverIndex();
@@ -497,7 +626,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
             const currentProps = propsRef.current;
             const currentGameState = currentProps.gameState;
 
-            if (currentGameState.phase === 'CARD_SELECT' && currentGameState.turnOwner === 'PLAYER' && currentGameState.selectedCardIndex === null) {
+            if (currentGameState.phase === 'CARD_SELECT' && currentGameState.turnOwner === 'PLAYER' && currentGameState.selectedCardIndex == null) {
                 const itemDeckCards = sceneRef.current.itemDeckCards;
                 if (itemDeckCards && itemDeckCards.length > 0) {
                     sceneRef.current.raycaster.setFromCamera(sceneRef.current.mouse, sceneRef.current.camera);
@@ -533,6 +662,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
             if (!containerRef.current || !sceneRef.current || e.changedTouches.length === 0) return;
             const touch = e.changedTouches[0];
             const rect = containerRef.current.getBoundingClientRect();
+            containerRectRef.current = rect;
             sceneRef.current.mouse.x = ((touch.clientX - rect.left) / rect.width) * 2 - 1;
             sceneRef.current.mouse.y = -((touch.clientY - rect.top) / rect.height) * 2 + 1;
             updateHoverIndex();
@@ -544,7 +674,11 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
             handleClick(e);
 
             // Reset flag after a delay to allow mouse usage again later if needed (hybrid devices)
-            setTimeout(() => isTouchInteraction = false, 500);
+            if (touchTimeout) clearTimeout(touchTimeout);
+            touchTimeout = setTimeout(() => {
+                isTouchInteraction = false;
+                touchTimeout = null;
+            }, 500);
         };
 
         const el = containerRef.current;
@@ -559,6 +693,14 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
         el.addEventListener('touchend', handleTouchEnd, touchOpt);
 
         return () => {
+            if (checkInterval) {
+                clearInterval(checkInterval);
+                checkInterval = null;
+            }
+            if (touchTimeout) {
+                clearTimeout(touchTimeout);
+                touchTimeout = null;
+            }
             cancelAnimationFrame(frameId);
             document.removeEventListener('visibilitychange', handleVisibilityChange);
             window.removeEventListener('mousemove', handleMouseMove);
@@ -570,10 +712,6 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
                 cleanScene(sceneRef.current.scene);
                 try {
                     const renderer = sceneRef.current.renderer;
-                    const webglContext = (renderer.getContext && renderer.getContext()) as WebGLRenderingContext | null;
-                    if (webglContext && !webglContext.isContextLost()) {
-                        (renderer as THREE.WebGLRenderer & { forceContextLoss?: () => void }).forceContextLoss?.();
-                    }
                     renderer.dispose();
                 } catch (e) {
                     console.warn('Error disposing renderer during cleanup:', e);
@@ -590,6 +728,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
             .sort(([a], [b]) => a.localeCompare(b))
             .map(([playerId, modelKey]) => `${playerId}:${modelKey}`)
             .join(','),
+        settings.graphicsMode,
         settings.ultraPerformance,
         settings.balancedPerformance,
         settings.debugHeadModel,
@@ -601,7 +740,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
     useEffect(() => {
         if (!containerRef.current || !sceneRef.current) return;
         syncResolution(containerRef.current, sceneRef.current, settings);
-    }, [settings.pixelScale, settings.ultraPerformance, settings.balancedPerformance]);
+    }, [settings.pixelScale, settings.graphicsMode, settings.ultraPerformance, settings.balancedPerformance]);
 
     // --- SYNC EFFECTS ---
     useEffect(() => {
@@ -726,8 +865,8 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
         muzzleLight.intensity = animState.muzzleFlashIntensity;
         muzzleLight.position.copy(gunGroup.position);
         muzzleLight.position.y += 0.5;
-        const dir = new THREE.Vector3(0, 0, 1).applyEuler(gunGroup.rotation);
-        muzzleLight.position.add(dir.multiplyScalar(8));
+        const dir = _muzzleFlashDir.current.set(0, 0, 1).applyEuler(gunGroup.rotation);
+        muzzleLight.position.addScaledVector(dir, 8);
         if (animState.muzzleFlashIntensity > 0) {
             if (animState.isLiveShot) {
                 muzzleFlash.visible = true;
@@ -748,7 +887,6 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
                 const vel = sparkParticles.geometry.attributes.velocity.array as Float32Array;
                 const count = pos.length / 3;
                 const spread = _sparkSpread.current;
-                const blastBase = dir.clone();
                 for (let i = 0; i < count && i < 60; i++) {
                     const idx = i * 3;
                     pos[idx] = muzzleLight.position.x + (Math.random() - 0.5) * 0.3;
@@ -759,10 +897,10 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
                         (Math.random() - 0.5) * 1.0,
                         (Math.random() - 0.5) * 1.0,
                     );
-                    const blast = blastBase.multiplyScalar(1.0 + Math.random() * 2.0);
-                    vel[idx] = blast.x + spread.x;
-                    vel[idx + 1] = blast.y + spread.y;
-                    vel[idx + 2] = blast.z + spread.z;
+                    const speed = 1.0 + Math.random() * 2.0;
+                    vel[idx] = dir.x * speed + spread.x;
+                    vel[idx + 1] = dir.y * speed + spread.y;
+                    vel[idx + 2] = dir.z * speed + spread.z;
                 }
                 sparkParticles.geometry.attributes.position.needsUpdate = true;
             } else {
@@ -812,7 +950,8 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
             bulletMesh.visible = true;
             bulletMesh.position.copy(gunGroup.position);
             bulletMesh.position.add(forward.normalize().multiplyScalar(isSawed ? 4 : 8));
-            bulletMesh.userData.velocity = forward.normalize().clone(); // clone once for velocity
+            if (!bulletMesh.userData.velocity) bulletMesh.userData.velocity = new THREE.Vector3();
+            (bulletMesh.userData.velocity as THREE.Vector3).copy(forward).normalize();
         }
         scene.userData.cameraShake = animState.isLiveShot ? 1.5 : 0.2;
     }, [animState.triggerRecoil, isSawed, animState.isLiveShot]);
@@ -872,5 +1011,17 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
 
     }, [animState.triggerRack, animState.ejectedShellColor]);
 
-    return <div ref={containerRef} className="absolute inset-0 z-0 bg-neutral-950" style={{ display: isPaused ? 'none' : 'block' }} />;
+    return (
+        <div
+            ref={containerRef}
+            className="absolute inset-0 z-0 bg-neutral-950 select-none webgl-container"
+            style={{
+                display: isPaused ? 'none' : 'block',
+                touchAction: 'none',
+                userSelect: 'none',
+                WebkitUserSelect: 'none',
+                WebkitTouchCallout: 'none'
+            }}
+        />
+    );
 };

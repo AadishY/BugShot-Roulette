@@ -70,13 +70,24 @@ export const DebugOverlay: React.FC<DebugOverlayProps> = ({
         const myIndex = players.findIndex((p: any) => p.id === myId);
         if (myIndex !== -1 && size >= 3) {
             const sideOpponent = players[(myIndex + 1) % size];
-            if (sideOpponent) player3DisplayName = sideOpponent.name.toUpperCase();
+            if (sideOpponent) player3DisplayName = (sideOpponent.name || 'PLAYER 3').toUpperCase();
             if (size >= 4) {
                 const rightOpponent = players[(myIndex + 3) % size];
-                if (rightOpponent) player4DisplayName = rightOpponent.name.toUpperCase();
+                if (rightOpponent) player4DisplayName = (rightOpponent.name || 'PLAYER 4').toUpperCase();
             }
         }
     }
+
+    React.useEffect(() => {
+        if (!onClose) return;
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                onClose();
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [onClose]);
 
     // Mark the game as using debug features
     React.useEffect(() => {

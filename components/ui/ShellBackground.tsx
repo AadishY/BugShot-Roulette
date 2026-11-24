@@ -17,9 +17,14 @@ interface ShellBackgroundProps {
 
 const ShellBackground: React.FC<ShellBackgroundProps> = ({ active = true }) => {
     const activeRef = useRef(active);
+    const isRunningRef = useRef(false);
+    const startAnimateRef = useRef<(() => void) | null>(null);
 
     useEffect(() => {
         activeRef.current = active;
+        if (active && !isRunningRef.current && startAnimateRef.current) {
+            startAnimateRef.current();
+        }
     }, [active]);
 
     const containerRef = useRef<HTMLDivElement>(null);
@@ -35,7 +40,7 @@ const ShellBackground: React.FC<ShellBackgroundProps> = ({ active = true }) => {
         if (!containerRef.current) return;
 
         const container = containerRef.current;
-        let frameId: number;
+        let frameId: number | null = null;
         let resizeObserver: ResizeObserver | null = null;
 
         const initThree = () => {
@@ -164,10 +169,11 @@ const ShellBackground: React.FC<ShellBackgroundProps> = ({ active = true }) => {
 
             const animate = (time: number) => {
                 if (!activeRef.current) {
-                    frameId = requestAnimationFrame(animate);
-                    lastTime = time;
+                    isRunningRef.current = false;
+                    frameId = null;
                     return;
                 }
+                isRunningRef.current = true;
                 frameId = requestAnimationFrame(animate);
                 const dt = Math.min((time - lastTime) / 1000, 0.1);
                 lastTime = time;
@@ -178,7 +184,9 @@ const ShellBackground: React.FC<ShellBackgroundProps> = ({ active = true }) => {
                 camera.position.y = Math.cos(t * 0.3) * 1.0;
                 camera.lookAt(0, 0, 0);
 
-                shells.forEach((shell) => {
+                const numShells = shells.length;
+                for (let i = 0; i < numShells; i++) {
+                    const shell = shells[i];
                     shell.mesh.position.y -= shell.speed * (dt * 60);
                     shell.mesh.position.x += Math.sin(t * shell.driftSpeed + shell.driftOffset) * (shell.drift * 0.01);
 
@@ -191,12 +199,22 @@ const ShellBackground: React.FC<ShellBackgroundProps> = ({ active = true }) => {
                         shell.mesh.position.x = (Math.random() - 0.5) * spawnWidth;
                         shell.mesh.position.z = (Math.random() * 20) - 10;
                     }
-                });
+                }
 
                 renderer.render(scene, camera);
             };
 
-            animate(0);
+            startAnimateRef.current = () => {
+                lastTime = performance.now();
+                if (!isRunningRef.current && activeRef.current) {
+                    isRunningRef.current = true;
+                    frameId = requestAnimationFrame(animate);
+                }
+            };
+
+            if (activeRef.current) {
+                startAnimateRef.current();
+            }
         };
 
         const handleResize = () => {
@@ -235,14 +253,18 @@ const ShellBackground: React.FC<ShellBackgroundProps> = ({ active = true }) => {
         window.addEventListener('resize', handleResize);
 
         return () => {
-            cancelAnimationFrame(frameId);
+            if (frameId !== null) cancelAnimationFrame(frameId);
+            startAnimateRef.current = null;
+            isRunningRef.current = false;
             window.removeEventListener('resize', handleResize);
             if (resizeObserver) resizeObserver.disconnect();
             if (sceneRef.current) {
-                sceneRef.current.disposables.forEach(d => d.dispose());
-                const gl = sceneRef.current.renderer.getContext();
-                sceneRef.current.renderer.dispose();
-                gl?.getExtension('WEBGL_lose_context')?.loseContext();
+                sceneRef.current.disposables.forEach(d => {
+                    try { d.dispose(); } catch (e) {}
+                });
+                try {
+                    sceneRef.current.renderer.dispose();
+                } catch (e) {}
                 sceneRef.current = null;
             }
             container.innerHTML = '';
