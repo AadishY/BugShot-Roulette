@@ -1,43 +1,73 @@
 import * as THREE from 'three';
+import { getGraphicsPreset } from '../../types';
 
 export const createGunModel = (scene: THREE.Scene) => {
     const gunGroup = new THREE.Group();
     const isMobile = scene.userData.isMobile || false;
-    const shouldCastShadow = !isMobile;
-
     const settings = scene.userData.settings || {};
-    const ultraPerformance = !!settings.ultraPerformance;
-    const balancedPerformance = !!settings.balancedPerformance;
+    const preset = getGraphicsPreset(settings);
+    const isPotato = preset === 'potato';
+    const isLow = preset === 'low';
+    const isBalanced = preset === 'balanced';
+    const isHigh = preset === 'high';
+    const isUltra = false;
 
-    const metalMat = ultraPerformance 
+    const isLambert = isBalanced || isLow;
+    const shouldCastShadow = isHigh && !isMobile;
+
+    const metalMat = isPotato 
         ? new THREE.MeshBasicMaterial({ color: 0x999999 })
-        : (balancedPerformance 
+        : (isLambert
             ? new THREE.MeshLambertMaterial({ color: 0x999999 }) 
-            : new THREE.MeshStandardMaterial({ color: 0x999999, metalness: 0.9, roughness: 0.15, envMapIntensity: 1 }));
+            : new THREE.MeshStandardMaterial({
+                color: 0x999999,
+                metalness: 0.9,
+                roughness: 0.15,
+                envMapIntensity: isUltra ? 1.25 : 1.0
+            }));
             
-    const woodMat = ultraPerformance 
+    const woodMat = isPotato 
         ? new THREE.MeshBasicMaterial({ color: 0x4a3228 })
-        : (balancedPerformance 
+        : (isLambert
             ? new THREE.MeshLambertMaterial({ color: 0x4a3228 }) 
-            : new THREE.MeshStandardMaterial({ color: 0x4a3228, roughness: 0.8 }));
+            : new THREE.MeshStandardMaterial({
+                color: 0x4a3228,
+                roughness: 0.8,
+                envMapIntensity: isUltra ? 0.6 : 0.4
+            }));
             
-    const darkMetalMat = ultraPerformance 
+    const darkMetalMat = isPotato 
         ? new THREE.MeshBasicMaterial({ color: 0x1a1a1a })
-        : (balancedPerformance 
+        : (isLambert 
             ? new THREE.MeshLambertMaterial({ color: 0x1a1a1a }) 
-            : new THREE.MeshStandardMaterial({ color: 0x1a1a1a, metalness: 0.8, roughness: 0.4 }));
+            : new THREE.MeshStandardMaterial({
+                color: 0x1a1a1a,
+                metalness: 0.8,
+                roughness: 0.4,
+                envMapIntensity: isUltra ? 1.0 : 0.8
+            }));
             
-    const chokeMat = ultraPerformance 
+    const chokeMat = isPotato 
         ? new THREE.MeshBasicMaterial({ color: 0x111111 })
-        : (balancedPerformance 
+        : (isLambert 
             ? new THREE.MeshLambertMaterial({ color: 0x111111 }) 
-            : new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.7, roughness: 0.7 }));
+            : new THREE.MeshStandardMaterial({
+                color: 0x111111,
+                metalness: 0.7,
+                roughness: 0.7,
+                envMapIntensity: isUltra ? 1.0 : 0.7
+            }));
             
-    const sawCutMat = ultraPerformance 
+    const sawCutMat = isPotato 
         ? new THREE.MeshBasicMaterial({ color: 0xcccccc })
-        : (balancedPerformance 
+        : (isLambert 
             ? new THREE.MeshLambertMaterial({ color: 0xcccccc }) 
-            : new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 1.0, roughness: 0.1 }));
+            : new THREE.MeshStandardMaterial({
+                color: 0xcccccc,
+                metalness: 1.0,
+                roughness: 0.1,
+                envMapIntensity: isUltra ? 1.4 : 1.0
+            }));
 
     const receiver = new THREE.Mesh(new THREE.BoxGeometry(0.85, 1.2, 3.2), metalMat);
     receiver.castShadow = shouldCastShadow;
@@ -78,8 +108,9 @@ export const createGunModel = (scene: THREE.Scene) => {
     sawCut.name = 'SAW_CUT';
 
     // Barrel Rings - Thicker for detail
+    const ringGeo = new THREE.CylinderGeometry(0.3, 0.3, 0.15, 12);
     for (let i = 0; i < 3; i++) {
-        const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.15, 12), metalMat);
+        const ring = new THREE.Mesh(ringGeo, metalMat);
         ring.position.y = -4 + i * 3.5;
         barrelMesh.add(ring);
     }
@@ -101,9 +132,10 @@ export const createGunModel = (scene: THREE.Scene) => {
     pumpGroup.name = "PUMP";
     pumpGroup.position.set(0, -0.25, 4.5);
 
-    // Create ribs for the pump
+    // Create ribs for the pump - reuse geometry
+    const ribGeo = new THREE.CylinderGeometry(0.42, 0.42, 0.18, 16);
     for (let i = 0; i < 9; i++) {
-        const ribMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.18, 16), woodMat);
+        const ribMesh = new THREE.Mesh(ribGeo, woodMat);
         ribMesh.rotation.x = Math.PI / 2;
         ribMesh.position.z = -1.4 + i * 0.35;
         ribMesh.castShadow = shouldCastShadow;
@@ -139,7 +171,12 @@ export const createGunModel = (scene: THREE.Scene) => {
     const guard = new THREE.Mesh(guardGeo, darkMetalMat);
     guard.rotation.z = Math.PI; guard.position.set(0, -0.6, 0.5);
 
-    const sight = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.2, 0.12), new THREE.MeshStandardMaterial({ color: 0xff4400, emissive: 0xff2200, emissiveIntensity: 0.8 }));
+    const sightMat = isPotato
+        ? new THREE.MeshBasicMaterial({ color: 0xff2200 })
+        : (isLambert
+            ? new THREE.MeshLambertMaterial({ color: 0xff4400, emissive: 0xff2200 })
+            : new THREE.MeshStandardMaterial({ color: 0xff4400, emissive: 0xff2200, emissiveIntensity: isUltra ? 1.0 : 0.8 }));
+    const sight = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.2, 0.12), sightMat);
     sight.position.set(0, 0.65, 10.5);
     sight.name = "SIGHT";
 
@@ -149,7 +186,7 @@ export const createGunModel = (scene: THREE.Scene) => {
     sSight.name = "SHORT_SIGHT";
 
     // Shell Ejection Port (Now positioned on the side of the new receiver)
-    const port = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.4, 1.4), new THREE.MeshStandardMaterial({ color: 0x050505 }));
+    const port = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.4, 1.4), darkMetalMat);
     port.position.set(0.3, 0.25, 1.0);
     receiver.add(port);
 
@@ -170,18 +207,20 @@ export const createGunModel = (scene: THREE.Scene) => {
     chokeBody.rotation.x = Math.PI / 2;
     chokeGroup.add(chokeBody);
 
-    // Cooling Fins
+    // Cooling Fins - reuse geometry
+    const finGeo = new THREE.TorusGeometry(0.45, 0.02, 4, 32);
     for (let i = 0; i < 12; i++) {
-        const fin = new THREE.Mesh(new THREE.TorusGeometry(0.45, 0.02, 4, 32), chokeMat);
+        const fin = new THREE.Mesh(finGeo, chokeMat);
         fin.rotation.x = Math.PI / 2;
         fin.position.z = -1.6 + i * 0.3;
         chokeGroup.add(fin);
     }
 
-    // Muzzle Brake Holes
+    // Muzzle Brake Holes - reuse geometry
     const brakeHoleMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+    const brakeHoleGeo = new THREE.CircleGeometry(0.08, 12);
     for (let i = 0; i < 8; i++) {
-        const brakeHole = new THREE.Mesh(new THREE.CircleGeometry(0.08, 12), brakeHoleMat);
+        const brakeHole = new THREE.Mesh(brakeHoleGeo, brakeHoleMat);
         brakeHole.position.set(Math.cos(i * Math.PI / 4) * 0.43, Math.sin(i * Math.PI / 4) * 0.43, 1.2);
         brakeHole.rotation.y = Math.PI / 2;
         chokeGroup.add(brakeHole);
@@ -218,9 +257,37 @@ export const createProjectiles = (scene: THREE.Scene) => {
     bulletMesh.rotation.x = Math.PI / 2; bulletMesh.visible = false;
     scene.add(bulletMesh);
 
+    const settings = scene.userData.settings || {};
+    const preset = getGraphicsPreset(settings);
+    const isPotato = preset === 'potato';
+    const isLow = preset === 'low';
+    const isBalanced = preset === 'balanced';
+    const isHigh = preset === 'high';
+    const isUltra = false;
+
     // Shared materials — compiled once at scene init, reused by all shells
-    const shellBodyMat = new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0x991b1b, emissiveIntensity: 0.4 });
-    const shellBaseMat = new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.8, roughness: 0.3 });
+    const shellBodyMat = isPotato
+        ? new THREE.MeshBasicMaterial({ color: 0xef4444 })
+        : (isBalanced || isLow
+            ? new THREE.MeshLambertMaterial({ color: 0xef4444, emissive: 0x991b1b })
+            : new THREE.MeshStandardMaterial({
+                color: 0xef4444,
+                emissive: 0x991b1b,
+                emissiveIntensity: 0.5,
+                roughness: 0.3
+            }));
+
+    const shellBaseMat = isPotato
+        ? new THREE.MeshBasicMaterial({ color: 0xd4af37 })
+        : (isBalanced || isLow
+            ? new THREE.MeshLambertMaterial({ color: 0xd4af37 })
+            : new THREE.MeshStandardMaterial({
+                color: 0xd4af37,
+                metalness: 0.85,
+                roughness: 0.25,
+                envMapIntensity: 1.0
+            }));
+
     const shellBodyGeo = new THREE.CylinderGeometry(0.12, 0.12, 0.45, 12);
     const shellBaseGeo = new THREE.CylinderGeometry(0.125, 0.125, 0.1, 12);
 

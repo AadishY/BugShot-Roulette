@@ -236,10 +236,10 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
 
                         <ItemCard
                             icon={<Icons.Remote size={20} />}
-                            name="REMOTE"
-                            description="Cycles ammo chamber index by swapping the current shell position with the next shell. Fails safely if only 1 shell remains in chamber."
-                            color="text-red-600"
-                            effect="→ CYCLE CHAMBER INDEX"
+                            name="REMOTE (VAULTED / INACTIVE)"
+                            description="Cycles ammo chamber index by swapping the current shell position with the next shell. Currently vaulted and inactive in match rotations."
+                            color="text-stone-500"
+                            effect="→ CYCLE CHAMBER INDEX (VAULTED)"
                         />
 
                         <ItemCard
@@ -902,7 +902,7 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
                                                 </td>
                                                 <td className="py-2 px-2.5 text-stone-500 italic">Not in classic</td>
                                                 <td className="py-2 px-2.5 text-stone-200">Cycles ammo chamber sequence; swaps current shell index with the next</td>
-                                                <td className="py-2 px-2 text-right"><span className="text-cyan-400 font-bold bg-cyan-955/60 px-1.5 py-0.5 rounded border border-cyan-700 text-[7px]">EXCLUSIVE</span></td>
+                                                <td className="py-2 px-2 text-right"><span className="text-stone-400 font-bold bg-stone-800/80 px-1.5 py-0.5 rounded border border-stone-600 text-[7px]">VAULTED</span></td>
                                             </tr>
                                             <tr className="hover:bg-white/5 transition-colors">
                                                 <td className="py-2 px-2.5 font-bold text-white flex items-center gap-1.5">

@@ -5,15 +5,15 @@
   "start_url": "/",
   "id": "/",
   "scope": "/",
-  "display": "fullscreen",
+  "display": "standalone",
   "display_override": [
-    "fullscreen",
     "standalone",
+    "fullscreen",
     "minimal-ui",
     "window-controls-overlay"
   ],
   "orientation": "landscape",
-  "background_color": "#050505",
+  "background_color": "#0a0a0a",
   "theme_color": "#0a0a0a",
   "icons": [
     {
@@ -39,6 +39,34 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Singleplayer Table",
+      "short_name": "Singleplayer",
+      "description": "Face off against the Dealer in 12-gauge Russian Roulette",
+      "url": "/?mode=single",
+      "icons": [
+        {
+          "src": "/image/favicon/android-chrome-192x192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Multiplayer Bunker",
+      "short_name": "Multiplayer",
+      "description": "Enter the live PvP multiplayer bunker",
+      "url": "/?mode=multi",
+      "icons": [
+        {
+          "src": "/image/favicon/android-chrome-192x192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
     }
   ],
   "categories": [

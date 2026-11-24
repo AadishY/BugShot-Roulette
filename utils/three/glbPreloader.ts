@@ -53,8 +53,17 @@ export const getPreloadedGLB = (url: string): Promise<GLTF> => {
                                     const textureKeys = ['map', 'alphaMap', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap', 'aoMap', 'bumpMap', 'displacementMap', 'envMap'];
                                     textureKeys.forEach((key) => {
                                         if (matWithMaps[key] && matWithMaps[key] instanceof THREE.Texture) {
-                                            matWithMaps[key].userData = matWithMaps[key].userData || {};
-                                            matWithMaps[key].userData.isCachedAsset = true;
+                                            const tex = matWithMaps[key] as THREE.Texture;
+                                            tex.userData = tex.userData || {};
+                                            tex.userData.isCachedAsset = true;
+                                            // On Android, clamp anisotropy to 1 to reduce texture cache misses & memory bus pressure on Adreno/Mali GPUs
+                                            if (typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent)) {
+                                                tex.anisotropy = 1;
+                                            }
+                                            // When mipmaps aren't required, set minFilter to LinearFilter to conserve texture memory
+                                            if (!tex.generateMipmaps) {
+                                                tex.minFilter = THREE.LinearFilter;
+                                            }
                                         }
                                     });
                                 });
@@ -95,4 +104,26 @@ export const getGLBLoadingProgress = (): number => {
         totalProgress += gltfProgress.get(url) || 0;
     });
     return Math.round(totalProgress / PRELOAD_MODEL_PATHS.length);
+};
+
+export const clearGLBCache = () => {
+    gltfCache.forEach((promise) => {
+        promise.then((gltf) => {
+            gltf.scene.traverse((obj) => {
+                if (obj instanceof THREE.Mesh) {
+                    if (obj.geometry) {
+                        try { obj.geometry.dispose(); } catch (e) {}
+                    }
+                    if (obj.material) {
+                        const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+                        mats.forEach((m) => {
+                            try { m.dispose(); } catch (e) {}
+                        });
+                    }
+                }
+            });
+        }).catch(() => {});
+    });
+    gltfCache.clear();
+    gltfProgress.clear();
 };

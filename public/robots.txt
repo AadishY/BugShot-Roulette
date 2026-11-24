@@ -1,6 +1,58 @@
+# Robots.txt for Bugshot Roulette (https://bugshotroulette.pages.dev/)
+# Creator: Aadish (https://github.com/AadishY)
+
 User-agent: *
 Allow: /
 Disallow: /server/
 Disallow: /api/
 
+# Search Engine Crawlers
+User-agent: Googlebot
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+User-agent: Applebot
+Allow: /
+
+User-agent: DuckDuckBot
+Allow: /
+
+# LLM, AI Agents, & Conversational Search Bots
+User-agent: GPTBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: anthropic-ai
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Applebot-Extended
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: CCBot
+Allow: /
+
+User-agent: Bytespider
+Allow: /
+
+User-agent: Cohere-ai
+Allow: /
+
+User-agent: Diffbot
+Allow: /
+
+# Sitemaps & Machine-Readable AI Context
 Sitemap: https://bugshotroulette.pages.dev/sitemap.xml
+llms-txt: https://bugshotroulette.pages.dev/llms.txt

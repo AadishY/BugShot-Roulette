@@ -1,19 +1,75 @@
+import type * as THREE from 'three';
+import type { GameStats, MatchStats } from './utils/statsManager';
+import type { DicebearStyle } from './utils/dicebear';
+
+export type TarotCardName =
+  | 'The Magician'
+  | 'The Hanged Man'
+  | 'The Hermit'
+  | 'The Moon'
+  | 'Judgment'
+  | 'Wheel of Fortune'
+  | 'The Sun'
+  | 'Death'
+  | 'The Tower'
+  | 'The Fool'
+  | 'Justice'
+  | 'Temperance';
 
 export interface TarotCard {
-  name: 'The Magician' | 'The Hanged Man' | 'The Hermit' | 'The Moon' | 'Judgment' | 'Wheel of Fortune' | 'The Sun' | 'Death' | 'The Tower' | 'The Fool' | 'Justice' | 'Temperance';
+  name: TarotCardName;
   power: string;
 }
 
-export type ItemType = 'GLASS' | 'BEER' | 'CIGS' | 'CUFFS' | 'SAW' | 'PHONE' | 'INVERTER' | 'ADRENALINE' | 'CHOKE' | 'REMOTE' | 'BIG_INVERTER' | 'CONTRACT' | 'LUCKYCHARM' | 'FLASHBANG' | 'CRUSHER' | 'TOTEM' | 'MIRROR' | 'DECK_CARD' | 'JACKPOT';
+export type ItemType =
+  | 'GLASS'
+  | 'BEER'
+  | 'CIGS'
+  | 'CUFFS'
+  | 'SAW'
+  | 'PHONE'
+  | 'INVERTER'
+  | 'ADRENALINE'
+  | 'CHOKE'
+  | 'REMOTE'
+  | 'BIG_INVERTER'
+  | 'CONTRACT'
+  | 'LUCKYCHARM'
+  | 'FLASHBANG'
+  | 'CRUSHER'
+  | 'TOTEM'
+  | 'MIRROR'
+  | 'DECK_CARD'
+  | 'JACKPOT';
+
 export type ShellType = 'LIVE' | 'BLANK';
 export type TurnOwner = 'PLAYER' | 'DEALER' | 'PLAYER3' | 'PLAYER4';
-export type CameraView = 'PLAYER' | 'DEALER' | 'GUN' | 'TABLE' | 'STEAL_UI' | 'DEALER_GUN' | 'PLAYER3_GUN' | 'PLAYER4_GUN';
+export type CameraView =
+  | 'PLAYER'
+  | 'DEALER'
+  | 'GUN'
+  | 'TABLE'
+  | 'STEAL_UI'
+  | 'DEALER_GUN'
+  | 'PLAYER3_GUN'
+  | 'PLAYER4_GUN';
 export type AimTarget = 'OPPONENT' | 'SELF' | 'IDLE' | 'CHOOSING' | 'LEFT' | 'RIGHT';
 export type PlayerModelKey = 'DEFAULT' | 'YASH' | 'YUVRAJ' | 'ASP' | 'AADISH';
 
 export interface GameState {
-  phase: 'BOOT' | 'INTRO' | 'LOAD' | 'PLAYER_TURN' | 'DEALER_TURN' | 'PLAYER3_TURN' | 'PLAYER4_TURN' | 'RESOLVING' | 'GAME_OVER' | 'LOOTING' | 'STEALING' | 'CARD_SELECT';
-
+  phase:
+    | 'BOOT'
+    | 'INTRO'
+    | 'LOAD'
+    | 'PLAYER_TURN'
+    | 'DEALER_TURN'
+    | 'PLAYER3_TURN'
+    | 'PLAYER4_TURN'
+    | 'RESOLVING'
+    | 'GAME_OVER'
+    | 'LOOTING'
+    | 'STEALING'
+    | 'CARD_SELECT';
   turnOwner: TurnOwner;
   winner: TurnOwner | null;
   chamber: ShellType[];
@@ -44,9 +100,9 @@ export interface GameState {
     playerWins: number;
     opponentWins: number;
   };
-  isDebugUsed?: boolean; // Added
-  deckCards?: TarotCard[]; // Selected 6 cards
-  selectedCardIndex?: number | null; // Chosen card index
+  isDebugUsed?: boolean;
+  deckCards?: TarotCard[];
+  selectedCardIndex?: number | null;
   adrenalineTargetOwner?: TurnOwner;
   winnerId?: string;
   threePlayerWins?: number[];
@@ -58,7 +114,7 @@ export interface MultiplayerGameState {
   hostId: string;
   roomId: string;
   settings: RoomSettings;
-  turnIndex: number; // For 4-player scalability
+  turnIndex: number;
   debugPlayerModels?: Record<string, PlayerModelKey>;
 }
 
@@ -68,6 +124,13 @@ export interface MultiplayerPlayer extends PlayerState {
   color: string;
   ready: boolean;
   model?: PlayerModelKey;
+  disconnected?: boolean;
+  playerId?: string;
+  avatarUrl?: string;
+  avatarStyle?: DicebearStyle;
+  isDeveloper?: boolean;
+  isHost?: boolean;
+  result?: 'WIN' | 'LOSS' | 'SPECTATED';
 }
 
 export interface RoomSettings {
@@ -86,7 +149,14 @@ export interface ChatMessage {
   timestamp: number;
 }
 
-export type AppState = 'MENU' | 'LOADING_SP' | 'LOADING_MP' | 'LOADING_GAME' | 'LOBBY' | 'GAME';
+export type AppState =
+  | 'MENU'
+  | 'LOADING_SP'
+  | 'LOADING_GAME'
+  | 'GAME'
+  | 'LOADING_MP'
+  | 'MP_SELECTION'
+  | 'LOBBY';
 
 export interface PlayerState {
   hp: number;
@@ -94,10 +164,10 @@ export interface PlayerState {
   items: ItemType[];
   isHandcuffed: boolean;
   isSawedActive: boolean;
-  isAdrenalineActive?: boolean; // Added
-  isChokeActive?: boolean; // Added for Choke
-  luckycharmsUsed?: number; // Added
-  isFlashbanged?: boolean; // Added
+  isAdrenalineActive?: boolean;
+  isChokeActive?: boolean;
+  luckycharmsUsed?: number;
+  isFlashbanged?: boolean;
   lastTurnItemsUsed?: ItemType[];
   currentTurnItemsUsed?: ItemType[];
   jackpotImmunityShots?: number;
@@ -113,36 +183,36 @@ export interface LogEntry {
 export interface AnimationState {
   triggerRecoil: number;
   triggerRack: number;
-  triggerSparks: number; // Saw
-  triggerHeal: number; // Cigs
-  triggerDrink: number; // Beer
-  triggerCuff: number; // Cuffs
-  triggerGlass: number; // Glass
-  triggerPhone: number; // Phone
-  triggerInverter: number; // Inverter
-  triggerAdrenaline: number; // Adrenaline
-  triggerChoke: number; // Choke
-  triggerRemote: number; // Remote
-  triggerBigInverter: number; // Big Inverter
-  triggerContract: number; // Blood Contract
-  triggerLuckycharm: number; // Luckycharm
-  triggerFlashbang: number; // Flashbang
-  triggerCrusher: number; // Crusher
-  triggerTotem: number; // Totem
-  triggerMirror: number; // Mirror
-  triggerDeckCard: number; // DeckCard
-  triggerJackpot: number; // Jackpot
+  triggerSparks: number;
+  triggerHeal: number;
+  triggerDrink: number;
+  triggerCuff: number;
+  triggerGlass: number;
+  triggerPhone: number;
+  triggerInverter: number;
+  triggerAdrenaline: number;
+  triggerChoke: number;
+  triggerRemote: number;
+  triggerBigInverter: number;
+  triggerContract: number;
+  triggerLuckycharm: number;
+  triggerFlashbang: number;
+  triggerCrusher: number;
+  triggerTotem: number;
+  triggerMirror: number;
+  triggerDeckCard: number;
+  triggerJackpot: number;
   jackpotResult?: 'JACKPOT' | 'NORMAL' | 'LOSE' | null;
-  totemTarget?: TurnOwner | null; // Totem target
-  isSawing: boolean; // Continuous saw state
+  totemTarget?: TurnOwner | null;
+  isSawing: boolean;
   ejectedShellColor: 'red' | 'blue' | 'red+red' | 'red+blue' | 'blue+red' | 'blue+blue';
   muzzleFlashIntensity: number;
   isLiveShot: boolean;
   dealerHit: boolean;
   dealerDropping: boolean;
   playerHit: boolean;
-  playerRecovering: boolean; // Player is standing back up after being knocked
-  dealerRecovering: boolean; // Dealer is standing back up after being knocked
+  playerRecovering: boolean;
+  dealerRecovering: boolean;
   player3Hit?: boolean;
   player3Dropping?: boolean;
   player3Recovering?: boolean;
@@ -165,6 +235,7 @@ export interface GameSettings {
     PLAYER3?: PlayerModelKey;
     PLAYER4?: PlayerModelKey;
   };
+  graphicsMode?: 'ultra' | 'high' | 'balanced' | 'low' | 'potato';
   ultraPerformance?: boolean;
   balancedPerformance?: boolean;
 }
@@ -199,9 +270,9 @@ export interface SceneContext {
   bloodParticles: THREE.Points;
   sparkParticles: THREE.Points;
   dustParticles: THREE.Points | null;
-  baseLights: { light: THREE.Light, baseIntensity: number }[];
+  baseLights: { light: THREE.Light; baseIntensity: number }[];
   underLight?: THREE.PointLight;
-  ejectedShells?: THREE.Group[]; // Pool of ejected shells on table
+  ejectedShells?: THREE.Group[];
   itemsGroup?: {
     itemBeer: THREE.Group;
     itemCigs: THREE.Group;
@@ -220,14 +291,14 @@ export interface SceneContext {
     itemTotem: THREE.Group;
     itemMirror: THREE.Group;
     itemJackpot: THREE.Group;
-    itemLight: THREE.PointLight; // Light for illuminating items during animations
+    itemLight: THREE.PointLight;
   };
-  itemDeckCards?: THREE.Group[]; // Tarot card 3D models fanned on table
+  itemDeckCards?: THREE.Group[];
 }
 
 export interface SceneProps {
   isSawed: boolean;
-  isChokeActive?: boolean; // Added
+  isChokeActive?: boolean;
   aimTarget: AimTarget;
   cameraView: CameraView;
   animState: AnimationState;
@@ -248,3 +319,57 @@ export interface ChokeResult {
   shell2: ShellType;
   damage: number;
 }
+
+export interface CardRandoms {
+  magicianItem?: ItemType;
+  judgmentSuccess?: boolean;
+  moonIndex?: number;
+  deathIndex?: number;
+  towerIndex?: number;
+  wheelChamber?: ShellType[];
+}
+
+// Re-export stats manager types for centralized type access
+export type { GameStats, MatchStats };
+
+export type GraphicsPresetTier = 'potato' | 'low' | 'balanced' | 'high';
+
+/**
+ * Resolves the active graphics preset into one of 4 standardized tiers:
+ * - 'potato': Preset 1 (Potato) - Bare minimum, flat shading, zero shadows, linear tone mapping, maximum FPS for low-end devices.
+ * - 'low': Preset 2 (Low) - Lightweight performance with preserved processing: ACES tone mapping, fog, subtle lights & materials.
+ * - 'balanced': Preset 3 (Balanced) - Crisp 60 FPS target, PCF shadows, good lighting, optimized particles.
+ * - 'high': Preset 4 (High) - Rich PBR materials, PCFSoft shadows, full lighting & reflections, smooth particles.
+ */
+export const getGraphicsPreset = (s?: Partial<GameSettings> | null): GraphicsPresetTier => {
+  if (!s) return 'balanced';
+  if (s.graphicsMode === 'high' || s.graphicsMode === 'ultra') return 'high';
+  if (s.graphicsMode === 'balanced') return 'balanced';
+  if (s.graphicsMode === 'low') return 'low';
+  if (s.graphicsMode === 'potato') return 'potato';
+  if (s.ultraPerformance === true) return 'potato';
+  if (s.balancedPerformance === true) return 'balanced';
+  return 'balanced';
+};
+
+// Explicit preset predicates
+export const isPresetPotato = (s?: Partial<GameSettings> | null): boolean =>
+  getGraphicsPreset(s) === 'potato';
+export const isPresetLow = (s?: Partial<GameSettings> | null): boolean =>
+  getGraphicsPreset(s) === 'low';
+export const isPresetBalanced = (s?: Partial<GameSettings> | null): boolean =>
+  getGraphicsPreset(s) === 'balanced';
+export const isPresetHigh = (s?: Partial<GameSettings> | null): boolean =>
+  getGraphicsPreset(s) === 'high';
+export const isPresetUltra = (s?: Partial<GameSettings> | null): boolean =>
+  getGraphicsPreset(s) === 'high'; // Backward-compatible alias (Ultra merged into High)
+
+// Graphics mode helper functions (backward compatible aliases)
+export const isUltraPerf = (s?: Partial<GameSettings> | null): boolean =>
+  isPresetPotato(s);
+export const isLowPerf = (s?: Partial<GameSettings> | null): boolean =>
+  isPresetPotato(s) || isPresetLow(s);
+export const isBalancedPerf = (s?: Partial<GameSettings> | null): boolean =>
+  getGraphicsPreset(s) === 'balanced' || getGraphicsPreset(s) === 'low' || getGraphicsPreset(s) === 'potato';
+export const isHighPerf = (s?: Partial<GameSettings> | null): boolean =>
+  getGraphicsPreset(s) === 'high';

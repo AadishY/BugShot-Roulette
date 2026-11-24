@@ -1,21 +1,20 @@
-  import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { GameState, PlayerState, ShellType, ItemType, LogEntry, TurnOwner, CameraView, AimTarget, AnimationState, RoomSettings, TarotCard, PlayerModelKey } from '../types';
 import { MAX_HP, MAX_ITEMS, ITEMS } from '../constants';
 import { randomInt, wait } from '../utils/gameUtils';
 import * as ItemActions from '../utils/game/itemActions';
-import { audioManager } from '../utils/audioManager';
+import { audioManager, resumeAudioContext } from '../utils/audioManager';
 import { performShot } from '../utils/game/shooting';
 import { distributeItems as distributeItemsAction, getRandomItem, resolveJackpotOutcome } from '../utils/game/inventory';
 import { MatchStats } from '../utils/statsManager';
 
 export const useGameLogic = () => {
   // --- State ---
-  const [playerName, setPlayerName] = useState('');
+  const [playerName, setPlayerNameState] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const onBatchEndRef = useRef<((keepTurn: boolean) => void) | null>(null);
   const onMPRoundEndRef = useRef<((winner: TurnOwner, pWin?: number, oWin?: number) => void | Promise<void>) | null>(null);
   const [dealerModel, setDealerModel] = useState<PlayerModelKey>('DEFAULT');
-
 
   const [gameState, setGameState] = useState<GameState>({
     phase: 'BOOT',
@@ -75,91 +74,8 @@ export const useGameLogic = () => {
     currentTurnItemsUsed: [],
   });
 
-  const gameStateRef = useRef(gameState);
-  const playerRef = useRef(player);
-  const dealerRef = useRef(dealer);
-  const player3Ref = useRef(player3);
-  const player4Ref = useRef(player4);
-  const prevTurnOwnerRef = useRef<TurnOwner>(gameState.turnOwner);
-
-  useEffect(() => {
-    gameStateRef.current = gameState;
-  }, [gameState]);
-
-  useEffect(() => {
-    playerRef.current = player;
-  }, [player]);
-
-  useEffect(() => {
-    dealerRef.current = dealer;
-  }, [dealer]);
-
-  useEffect(() => {
-    player3Ref.current = player3;
-  }, [player3]);
-
-  useEffect(() => {
-    player4Ref.current = player4;
-  }, [player4]);
-
-  useEffect(() => {
-    if (gameState.phase === 'LOAD' || gameState.phase === 'LOOTING' || gameState.phase === 'GAME_OVER') {
-      setPlayer(p => ({ ...p, lastTurnItemsUsed: [], currentTurnItemsUsed: [] }));
-      setDealer(d => ({ ...d, lastTurnItemsUsed: [], currentTurnItemsUsed: [] }));
-      setPlayer3(p3 => ({ ...p3, lastTurnItemsUsed: [], currentTurnItemsUsed: [] }));
-      prevTurnOwnerRef.current = gameState.turnOwner;
-      return;
-    }
-
-    if (gameState.turnOwner !== prevTurnOwnerRef.current) {
-      const prevOwner = prevTurnOwnerRef.current;
-      if (prevOwner === 'PLAYER') {
-        setPlayer(p => ({
-          ...p,
-          lastTurnItemsUsed: p.currentTurnItemsUsed || [],
-          currentTurnItemsUsed: []
-        }));
-      } else if (prevOwner === 'DEALER') {
-        setDealer(d => ({
-          ...d,
-          lastTurnItemsUsed: d.currentTurnItemsUsed || [],
-          currentTurnItemsUsed: []
-        }));
-      } else if (prevOwner === 'PLAYER3') {
-        setPlayer3(p3 => ({
-          ...p3,
-          lastTurnItemsUsed: p3.currentTurnItemsUsed || [],
-          currentTurnItemsUsed: []
-        }));
-      }
-      prevTurnOwnerRef.current = gameState.turnOwner;
-    }
-  }, [gameState.turnOwner, gameState.phase]);
-
-  // Reset lastTurnWasSkipped flag when phase changes to a turn phase
-  useEffect(() => {
-    if (gameState.phase === 'PLAYER_TURN' || gameState.phase === 'DEALER_TURN' || gameState.phase === 'PLAYER3_TURN' || gameState.phase === 'PLAYER4_TURN') {
-      if (gameState.lastTurnWasSkipped) {
-        setGameState(prev => ({ ...prev, lastTurnWasSkipped: false }));
-      }
-    }
-  }, [gameState.phase]);
-
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [knownShell, setKnownShell] = useState<ShellType | null>(null);
-
-  // Stats Ref to track current match performance
-  const matchStatsRef = useRef<MatchStats>({
-    result: 'LOSS',
-    roundsSurvived: 1,
-    shotsFired: 0,
-    shotsHit: 0,
-    selfShots: 0,
-    itemsUsed: {},
-    damageDealt: 0,
-    damageTaken: 0,
-    totalScore: 0
-  });
 
   // Animation State Group
   const [animState, setAnimState] = useState<AnimationState>({
@@ -197,16 +113,6 @@ export const useGameLogic = () => {
     dealerRecovering: false
   });
 
-  // Load name on mount
-  useEffect(() => {
-    const saved = localStorage.getItem('aadish_roulette_name');
-    if (saved) setPlayerName(saved);
-  }, []);
-
-  const setAnim = (update: Partial<AnimationState> | ((prev: AnimationState) => Partial<AnimationState>)) => {
-    setAnimState(prev => ({ ...prev, ...(typeof update === 'function' ? update(prev) : update) }));
-  };
-
   const [aimTarget, setAimTarget] = useState<AimTarget>('IDLE');
   const [cameraView, setCameraView] = useState<CameraView>('PLAYER');
   const [overlayColor, setOverlayColor] = useState<'none' | 'red' | 'green' | 'scan'>('none');
@@ -219,45 +125,164 @@ export const useGameLogic = () => {
   const [receivedItems, setReceivedItems] = useState<ItemType[]>([]);
   const [showLootOverlay, setShowLootOverlay] = useState(false);
 
-  const setOverlayText = (nextValue: React.SetStateAction<string | null>) => {
-    const resolvedValue = typeof nextValue === 'function'
-      ? (nextValue as (prevState: string | null) => string | null)(overlayText)
-      : nextValue;
+  // --- Refs ---
+  const gameStateRef = useRef(gameState);
+  const playerRef = useRef(player);
+  const dealerRef = useRef(dealer);
+  const player3Ref = useRef(player3);
+  const player4Ref = useRef(player4);
+  const playerNameRef = useRef(playerName);
+  const animStateRef = useRef(animState);
+  const isProcessingRef = useRef(isProcessing);
+  const prevTurnOwnerRef = useRef<TurnOwner>(gameState.turnOwner);
 
+  // Timers
+  const resetTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const overlayHideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const startGameTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const muzzleFlashTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const processingSafetyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const roundGenRef = useRef<number>(0);
+
+  // Synchronous ref mirroring: zero latency for asynchronous handler callbacks
+  gameStateRef.current = gameState;
+  playerRef.current = player;
+  dealerRef.current = dealer;
+  player3Ref.current = player3;
+  player4Ref.current = player4;
+  playerNameRef.current = playerName;
+  animStateRef.current = animState;
+  isProcessingRef.current = isProcessing;
+
+  // Stats Ref to track current match performance and accurate duration
+  const matchStartTimeRef = useRef<number>(Date.now());
+  const matchStatsRef = useRef<MatchStats>({
+    result: 'LOSS',
+    roundsSurvived: 1,
+    shotsFired: 0,
+    shotsHit: 0,
+    selfShots: 0,
+    itemsUsed: {},
+    damageDealt: 0,
+    damageTaken: 0,
+    totalScore: 0,
+    duration: 0
+  });
+
+  // Cleanup all timers and audio resources on hook unmount
+  useEffect(() => {
+    return () => {
+      if (resetTimeoutRef.current) clearTimeout(resetTimeoutRef.current);
+      if (overlayHideTimeoutRef.current) clearTimeout(overlayHideTimeoutRef.current);
+      if (startGameTimeoutRef.current) clearTimeout(startGameTimeoutRef.current);
+      if (muzzleFlashTimeoutRef.current) clearTimeout(muzzleFlashTimeoutRef.current);
+      if (processingSafetyTimeoutRef.current) clearTimeout(processingSafetyTimeoutRef.current);
+      audioManager.stopAllSFX();
+    };
+  }, []);
+
+  // Safety watchdog: ensure isProcessing never permanently locks the game UI
+  useEffect(() => {
+    if (isProcessing) {
+      if (processingSafetyTimeoutRef.current) {
+        clearTimeout(processingSafetyTimeoutRef.current);
+      }
+      processingSafetyTimeoutRef.current = setTimeout(() => {
+        console.warn('[GameLogic] Safety watchdog: isProcessing locked for >18s, forcing auto-unlock.');
+        setIsProcessing(false);
+        processingSafetyTimeoutRef.current = null;
+      }, 18000);
+    } else {
+      if (processingSafetyTimeoutRef.current) {
+        clearTimeout(processingSafetyTimeoutRef.current);
+        processingSafetyTimeoutRef.current = null;
+      }
+    }
+
+    return () => {
+      if (processingSafetyTimeoutRef.current) {
+        clearTimeout(processingSafetyTimeoutRef.current);
+        processingSafetyTimeoutRef.current = null;
+      }
+    };
+  }, [isProcessing]);
+
+  // Turn transitions & items reset
+  useEffect(() => {
+    if (gameState.phase === 'LOAD' || gameState.phase === 'LOOTING' || gameState.phase === 'GAME_OVER') {
+      const resetTurnItems = (p: PlayerState): PlayerState => {
+        if ((p.lastTurnItemsUsed && p.lastTurnItemsUsed.length > 0) || (p.currentTurnItemsUsed && p.currentTurnItemsUsed.length > 0)) {
+          return { ...p, lastTurnItemsUsed: [], currentTurnItemsUsed: [] };
+        }
+        return p;
+      };
+      setPlayer(resetTurnItems);
+      setDealer(resetTurnItems);
+      setPlayer3(resetTurnItems);
+      setPlayer4(resetTurnItems);
+      prevTurnOwnerRef.current = gameState.turnOwner;
+      return;
+    }
+
+    if (gameState.turnOwner !== prevTurnOwnerRef.current) {
+      const prevOwner = prevTurnOwnerRef.current;
+      const advanceTurnItems = (p: PlayerState): PlayerState => ({
+        ...p,
+        lastTurnItemsUsed: p.currentTurnItemsUsed || [],
+        currentTurnItemsUsed: []
+      });
+
+      if (prevOwner === 'PLAYER') {
+        setPlayer(advanceTurnItems);
+      } else if (prevOwner === 'DEALER') {
+        setDealer(advanceTurnItems);
+      } else if (prevOwner === 'PLAYER3') {
+        setPlayer3(advanceTurnItems);
+      } else if (prevOwner === 'PLAYER4') {
+        setPlayer4(advanceTurnItems);
+      }
+      prevTurnOwnerRef.current = gameState.turnOwner;
+    }
+  }, [gameState.turnOwner, gameState.phase]);
+
+  // Reset lastTurnWasSkipped flag when phase changes to a turn phase
+  useEffect(() => {
+    if (
+      gameState.lastTurnWasSkipped &&
+      (gameState.phase === 'PLAYER_TURN' || gameState.phase === 'DEALER_TURN' || gameState.phase === 'PLAYER3_TURN' || gameState.phase === 'PLAYER4_TURN')
+    ) {
+      setGameState(prev => (prev.lastTurnWasSkipped ? { ...prev, lastTurnWasSkipped: false } : prev));
+    }
+  }, [gameState.phase, gameState.lastTurnWasSkipped]);
+
+  // Load name on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('aadish_roulette_name');
+    if (saved) {
+      playerNameRef.current = saved;
+      setPlayerNameState(saved);
+    }
+  }, []);
+
+  const setPlayerName = useCallback((name: string) => {
+    playerNameRef.current = name;
+    setPlayerNameState(name);
+  }, []);
+
+  const setAnim = useCallback((update: Partial<AnimationState> | ((prev: AnimationState) => Partial<AnimationState>)) => {
+    setAnimState(prev => ({ ...prev, ...(typeof update === 'function' ? update(prev) : update) }));
+  }, []);
+
+  const setOverlayText = useCallback((nextValue: React.SetStateAction<string | null>) => {
     if (overlayHideTimeoutRef.current) {
       clearTimeout(overlayHideTimeoutRef.current);
       overlayHideTimeoutRef.current = null;
     }
     setOverlayTextUpdatedAt(Date.now());
-    setOverlayTextState(resolvedValue);
-  };
+    setOverlayTextState(nextValue);
+  }, []);
 
-  const getOpponentName = () => {
-    return gameState.isMultiplayer ? (gameState.opponentName || 'OPPONENT') : 'DEALER';
-  };
-
-  const getPlayerNameHelper = (owner: TurnOwner) => {
-    if (owner === 'PLAYER') return playerName || 'YOU';
-    if (owner === 'DEALER') return getOpponentName();
-    if (gameStateRef.current.multiplayerState?.players) {
-      const players = gameStateRef.current.multiplayerState.players;
-      const myId = gameStateRef.current.localPlayerId || '';
-      const myIndex = players.findIndex((p: any) => p.id === myId);
-      if (myIndex !== -1) {
-        const sideOpponent = players[(myIndex + 1) % 3];
-        if (sideOpponent) return sideOpponent.name;
-      }
-    }
-    return 'OPPONENT 2';
-  };
-
-  const addLog = (text: string, type: LogEntry['type'] = 'neutral') => {
-    setLogs(prev => [...prev, { id: Date.now() + Math.random(), text, type }]);
-  };
-
-  const resetTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const overlayHideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
+  // Overlay text hide timer for multiplayer
   useEffect(() => {
     if (!gameState.isMultiplayer) {
       if (overlayHideTimeoutRef.current) {
@@ -286,9 +311,17 @@ export const useGameLogic = () => {
         overlayHideTimeoutRef.current = null;
       }
     };
-  }, [overlayText, overlayTextUpdatedAt, gameState.isMultiplayer]);
+  }, [overlayText, overlayTextUpdatedAt, gameState.isMultiplayer, setOverlayText]);
 
-  const resetStats = () => {
+  const addLog = useCallback((text: string, type: LogEntry['type'] = 'neutral') => {
+    setLogs(prev => {
+      const next = [...prev, { id: Date.now() + Math.random(), text, type }];
+      return next.length > 100 ? next.slice(next.length - 100) : next;
+    });
+  }, []);
+
+  const resetStats = useCallback(() => {
+    matchStartTimeRef.current = Date.now();
     matchStatsRef.current = {
       result: 'LOSS',
       roundsSurvived: 1,
@@ -298,612 +331,46 @@ export const useGameLogic = () => {
       itemsUsed: {},
       damageDealt: 0,
       damageTaken: 0,
-      totalScore: 0
-    };
-  };
-
-  const resetGame = (toMenu: boolean = false, startRoundAfterReset: boolean = true) => {
-    if (resetTimeoutRef.current) {
-      clearTimeout(resetTimeoutRef.current);
-      resetTimeoutRef.current = null;
-    }
-
-    setReceivedItems([]);
-    setShowLootOverlay(false);
-    setOverlayText(null);
-    resetStats();
-    setDealerModel('DEFAULT');
-
-    setGameState({
-      phase: toMenu ? 'INTRO' : 'LOAD',
-      turnOwner: 'PLAYER',
-      winner: null,
-      chamber: [],
-      currentShellIndex: 0,
-      liveCount: 0,
-      blankCount: 0,
-      roundCount: 0,
-      isHardMode: false, // Reset to normal on full reset
-      hardModeState: undefined,
-      normalModeState: undefined
-    });
-      audioManager.stopJackpotMusic();
-    setPlayer({ hp: MAX_HP, maxHp: MAX_HP, items: [], isHandcuffed: false, isSawedActive: false, luckycharmsUsed: 0, isFlashbanged: false, jackpotImmunityShots: 0, hasJackpotWinActive: false });
-    setDealer({ hp: MAX_HP, maxHp: MAX_HP, items: [], isHandcuffed: false, isSawedActive: false, luckycharmsUsed: 0, isFlashbanged: false, jackpotImmunityShots: 0, hasJackpotWinActive: false });
-    setPlayer3({ hp: MAX_HP, maxHp: MAX_HP, items: [], isHandcuffed: false, isSawedActive: false, luckycharmsUsed: 0, isFlashbanged: false, jackpotImmunityShots: 0, hasJackpotWinActive: false });
-    setPlayer4({ hp: MAX_HP, maxHp: MAX_HP, items: [], isHandcuffed: false, isSawedActive: false, luckycharmsUsed: 0, isFlashbanged: false, jackpotImmunityShots: 0, hasJackpotWinActive: false });
-    setLogs([]);
-    setKnownShell(null);
-    setAnim({
-      triggerRecoil: 0, triggerRack: 0, triggerSparks: 0, triggerHeal: 0, triggerDrink: 0, triggerCuff: 0,
-      isSawing: false, ejectedShellColor: 'red', muzzleFlashIntensity: 0, isLiveShot: false,
-      dealerHit: false, dealerDropping: false, playerHit: false, playerRecovering: false, dealerRecovering: false,
-      player3Hit: false, player3Dropping: false, player3Recovering: false,
-      player4Hit: false, player4Dropping: false, player4Recovering: false,
-      triggerAdrenaline: 0, triggerChoke: 0, triggerPhone: 0, triggerInverter: 0, triggerRemote: 0, triggerBigInverter: 0, triggerContract: 0, triggerLuckycharm: 0, triggerTotem: 0, triggerMirror: 0, triggerDeckCard: 0, totemTarget: null,
-      triggerFlashbang: 0, triggerCrusher: 0, triggerJackpot: 0, jackpotResult: null
-    });
-    setCameraView('PLAYER');
-    setShowBlood(false);
-    setIsProcessing(false);
-
-    if (!toMenu && startRoundAfterReset) {
-      resetTimeoutRef.current = setTimeout(() => {
-        startRound(true);
-        resetTimeoutRef.current = null;
-      }, 200);
-    }
-  };
-
-  const startGame = (
-    name: string,
-    hardMode: boolean = false,
-    isMultiplayer: boolean = false,
-    opponentName: string = 'OPPONENT',
-    turnOwner: TurnOwner = 'PLAYER',
-    chamberOverride?: ShellType[],
-    pItemsOverride?: ItemType[],
-    dItemsOverride?: ItemType[],
-    hpOverride?: number,
-    mpSettings?: RoomSettings,
-    p3ItemsOverride?: ItemType[],
-    p4ItemsOverride?: ItemType[]
-  ) => {
-    // Clear any pending resets from previous actions
-    if (resetTimeoutRef.current) {
-      clearTimeout(resetTimeoutRef.current);
-      resetTimeoutRef.current = null;
-    }
-
-
-    matchStatsRef.current = {
-      result: 'LOSS',
-      roundsSurvived: 0,
-      shotsFired: 0,
-      shotsHit: 0,
-      selfShots: 0,
-      itemsUsed: {},
-      damageDealt: 0,
-      damageTaken: 0,
       totalScore: 0,
-      isHardMode: hardMode,
-      roundResults: []
+      duration: 0
     };
+  }, []);
 
-    const initialHardModeState = hardMode ? { round: 1, playerWins: 0, dealerWins: 0 } : undefined;
-    const initialNormalModeState = !hardMode && !isMultiplayer ? { round: 1, playerWins: 0, dealerWins: 0 } : undefined;
+  const getOpponentName = useCallback(() => {
+    return gameStateRef.current.isMultiplayer ? (gameStateRef.current.opponentName || 'OPPONENT') : 'DEALER';
+  }, []);
 
-    setGameState({
-      phase: 'LOAD',
-      turnOwner: turnOwner,
-      winner: null,
-      chamber: [],
-      currentShellIndex: 0,
-      liveCount: 0,
-      blankCount: 0,
-      roundCount: 0,
-      isHardMode: hardMode,
-      isMultiplayer: isMultiplayer,
-      isThreePlayer: isMultiplayer && p3ItemsOverride !== undefined,
-      opponentName: opponentName,
-      hardModeState: initialHardModeState,
-      normalModeState: initialNormalModeState,
-      roomSettings: mpSettings || { rounds: 1, hp: 4, itemsPerShipment: 4 },
-      multiModeState: { playerWins: 0, opponentWins: 0 }
-    });
-
-    matchStatsRef.current.isHardMode = hardMode;
-
-    // Show ROUND 1 overlay explicitly for EVERY mode
-    // setOverlayText('ROUND 1'); // Removed - Redundant with startRound
-    // setOverlayColor('none');
-
-    // Start with a delay to let player see the message
-    setTimeout(() => {
-      // setOverlayText(null);
-      startRound(true, hardMode, initialHardModeState, chamberOverride, pItemsOverride, dItemsOverride, turnOwner, hpOverride, undefined, p3ItemsOverride, p4ItemsOverride);
-    }, 100); // Reduced delay since startRound has its own delay
-  };
-
-  const startRound = async (
-    resetItems: boolean = false,
-    hardModeOverride?: boolean,
-    hardModeStateOverride?: any,
-    chamberOverride?: ShellType[],
-    pItemsOverride?: ItemType[],
-    dItemsOverride?: ItemType[],
-    turnOwnerOverride?: TurnOwner,
-    hpOverride?: number,
-    multiWinsOverride?: { playerWins: number, opponentWins: number },
-    p3ItemsOverride?: ItemType[],
-    p4ItemsOverride?: ItemType[]
-  ) => {
-    // Resolve Hard Mode State
-    // Prioritize override, then current state
-    const isHM = hardModeOverride !== undefined ? hardModeOverride : gameStateRef.current.isHardMode;
-    const hmState = hardModeStateOverride !== undefined ? hardModeStateOverride : gameStateRef.current.hardModeState;
-
-    let chamber: ShellType[];
-    let lives: number;
-    let blanks: number;
-
-    if (chamberOverride) {
-      chamber = chamberOverride;
-      lives = chamber.filter(s => s === 'LIVE').length;
-      blanks = chamber.filter(s => s === 'BLANK').length;
-    } else {
-      const isNormalRound1 = !isHM && !gameStateRef.current.isMultiplayer && (gameStateRef.current.normalModeState?.round || 1) === 1;
-      const total = isNormalRound1 ? randomInt(2, 4) : randomInt(2, 8);
-      const maxLives = Math.floor(total / 2);
-      lives = randomInt(1, maxLives);
-      if (lives < maxLives && Math.random() > 0.4) {
-        lives = maxLives;
-      }
-      blanks = total - lives;
-
-      chamber = [...Array(lives).fill('LIVE'), ...Array(blanks).fill('BLANK')] as ShellType[];
-
-      for (let i = chamber.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [chamber[i], chamber[j]] = [chamber[j], chamber[i]];
+  const getPlayerNameHelper = useCallback((owner: TurnOwner) => {
+    if (owner === 'PLAYER') return playerNameRef.current || 'YOU';
+    if (owner === 'DEALER') return getOpponentName();
+    if (gameStateRef.current.multiplayerState?.players) {
+      const players = gameStateRef.current.multiplayerState.players;
+      const myId = gameStateRef.current.localPlayerId || '';
+      const myIndex = players.findIndex((p: any) => p.id === myId);
+      if (myIndex !== -1) {
+        const sideOpponent = players[(myIndex + 1) % 3];
+        if (sideOpponent) return sideOpponent.name;
       }
     }
+    return 'OPPONENT 2';
+  }, [getOpponentName]);
 
-    setGameState(prev => ({
-      ...prev,
-      chamber,
-      currentShellIndex: 0,
-      liveCount: lives,
-      blankCount: blanks,
-      roundCount: resetItems ? 1 : prev.roundCount + 1,
-      phase: 'LOAD',
-      isHardMode: isHM, // Ensure synced
-      hardModeState: hmState
-    }));
-
-    if (!resetItems && !isHM) {
-      matchStatsRef.current.roundsSurvived = (gameStateRef.current.roundCount || 0) + 1;
-    } else {
-      if (!isHM) matchStatsRef.current.roundsSurvived = 1;
-      // In HM, roundsSurvived could track match rounds
-    }
-
-    if (resetItems || !playerRef.current.jackpotImmunityShots || playerRef.current.jackpotImmunityShots <= 0) {
-      audioManager.stopJackpotMusic();
-    }
-    setKnownShell(null);
-    setAnim({
-      dealerDropping: false,
-      dealerHit: false,
-      dealerRecovering: false,
-      playerHit: false,
-      playerRecovering: false,
-      player3Hit: false,
-      player3Dropping: false,
-      player3Recovering: false,
-      player4Hit: false,
-      player4Dropping: false,
-      player4Recovering: false
-    });
-    let startCamView: CameraView = 'PLAYER';
-    if (turnOwnerOverride === 'DEALER') startCamView = 'DEALER';
-    else if (turnOwnerOverride === 'PLAYER3') startCamView = 'PLAYER3_GUN';
-    else if (turnOwnerOverride === 'PLAYER4') startCamView = 'PLAYER';
-    setCameraView(startCamView);
-
-    // HP Setup
-    let startingHp = hpOverride || MAX_HP;
-    if (isHM && !hpOverride) {
-      const stage = hmState?.round || 1;
-      if (stage === 1) startingHp = 2;
-      else if (stage === 2) startingHp = 3;
-      else startingHp = 4;
-    } else if (!gameStateRef.current.isMultiplayer && !isHM && !hpOverride) {
-      const stage = gameStateRef.current.normalModeState?.round || 1;
-      if (stage === 1) startingHp = 2;
-      else startingHp = 4;
-    }
-
-    // Reset HP only if it's a NEW Stage (resetItems=true usually implies new stage in this logic flow)
-    if (resetItems || hpOverride !== undefined) {
-      const targetHp = hpOverride || startingHp;
-      setPlayer(p => ({ 
-        ...p, 
-        isHandcuffed: false, 
-        isSawedActive: false, 
-        isChokeActive: false,
-        isFlashbanged: false, 
-        luckycharmsUsed: 0, 
-        jackpotImmunityShots: 0,
-        hasJackpotWinActive: false,
-        hp: targetHp, 
-        maxHp: targetHp,
-        ...(resetItems ? { items: [] } : {})
-      }));
-      setDealer(d => ({ 
-        ...d, 
-        isHandcuffed: false, 
-        isSawedActive: false, 
-        isChokeActive: false,
-        isFlashbanged: false, 
-        luckycharmsUsed: 0, 
-        jackpotImmunityShots: 0,
-        hasJackpotWinActive: false,
-        hp: targetHp, 
-        maxHp: targetHp,
-        ...(resetItems ? { items: [] } : {})
-      }));
-      setPlayer3(p3 => ({ 
-        ...p3, 
-        isHandcuffed: false, 
-        isSawedActive: false, 
-        isChokeActive: false,
-        isFlashbanged: false, 
-        luckycharmsUsed: 0, 
-        jackpotImmunityShots: 0,
-        hasJackpotWinActive: false,
-        hp: targetHp, 
-        maxHp: targetHp,
-        items: p3ItemsOverride || (resetItems ? [] : p3.items)
-      }));
-      setPlayer4(p4 => ({ 
-        ...p4, 
-        isHandcuffed: false, 
-        isSawedActive: false, 
-        isChokeActive: false,
-        isFlashbanged: false, 
-        luckycharmsUsed: 0, 
-        jackpotImmunityShots: 0,
-        hasJackpotWinActive: false,
-        hp: targetHp, 
-        maxHp: targetHp,
-        items: p4ItemsOverride || (resetItems ? [] : p4.items)
-      }));
-    } else {
-      // Just reset status effects
-      setPlayer(p => ({ ...p, isHandcuffed: false, isSawedActive: false, isChokeActive: false, isFlashbanged: false }));
-      setDealer(d => ({ ...d, isHandcuffed: false, isSawedActive: false, isChokeActive: false, isFlashbanged: false }));
-      setPlayer3(p3 => ({ ...p3, isHandcuffed: false, isSawedActive: false, isChokeActive: false, isFlashbanged: false }));
-      setPlayer4(p4 => ({ ...p4, isHandcuffed: false, isSawedActive: false, isChokeActive: false, isFlashbanged: false }));
-    }
-
-    setIsProcessing(true);
-
-    // 1. Show ROUND X announcement
-    let displayRound = gameStateRef.current.roundCount + 1;
-    if (isHM) {
-      displayRound = hmState?.round || 1;
-    } else if (gameStateRef.current.isMultiplayer) {
-      const wins = multiWinsOverride || gameStateRef.current.multiModeState;
-      displayRound = (wins?.playerWins || 0) + (wins?.opponentWins || 0) + 1;
-    }
-
-    setOverlayText(`ROUND ${displayRound}`);
-    setOverlayColor(isHM ? 'red' : 'none');
-    audioManager.playSound('rack');
-    await wait(3000);
-    setOverlayText(null);
-    setOverlayColor('none');
-
-    // 2. Show LIVE/BLANK announcement
-    addLog('--- NEW BATCH ---');
-    addLog(`${lives} LIVE, ${blanks} BLANK`);
-    setOverlayText(`${lives} LIVE  |  ${blanks} BLANK`);
-    audioManager.playSound('insert');
-    await wait(4100);
-    setOverlayText(null);
-
-    // Pass overrides to distributeItems if needed, or rely on setGameState above having propagated?
-    // React state might not be ready. distributeItems uses the `gameState` passed to it IF we passed it.
-    // Use the `isHM` flag in a modified distributeItems or rely on the state update.
-    // Best to pass updated gameState structure to distributeItemsAction if possible, but it takes setter.
-    // Workaround: We will rely on React State being "fast enough" or update distributeItems to take a partial override.
-    // Actually, `distributeItemsAction` reads `gameState.isHardMode`. 
-    // Since we called `setGameState` above, but this is async, we might read old state.
-    // Fix: Pass an "effective game state" object.
-
-    // Construct effective state for distribution
-    const effectiveState = {
-      ...gameStateRef.current,
-      isHardMode: isHM,
-      hardModeState: hmState,
-      normalModeState: gameStateRef.current.normalModeState,
-      roundCount: resetItems ? 1 : gameStateRef.current.roundCount + 1
-    };
-
-    await distributeItemsAction(
-      resetItems, effectiveState, setPlayer, setDealer, setGameState,
-      setReceivedItems, setShowLootOverlay, dealerRef.current.hp,
-      pItemsOverride, dItemsOverride,
-      playerRef.current.items, dealerRef.current.items,
-      playerRef.current.luckycharmsUsed || 0,
-      dealerRef.current.luckycharmsUsed || 0,
-      playerRef.current.hp,
-      playerRef.current.maxHp,
-      dealerRef.current.maxHp
-    );
-
-    const nextTurn = turnOwnerOverride || 'PLAYER';
-    let nextPhase: GameState['phase'] = 'PLAYER_TURN';
-    if (nextTurn === 'DEALER') nextPhase = 'DEALER_TURN';
-    else if (nextTurn === 'PLAYER3') nextPhase = 'PLAYER3_TURN';
-
-    setGameState(prev => ({ ...prev, phase: nextPhase, turnOwner: nextTurn }));
-    if (nextTurn === 'PLAYER') {
-      setCameraView('PLAYER');
-      addLog('YOUR MOVE.');
-    } else {
-      setCameraView(nextTurn === 'PLAYER3' ? 'PLAYER3_GUN' : 'DEALER');
-      addLog(`${getPlayerNameHelper(nextTurn).toUpperCase()}'S TURN.`);
-    }
-
-    setIsProcessing(false);
-  };
-
-  /* Fixed Hard Mode logic */
-  const handleHardModeRoundEnd = async (winner: TurnOwner) => {
-    setIsProcessing(true);
-
-    const currentState = gameStateRef.current.hardModeState || { round: 1, playerWins: 0, dealerWins: 0 };
-    const currentRound = currentState.round;
-
-    let nextState = { ...currentState };
-    if (winner === 'PLAYER') {
-      nextState.playerWins++;
-      matchStatsRef.current.roundsSurvived++;
-    } else {
-      nextState.dealerWins++;
-    }
-
-    // Track Round Result
-    if (!matchStatsRef.current.roundResults) matchStatsRef.current.roundResults = [];
-    matchStatsRef.current.roundResults.push(winner === 'PLAYER' ? 'WIN' : 'LOSS');
-
-    // 1. Show Winner of Round Visuals
-    const winMsg = winner === 'PLAYER' ? `${playerName} WON ROUND ${currentRound}` : `${getOpponentName().toUpperCase()} WON ROUND ${currentRound}`;
-    const color = winner === 'PLAYER' ? 'green' : 'red';
-
-    setOverlayColor(color);
-    setOverlayText(winMsg);
-
-    // Sound Effect
-    if (winner === 'PLAYER') audioManager.playSound('insert');
-    else audioManager.playSound('rack');
-
-    // Wait for reading
-    await wait(3000);
-
-    // Check Match Over
-    if (nextState.playerWins >= 2 || nextState.dealerWins >= 2) {
-      setGameState(prev => ({ ...prev, winner, phase: 'GAME_OVER', hardModeState: nextState }));
-      matchStatsRef.current.result = winner === 'PLAYER' ? 'WIN' : 'LOSS';
-      matchStatsRef.current.totalScore = matchStatsRef.current.totalScore * 2;
-      setIsProcessing(false);
-      setOverlayColor('none');
-      setOverlayText(null);
-      return;
-    }
-
-    // Next Round Setup
-    nextState.round++;
-    setOverlayColor('none');
-    setOverlayText(`ROUND ${nextState.round}`);
-
-    // Validating Round Start
-    addLog(`ROUND ${nextState.round} STARTING...`);
-
-    // Wait for "Round X" text
-    await wait(2000);
-
-    setOverlayText(null);
-
-    // Trigger Next Round
-    setGameState(prev => ({ ...prev, hardModeState: nextState, phase: 'LOAD' }));
-    // Trigger Next Round
-    await startRound(true, true, nextState);
-    setIsProcessing(false);
-  };
-
-  const handleNormalModeRoundEnd = async (winner: TurnOwner) => {
-    setIsProcessing(true);
-
-    const currentState = gameStateRef.current.normalModeState || { round: 1, playerWins: 0, dealerWins: 0 };
-    const currentRound = currentState.round;
-
-    let nextState = { ...currentState };
-    if (winner === 'PLAYER') {
-      nextState.playerWins++;
-      matchStatsRef.current.roundsSurvived++;
-    } else {
-      nextState.dealerWins++;
-    }
-
-    // Track Round Result
-    if (!matchStatsRef.current.roundResults) matchStatsRef.current.roundResults = [];
-    matchStatsRef.current.roundResults.push(winner === 'PLAYER' ? 'WIN' : 'LOSS');
-
-    if (winner === 'DEALER') {
-      const winMsg = `${getOpponentName().toUpperCase()} WON THE GAME`;
-      setOverlayColor('red');
-      setOverlayText(winMsg);
-      audioManager.playSound('rack');
-      await wait(3000);
-      setGameState(prev => ({ ...prev, winner: 'DEALER', phase: 'GAME_OVER', normalModeState: nextState }));
-      matchStatsRef.current.result = 'LOSS';
-      setIsProcessing(false);
-      setOverlayColor('none');
-      setOverlayText(null);
-      return;
-    }
-
-    // Player won round
-    if (currentRound === 1) {
-      const winMsg = `${playerName} WON ROUND 1`;
-      setOverlayColor('green');
-      setOverlayText(winMsg);
-      audioManager.playSound('insert');
-      await wait(3000);
-
-      // Transition to Round 2:
-      // First display text as dealer subtitles "LET'S MAKE THIS A LITTLE MORE INTERESTING"
-      setOverlayColor('none');
-      setOverlayText("LET'S MAKE THIS A LITTLE MORE INTERESTING");
-      addLog("DEALER: LET'S MAKE THIS A LITTLE MORE INTERESTING", 'dealer');
-      // Wait to let player read
-      await wait(3000);
-      setOverlayText(null);
-
-      nextState.round = 2;
-      setGameState(prev => ({ ...prev, normalModeState: nextState, phase: 'LOAD' }));
-
-      // start the round with 4 health and items with same randomness in number and shell randomness
-      await startRound(true, false, undefined, undefined, undefined, undefined, undefined, 4);
-      setIsProcessing(false);
-    } else {
-      // If player won round 2, they win the game!
-      const winMsg = `${playerName} WON THE GAME`;
-      setOverlayColor('green');
-      setOverlayText(winMsg);
-      audioManager.playSound('insert');
-      await wait(3000);
-
-      setGameState(prev => ({ ...prev, winner: 'PLAYER', phase: 'GAME_OVER', normalModeState: nextState }));
-      matchStatsRef.current.result = 'WIN';
-      setIsProcessing(false);
-      setOverlayColor('none');
-      setOverlayText(null);
-    }
-  };
-
-  const handleMPRoundEnd = async (winner: TurnOwner) => {
-    setIsProcessing(true);
-
-    const mSettings = gameStateRef.current.roomSettings || { rounds: 1, hp: 4 };
-    const winsNeeded = Math.ceil(mSettings.rounds / 2) || 1;
-
-    // Track stats
-    if (winner === 'PLAYER') {
-      matchStatsRef.current.roundsSurvived++;
-    }
-    if (!matchStatsRef.current.roundResults) matchStatsRef.current.roundResults = [];
-    matchStatsRef.current.roundResults.push(winner === 'PLAYER' ? 'WIN' : 'LOSS');
-
-    // Increment wins locally first
-    let pWin = (gameStateRef.current.multiModeState?.playerWins || 0) + (winner === 'PLAYER' ? 1 : 0);
-    let oWin = (gameStateRef.current.multiModeState?.opponentWins || 0) + (winner === 'PLAYER' ? 0 : 1);
-
-    setGameState(prev => ({
-      ...prev,
-      multiModeState: { playerWins: pWin, opponentWins: oWin }
-    }));
-
-    const winMsg = winner === 'PLAYER' ? `${playerName.toUpperCase()} WON THE MATCH!` : `${getOpponentName().toUpperCase()} WON THE MATCH!`;
-    const color = winner === 'PLAYER' ? 'green' : 'red';
-
-    setOverlayColor(color);
-    setOverlayText(winMsg);
-    await wait(3000);
-
-    if (pWin >= winsNeeded || oWin >= winsNeeded) {
-      setGameState(prev => ({ ...prev, winner, phase: 'GAME_OVER' }));
-      matchStatsRef.current.result = winner === 'PLAYER' ? 'WIN' : 'LOSS';
-      setIsProcessing(false);
-      return;
-    }
-
-    if (onMPRoundEndRef.current) {
-      await onMPRoundEndRef.current(winner, pWin, oWin);
-      setIsProcessing(false);
-      return;
-    }
-
-    // Next Round (Singleplayer)
-    const nextRoundNum = pWin + oWin + 1;
-    setOverlayColor('none');
-    setOverlayText(`ROUND ${nextRoundNum}`);
-    await wait(2200);
-    setOverlayText(null);
-
-    // Reset HP but keep going
-    const initialPlayerHp = playerRef.current.maxHp;
-    const initialDealerHp = dealerRef.current.maxHp;
-    setPlayer(p => ({ ...p, hp: initialPlayerHp }));
-    setDealer(d => ({ ...d, hp: initialDealerHp }));
-
-    // Start a new batch
-    startRound(true, false, undefined, undefined, undefined, undefined, undefined, undefined, { playerWins: pWin, opponentWins: oWin });
-    setIsProcessing(false);
-  };
-
-  const distributeItems = async (forceClear: boolean = false) => {
-    await distributeItemsAction(
-      forceClear, gameStateRef.current, setPlayer, setDealer, setGameState,
-      setReceivedItems, setShowLootOverlay, dealerRef.current.hp,
-      undefined, undefined,
-      playerRef.current.items, dealerRef.current.items,
-      playerRef.current.luckycharmsUsed || 0,
-      dealerRef.current.luckycharmsUsed || 0,
-      playerRef.current.hp,
-      playerRef.current.maxHp,
-      dealerRef.current.maxHp
-    );
-  };
-
-  const pickupGun = () => {
-    if (isProcessing) return;
-    if (gameStateRef.current.turnOwner !== 'PLAYER') {
-      addLog("NOT YOUR TURN TO PICK UP THE GUN", 'info');
-      return;
-    }
-    // PREVENT GUN PICKUP WHILE ANYONE IS KNOCKED DOWN OR RECOVERING
-    if (animState.playerHit || animState.playerRecovering ||
-      animState.dealerDropping || animState.dealerRecovering ||
-      animState.player3Hit || animState.player3Recovering ||
-      animState.player4Hit || animState.player4Recovering) {
-      addLog('WAIT FOR RECOVERY...', 'info');
-      return;
-    }
-    // New Logic: Don't move camera yet. Just show target choices.
-    setAimTarget('CHOOSING');
-    setCameraView('GUN'); // Set camera to gun view immediately
-  };
-
-  const getPlayerState = (owner: TurnOwner) => {
+  const getPlayerState = useCallback((owner: TurnOwner) => {
     if (owner === 'PLAYER') return playerRef.current;
     if (owner === 'PLAYER3') return player3Ref.current;
     if (owner === 'PLAYER4') return player4Ref.current;
     return dealerRef.current;
-  };
+  }, []);
 
-  const getPlayerSetter = (owner: TurnOwner) => {
+  const getPlayerSetter = useCallback((owner: TurnOwner) => {
     if (owner === 'PLAYER') return setPlayer;
     if (owner === 'PLAYER3') return setPlayer3;
     if (owner === 'PLAYER4') return setPlayer4;
     return setDealer;
-  };
+  }, []);
 
-  const getPlayerNameByOwner = (owner: TurnOwner) => {
-    if (owner === 'PLAYER') return playerName || 'PLAYER';
+  const getPlayerNameByOwner = useCallback((owner: TurnOwner) => {
+    if (owner === 'PLAYER') return playerNameRef.current || 'PLAYER';
     const players = gameStateRef.current.multiplayerState?.players || [];
     const myId = gameStateRef.current.localPlayerId || '';
     const myIndex = players.findIndex(p => p.id === myId);
@@ -917,9 +384,9 @@ export const useGameLogic = () => {
       if (owner === 'PLAYER4') return rightOpponent?.name || 'OPPONENT 3';
     }
     return owner === 'DEALER' ? (gameStateRef.current.opponentName || 'OPPONENT') : 'OPPONENT 2';
-  };
+  }, []);
 
-  const resolveTargetOwner = (targetPlayerId: string, localPlayerId: string, players: any[]): TurnOwner => {
+  const resolveTargetOwner = useCallback((targetPlayerId: string, localPlayerId: string, players: any[]): TurnOwner => {
     if (!targetPlayerId) return 'DEALER';
     if (targetPlayerId === localPlayerId) return 'PLAYER';
 
@@ -962,13 +429,657 @@ export const useGameLogic = () => {
     }
 
     return 'DEALER';
-  };
+  }, []);
 
-  const fireShot = async (shooter: TurnOwner, target: TurnOwner) => {
+  const startRound = useCallback(async (
+    resetItems: boolean = false,
+    hardModeOverride?: boolean,
+    hardModeStateOverride?: any,
+    chamberOverride?: ShellType[],
+    pItemsOverride?: ItemType[],
+    dItemsOverride?: ItemType[],
+    turnOwnerOverride?: TurnOwner,
+    hpOverride?: number,
+    multiWinsOverride?: { playerWins: number, opponentWins: number },
+    p3ItemsOverride?: ItemType[],
+    p4ItemsOverride?: ItemType[]
+  ) => {
+    const currentGen = ++roundGenRef.current;
+    setIsProcessing(true);
+
+    try {
+      // Resolve Hard Mode State
+      const isHM = hardModeOverride !== undefined ? hardModeOverride : gameStateRef.current.isHardMode;
+      const hmState = hardModeStateOverride !== undefined ? hardModeStateOverride : gameStateRef.current.hardModeState;
+
+      let chamber: ShellType[];
+      let lives: number;
+      let blanks: number;
+
+      if (chamberOverride) {
+        chamber = chamberOverride;
+        lives = chamber.filter(s => s === 'LIVE').length;
+        blanks = chamber.filter(s => s === 'BLANK').length;
+      } else {
+        const isNormalRound1 = !isHM && !gameStateRef.current.isMultiplayer && (gameStateRef.current.normalModeState?.round || 1) === 1;
+        const total = isNormalRound1 ? randomInt(2, 4) : randomInt(2, 8);
+        const maxLives = Math.floor(total / 2);
+        lives = randomInt(1, maxLives);
+        if (lives < maxLives && Math.random() > 0.4) {
+          lives = maxLives;
+        }
+        blanks = total - lives;
+
+        chamber = [...Array(lives).fill('LIVE'), ...Array(blanks).fill('BLANK')] as ShellType[];
+
+        for (let i = chamber.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [chamber[i], chamber[j]] = [chamber[j], chamber[i]];
+        }
+      }
+
+      setGameState(prev => ({
+        ...prev,
+        chamber,
+        currentShellIndex: 0,
+        liveCount: lives,
+        blankCount: blanks,
+        roundCount: resetItems ? 1 : prev.roundCount + 1,
+        phase: 'LOAD',
+        isHardMode: isHM,
+        hardModeState: hmState
+      }));
+
+      if (!resetItems && !isHM) {
+        matchStatsRef.current.roundsSurvived = (gameStateRef.current.roundCount || 0) + 1;
+      } else {
+        if (!isHM) matchStatsRef.current.roundsSurvived = 1;
+      }
+
+      if (resetItems || !playerRef.current.jackpotImmunityShots || playerRef.current.jackpotImmunityShots <= 0) {
+        audioManager.stopJackpotMusic();
+      }
+      setKnownShell(null);
+      setAnim({
+        dealerDropping: false,
+        dealerHit: false,
+        dealerRecovering: false,
+        playerHit: false,
+        playerRecovering: false,
+        player3Hit: false,
+        player3Dropping: false,
+        player3Recovering: false,
+        player4Hit: false,
+        player4Dropping: false,
+        player4Recovering: false
+      });
+      let startCamView: CameraView = 'PLAYER';
+      if (turnOwnerOverride === 'DEALER') startCamView = 'DEALER';
+      else if (turnOwnerOverride === 'PLAYER3') startCamView = 'PLAYER3_GUN';
+      else if (turnOwnerOverride === 'PLAYER4') startCamView = 'PLAYER';
+      setCameraView(startCamView);
+
+      // HP Setup
+      let startingHp = hpOverride || MAX_HP;
+      if (isHM && !hpOverride) {
+        const stage = hmState?.round || 1;
+        if (stage === 1) startingHp = 2;
+        else if (stage === 2) startingHp = 3;
+        else startingHp = 4;
+      } else if (!gameStateRef.current.isMultiplayer && !isHM && !hpOverride) {
+        const stage = gameStateRef.current.normalModeState?.round || 1;
+        if (stage === 1) startingHp = 2;
+        else startingHp = 4;
+      }
+
+      // Reset HP only if it's a NEW Stage
+      if (resetItems || hpOverride !== undefined) {
+        const targetHp = hpOverride || startingHp;
+        setPlayer(p => ({ 
+          ...p, 
+          isHandcuffed: false, 
+          isSawedActive: false, 
+          isChokeActive: false,
+          isFlashbanged: false, 
+          luckycharmsUsed: 0, 
+          jackpotImmunityShots: 0,
+          hasJackpotWinActive: false,
+          hp: targetHp, 
+          maxHp: targetHp,
+          ...(resetItems ? { items: [] } : {})
+        }));
+        setDealer(d => ({ 
+          ...d, 
+          isHandcuffed: false, 
+          isSawedActive: false, 
+          isChokeActive: false,
+          isFlashbanged: false, 
+          luckycharmsUsed: 0, 
+          jackpotImmunityShots: 0,
+          hasJackpotWinActive: false,
+          hp: targetHp, 
+          maxHp: targetHp,
+          ...(resetItems ? { items: [] } : {})
+        }));
+        setPlayer3(p3 => ({ 
+          ...p3, 
+          isHandcuffed: false, 
+          isSawedActive: false, 
+          isChokeActive: false,
+          isFlashbanged: false, 
+          luckycharmsUsed: 0, 
+          jackpotImmunityShots: 0,
+          hasJackpotWinActive: false,
+          hp: targetHp, 
+          maxHp: targetHp,
+          items: p3ItemsOverride || (resetItems ? [] : p3.items)
+        }));
+        setPlayer4(p4 => ({ 
+          ...p4, 
+          isHandcuffed: false, 
+          isSawedActive: false, 
+          isChokeActive: false,
+          isFlashbanged: false, 
+          luckycharmsUsed: 0, 
+          jackpotImmunityShots: 0,
+          hasJackpotWinActive: false,
+          hp: targetHp, 
+          maxHp: targetHp,
+          items: p4ItemsOverride || (resetItems ? [] : p4.items)
+        }));
+      } else {
+        // Just reset status effects
+        setPlayer(p => ({ ...p, isHandcuffed: false, isSawedActive: false, isChokeActive: false, isFlashbanged: false }));
+        setDealer(d => ({ ...d, isHandcuffed: false, isSawedActive: false, isChokeActive: false, isFlashbanged: false }));
+        setPlayer3(p3 => ({ ...p3, isHandcuffed: false, isSawedActive: false, isChokeActive: false, isFlashbanged: false }));
+        setPlayer4(p4 => ({ ...p4, isHandcuffed: false, isSawedActive: false, isChokeActive: false, isFlashbanged: false }));
+      }
+
+      // 1. Show ROUND X announcement
+      let displayRound = gameStateRef.current.roundCount + 1;
+      if (isHM) {
+        displayRound = hmState?.round || 1;
+      } else if (gameStateRef.current.isMultiplayer) {
+        const wins = multiWinsOverride || gameStateRef.current.multiModeState;
+        displayRound = (wins?.playerWins || 0) + (wins?.opponentWins || 0) + 1;
+      }
+
+      setOverlayText(`ROUND ${displayRound}`);
+      setOverlayColor(isHM ? 'red' : 'none');
+      audioManager.playSound('rack');
+      await wait(3000);
+      if (currentGen !== roundGenRef.current) return;
+      setOverlayText(null);
+      setOverlayColor('none');
+
+      // 2. Show LIVE/BLANK announcement
+      addLog('--- NEW BATCH ---');
+      addLog(`${lives} LIVE, ${blanks} BLANK`);
+      setOverlayText(`${lives} LIVE  |  ${blanks} BLANK`);
+      audioManager.playSound('insert');
+      await wait(4100);
+      if (currentGen !== roundGenRef.current) return;
+      setOverlayText(null);
+
+      // Construct effective state for distribution
+      const effectiveState = {
+        ...gameStateRef.current,
+        isHardMode: isHM,
+        hardModeState: hmState,
+        normalModeState: gameStateRef.current.normalModeState,
+        roundCount: resetItems ? 1 : gameStateRef.current.roundCount + 1
+      };
+
+      await distributeItemsAction(
+        resetItems, effectiveState, setPlayer, setDealer, setGameState,
+        setReceivedItems, setShowLootOverlay, dealerRef.current.hp,
+        pItemsOverride, dItemsOverride,
+        playerRef.current.items, dealerRef.current.items,
+        playerRef.current.luckycharmsUsed || 0,
+        dealerRef.current.luckycharmsUsed || 0,
+        playerRef.current.hp,
+        playerRef.current.maxHp,
+        dealerRef.current.maxHp,
+        setPlayer3,
+        setPlayer4,
+        p3ItemsOverride,
+        p4ItemsOverride,
+        player3Ref.current.items,
+        player4Ref.current.items
+      );
+
+      if (currentGen !== roundGenRef.current) return;
+
+      const nextTurn = turnOwnerOverride || 'PLAYER';
+      let nextPhase: GameState['phase'] = 'PLAYER_TURN';
+      if (nextTurn === 'DEALER') nextPhase = 'DEALER_TURN';
+      else if (nextTurn === 'PLAYER3') nextPhase = 'PLAYER3_TURN';
+
+      setGameState(prev => ({ ...prev, phase: nextPhase, turnOwner: nextTurn }));
+      if (nextTurn === 'PLAYER') {
+        setCameraView('PLAYER');
+        addLog('YOUR MOVE.');
+      } else {
+        setCameraView(nextTurn === 'PLAYER3' ? 'PLAYER3_GUN' : 'DEALER');
+        addLog(`${getPlayerNameHelper(nextTurn).toUpperCase()}'S TURN.`);
+      }
+    } catch (err) {
+      console.error("Error in startRound:", err);
+    } finally {
+      if (currentGen === roundGenRef.current) {
+        setIsProcessing(false);
+      }
+    }
+  }, [addLog, getPlayerNameHelper, setAnim, setOverlayColor, setOverlayText]);
+
+  /* Fixed Hard Mode logic */
+  const handleHardModeRoundEnd = useCallback(async (winner: TurnOwner) => {
+    setIsProcessing(true);
+    try {
+      const currentState = gameStateRef.current.hardModeState || { round: 1, playerWins: 0, dealerWins: 0 };
+      const currentRound = currentState.round;
+
+      let nextState = { ...currentState };
+      if (winner === 'PLAYER') {
+        nextState.playerWins++;
+        matchStatsRef.current.roundsSurvived++;
+      } else {
+        nextState.dealerWins++;
+      }
+
+      // Track Round Result
+      if (!matchStatsRef.current.roundResults) matchStatsRef.current.roundResults = [];
+      matchStatsRef.current.roundResults.push(winner === 'PLAYER' ? 'WIN' : 'LOSS');
+
+      // 1. Show Winner of Round Visuals
+      const winMsg = winner === 'PLAYER' ? `${playerNameRef.current} WON ROUND ${currentRound}` : `${getOpponentName().toUpperCase()} WON ROUND ${currentRound}`;
+      const color = winner === 'PLAYER' ? 'green' : 'red';
+
+      setOverlayColor(color);
+      setOverlayText(winMsg);
+
+      // Sound Effect
+      if (winner === 'PLAYER') audioManager.playSound('insert');
+      else audioManager.playSound('rack');
+
+      // Wait for reading
+      await wait(3000);
+
+      // Check Match Over
+      if (nextState.playerWins >= 2 || nextState.dealerWins >= 2) {
+        setGameState(prev => ({ ...prev, winner, phase: 'GAME_OVER', hardModeState: nextState }));
+        matchStatsRef.current.result = winner === 'PLAYER' ? 'WIN' : 'LOSS';
+        matchStatsRef.current.totalScore = matchStatsRef.current.totalScore * 2;
+        setOverlayColor('none');
+        setOverlayText(null);
+        return;
+      }
+
+      // Next Round Setup
+      nextState.round++;
+      setOverlayColor('none');
+      setOverlayText(`ROUND ${nextState.round}`);
+
+      // Validating Round Start
+      addLog(`ROUND ${nextState.round} STARTING...`);
+
+      // Wait for "Round X" text
+      await wait(2000);
+
+      setOverlayText(null);
+
+      // Trigger Next Round
+      setGameState(prev => ({ ...prev, hardModeState: nextState, phase: 'LOAD' }));
+      await startRound(true, true, nextState);
+    } catch (err) {
+      console.error("Error in handleHardModeRoundEnd:", err);
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [addLog, getOpponentName, setOverlayColor, setOverlayText, startRound]);
+
+  const handleNormalModeRoundEnd = useCallback(async (winner: TurnOwner) => {
+    setIsProcessing(true);
+    try {
+      const currentState = gameStateRef.current.normalModeState || { round: 1, playerWins: 0, dealerWins: 0 };
+      const currentRound = currentState.round;
+
+      let nextState = { ...currentState };
+      if (winner === 'PLAYER') {
+        nextState.playerWins++;
+        matchStatsRef.current.roundsSurvived++;
+      } else {
+        nextState.dealerWins++;
+      }
+
+      // Track Round Result
+      if (!matchStatsRef.current.roundResults) matchStatsRef.current.roundResults = [];
+      matchStatsRef.current.roundResults.push(winner === 'PLAYER' ? 'WIN' : 'LOSS');
+
+      if (winner === 'DEALER') {
+        const winMsg = `${getOpponentName().toUpperCase()} WON THE GAME`;
+        setOverlayColor('red');
+        setOverlayText(winMsg);
+        audioManager.playSound('rack');
+        await wait(3000);
+        setGameState(prev => ({ ...prev, winner: 'DEALER', phase: 'GAME_OVER', normalModeState: nextState }));
+        matchStatsRef.current.result = 'LOSS';
+        setOverlayColor('none');
+        setOverlayText(null);
+        return;
+      }
+
+      // Player won round
+      if (currentRound === 1) {
+        const winMsg = `${playerNameRef.current} WON ROUND 1`;
+        setOverlayColor('green');
+        setOverlayText(winMsg);
+        audioManager.playSound('insert');
+        await wait(3000);
+
+        // Transition to Round 2
+        setOverlayColor('none');
+        setOverlayText("LET'S MAKE THIS A LITTLE MORE INTERESTING");
+        addLog("DEALER: LET'S MAKE THIS A LITTLE MORE INTERESTING", 'dealer');
+        await wait(3000);
+        setOverlayText(null);
+
+        nextState.round = 2;
+        setGameState(prev => ({ ...prev, normalModeState: nextState, phase: 'LOAD' }));
+
+        // Start round 2 with 4 health
+        await startRound(true, false, undefined, undefined, undefined, undefined, undefined, 4);
+      } else {
+        // If player won round 2, they win the game!
+        const winMsg = `${playerNameRef.current} WON THE GAME`;
+        setOverlayColor('green');
+        setOverlayText(winMsg);
+        audioManager.playSound('insert');
+        await wait(3000);
+
+        setGameState(prev => ({ ...prev, winner: 'PLAYER', phase: 'GAME_OVER', normalModeState: nextState }));
+        matchStatsRef.current.result = 'WIN';
+        setOverlayColor('none');
+        setOverlayText(null);
+      }
+    } catch (err) {
+      console.error("Error in handleNormalModeRoundEnd:", err);
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [addLog, getOpponentName, setOverlayColor, setOverlayText, startRound]);
+
+  const handleMPRoundEnd = useCallback(async (winner: TurnOwner) => {
+    setIsProcessing(true);
+    try {
+      const mSettings = gameStateRef.current.roomSettings || { rounds: 1, hp: 4 };
+      const winsNeeded = Math.ceil(mSettings.rounds / 2) || 1;
+
+      // Track stats
+      if (winner === 'PLAYER') {
+        matchStatsRef.current.roundsSurvived++;
+      }
+      if (!matchStatsRef.current.roundResults) matchStatsRef.current.roundResults = [];
+      matchStatsRef.current.roundResults.push(winner === 'PLAYER' ? 'WIN' : 'LOSS');
+
+      // Increment wins locally first
+      let pWin = (gameStateRef.current.multiModeState?.playerWins || 0) + (winner === 'PLAYER' ? 1 : 0);
+      let oWin = (gameStateRef.current.multiModeState?.opponentWins || 0) + (winner === 'PLAYER' ? 0 : 1);
+
+      setGameState(prev => ({
+        ...prev,
+        multiModeState: { playerWins: pWin, opponentWins: oWin }
+      }));
+
+      const winMsg = winner === 'PLAYER' ? `${(playerNameRef.current || 'PLAYER').toUpperCase()} WON THE MATCH!` : `${getOpponentName().toUpperCase()} WON THE MATCH!`;
+      const color = winner === 'PLAYER' ? 'green' : 'red';
+
+      setOverlayColor(color);
+      setOverlayText(winMsg);
+      await wait(3000);
+
+      if (pWin >= winsNeeded || oWin >= winsNeeded) {
+        setGameState(prev => ({ ...prev, winner, phase: 'GAME_OVER' }));
+        matchStatsRef.current.result = winner === 'PLAYER' ? 'WIN' : 'LOSS';
+        return;
+      }
+
+      if (onMPRoundEndRef.current) {
+        await onMPRoundEndRef.current(winner, pWin, oWin);
+        return;
+      }
+
+      // Next Round (Singleplayer)
+      const nextRoundNum = pWin + oWin + 1;
+      setOverlayColor('none');
+      setOverlayText(`ROUND ${nextRoundNum}`);
+      await wait(2200);
+      setOverlayText(null);
+
+      // Reset HP but keep going
+      const initialPlayerHp = playerRef.current.maxHp;
+      const initialDealerHp = dealerRef.current.maxHp;
+      setPlayer(p => ({ ...p, hp: initialPlayerHp }));
+      setDealer(d => ({ ...d, hp: initialDealerHp }));
+
+      // Start a new batch
+      await startRound(true, false, undefined, undefined, undefined, undefined, undefined, undefined, { playerWins: pWin, opponentWins: oWin });
+    } catch (err) {
+      console.error("Error in handleMPRoundEnd:", err);
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [getOpponentName, setOverlayColor, setOverlayText, startRound]);
+
+  const resetGame = useCallback((toMenu: boolean = false, startRoundAfterReset: boolean = true) => {
+    roundGenRef.current++;
+    if (processingSafetyTimeoutRef.current) {
+      clearTimeout(processingSafetyTimeoutRef.current);
+      processingSafetyTimeoutRef.current = null;
+    }
+    if (resetTimeoutRef.current) {
+      clearTimeout(resetTimeoutRef.current);
+      resetTimeoutRef.current = null;
+    }
+    if (startGameTimeoutRef.current) {
+      clearTimeout(startGameTimeoutRef.current);
+      startGameTimeoutRef.current = null;
+    }
+
+    setReceivedItems([]);
+    setShowLootOverlay(false);
+    setOverlayText(null);
+    resetStats();
+    setDealerModel('DEFAULT');
+
+    setGameState({
+      phase: toMenu ? 'INTRO' : 'LOAD',
+      turnOwner: 'PLAYER',
+      winner: null,
+      chamber: [],
+      currentShellIndex: 0,
+      liveCount: 0,
+      blankCount: 0,
+      roundCount: 0,
+      isHardMode: false,
+      hardModeState: undefined,
+      normalModeState: undefined
+    });
+    audioManager.stopJackpotMusic();
+    const freshPlayerState: PlayerState = {
+      hp: MAX_HP,
+      maxHp: MAX_HP,
+      items: [],
+      isHandcuffed: false,
+      isSawedActive: false,
+      luckycharmsUsed: 0,
+      isFlashbanged: false,
+      jackpotImmunityShots: 0,
+      hasJackpotWinActive: false
+    };
+    setPlayer(freshPlayerState);
+    setDealer(freshPlayerState);
+    setPlayer3(freshPlayerState);
+    setPlayer4(freshPlayerState);
+    setLogs([]);
+    setKnownShell(null);
+    setAnim({
+      triggerRecoil: 0, triggerRack: 0, triggerSparks: 0, triggerHeal: 0, triggerDrink: 0, triggerCuff: 0,
+      isSawing: false, ejectedShellColor: 'red', muzzleFlashIntensity: 0, isLiveShot: false,
+      dealerHit: false, dealerDropping: false, playerHit: false, playerRecovering: false, dealerRecovering: false,
+      player3Hit: false, player3Dropping: false, player3Recovering: false,
+      player4Hit: false, player4Dropping: false, player4Recovering: false,
+      triggerAdrenaline: 0, triggerChoke: 0, triggerPhone: 0, triggerInverter: 0, triggerRemote: 0, triggerBigInverter: 0, triggerContract: 0, triggerLuckycharm: 0, triggerTotem: 0, triggerMirror: 0, triggerDeckCard: 0, totemTarget: null,
+      triggerFlashbang: 0, triggerCrusher: 0, triggerJackpot: 0, jackpotResult: null
+    });
+    setCameraView('PLAYER');
+    setShowBlood(false);
+    setIsProcessing(false);
+
+    if (!toMenu && startRoundAfterReset) {
+      resetTimeoutRef.current = setTimeout(() => {
+        startRound(true);
+        resetTimeoutRef.current = null;
+      }, 200);
+    }
+  }, [resetStats, setAnim, setOverlayText, startRound]);
+
+  const startGame = useCallback((
+    name: string,
+    hardMode: boolean = false,
+    isMultiplayer: boolean = false,
+    opponentName: string = 'OPPONENT',
+    turnOwner: TurnOwner = 'PLAYER',
+    chamberOverride?: ShellType[],
+    pItemsOverride?: ItemType[],
+    dItemsOverride?: ItemType[],
+    hpOverride?: number,
+    mpSettings?: RoomSettings,
+    p3ItemsOverride?: ItemType[],
+    p4ItemsOverride?: ItemType[]
+  ) => {
+    resumeAudioContext().catch(() => {});
+    roundGenRef.current++;
+    if (processingSafetyTimeoutRef.current) {
+      clearTimeout(processingSafetyTimeoutRef.current);
+      processingSafetyTimeoutRef.current = null;
+    }
+    if (resetTimeoutRef.current) {
+      clearTimeout(resetTimeoutRef.current);
+      resetTimeoutRef.current = null;
+    }
+    if (startGameTimeoutRef.current) {
+      clearTimeout(startGameTimeoutRef.current);
+      startGameTimeoutRef.current = null;
+    }
+
+    matchStatsRef.current = {
+      result: 'LOSS',
+      roundsSurvived: 0,
+      shotsFired: 0,
+      shotsHit: 0,
+      selfShots: 0,
+      itemsUsed: {},
+      damageDealt: 0,
+      damageTaken: 0,
+      totalScore: 0,
+      isHardMode: hardMode,
+      roundResults: []
+    };
+
+    const initialHardModeState = hardMode ? { round: 1, playerWins: 0, dealerWins: 0 } : undefined;
+    const initialNormalModeState = !hardMode && !isMultiplayer ? { round: 1, playerWins: 0, dealerWins: 0 } : undefined;
+
+    setGameState({
+      phase: 'LOAD',
+      turnOwner: turnOwner,
+      winner: null,
+      chamber: [],
+      currentShellIndex: 0,
+      liveCount: 0,
+      blankCount: 0,
+      roundCount: 0,
+      isHardMode: hardMode,
+      isMultiplayer: isMultiplayer,
+      isThreePlayer: isMultiplayer && p3ItemsOverride !== undefined && p4ItemsOverride === undefined,
+      isFourPlayer: isMultiplayer && p4ItemsOverride !== undefined,
+      opponentName: opponentName,
+      hardModeState: initialHardModeState,
+      normalModeState: initialNormalModeState,
+      roomSettings: mpSettings || { rounds: 1, hp: 4, itemsPerShipment: 4 },
+      multiModeState: { playerWins: 0, opponentWins: 0 }
+    });
+
+    matchStatsRef.current.isHardMode = hardMode;
+
+    startGameTimeoutRef.current = setTimeout(() => {
+      startRound(true, hardMode, initialHardModeState, chamberOverride, pItemsOverride, dItemsOverride, turnOwner, hpOverride, undefined, p3ItemsOverride, p4ItemsOverride);
+      startGameTimeoutRef.current = null;
+    }, 100);
+  }, [startRound]);
+
+  const pickupGun = useCallback((picker: TurnOwner = 'PLAYER') => {
+    const isMP = gameStateRef.current.isMultiplayer;
+    if (!isMP) {
+      if (
+        gameStateRef.current.phase !== 'PLAYER_TURN' &&
+        gameStateRef.current.phase !== 'DEALER_TURN' &&
+        gameStateRef.current.phase !== 'PLAYER3_TURN' &&
+        gameStateRef.current.phase !== 'PLAYER4_TURN' &&
+        gameStateRef.current.phase !== 'RESOLVING'
+      ) return;
+    }
+
+    if (isProcessingRef.current) return;
+
+    // Strict turn check
+    if (picker === 'PLAYER' && gameStateRef.current.turnOwner !== 'PLAYER') {
+      addLog("NOT YOUR TURN TO PICK UP THE GUN", 'info');
+      return;
+    }
+    if (picker === 'DEALER' && gameStateRef.current.turnOwner !== 'DEALER' && !isMP) return;
+    if (picker === 'PLAYER3' && gameStateRef.current.turnOwner !== 'PLAYER3' && !isMP) return;
+    if (picker === 'PLAYER4' && gameStateRef.current.turnOwner !== 'PLAYER4' && !isMP) return;
+
+    // Prevent gun pickup while anyone is knocked down or recovering
+    const anim = animStateRef.current;
+    if (
+      anim.playerHit || anim.playerRecovering ||
+      anim.dealerDropping || anim.dealerRecovering ||
+      anim.player3Hit || anim.player3Recovering ||
+      anim.player4Hit || anim.player4Recovering
+    ) {
+      addLog('WAIT FOR RECOVERY...', 'info');
+      return;
+    }
+
+    if (picker === 'PLAYER') {
+      setCameraView('GUN');
+      setAimTarget('CHOOSING');
+    } else if (picker === 'PLAYER3') {
+      setCameraView('PLAYER3_GUN');
+      setAimTarget('IDLE');
+    } else if (picker === 'PLAYER4') {
+      setCameraView('PLAYER4_GUN');
+      setAimTarget('IDLE');
+    } else {
+      setCameraView('DEALER_GUN');
+      setAimTarget('IDLE');
+    }
+  }, [addLog]);
+
+  const fireShot = useCallback(async (shooter: TurnOwner, target: TurnOwner) => {
+    resumeAudioContext().catch(() => {});
     // Basic phase check
     const isMP = gameStateRef.current.isMultiplayer;
     if (!isMP) {
-      if (gameStateRef.current.phase !== 'PLAYER_TURN' && gameStateRef.current.phase !== 'DEALER_TURN' && gameStateRef.current.phase !== 'PLAYER3_TURN' && gameStateRef.current.phase !== 'RESOLVING') return;
+      if (
+        gameStateRef.current.phase !== 'PLAYER_TURN' &&
+        gameStateRef.current.phase !== 'DEALER_TURN' &&
+        gameStateRef.current.phase !== 'PLAYER3_TURN' &&
+        gameStateRef.current.phase !== 'PLAYER4_TURN' &&
+        gameStateRef.current.phase !== 'RESOLVING'
+      ) return;
     }
 
     // Strict turn check for local player
@@ -977,20 +1088,19 @@ export const useGameLogic = () => {
       return;
     }
 
-    if (shooter === 'PLAYER' && isProcessing) return;
+    if (shooter === 'PLAYER' && isProcessingRef.current) return;
 
-    const isThreePlayer = gameStateRef.current.isThreePlayer;
+    const isMultiOpponent = gameStateRef.current.isThreePlayer || gameStateRef.current.isFourPlayer;
     let intendedAim: AimTarget = 'OPPONENT';
-    if (isThreePlayer) {
+    if (isMultiOpponent) {
       if (target === shooter) {
         intendedAim = 'SELF';
+      } else if (target === 'PLAYER3') {
+        intendedAim = 'LEFT';
+      } else if (target === 'PLAYER4') {
+        intendedAim = 'RIGHT';
       } else {
-        const sidePos = gameStateRef.current.roomSettings?.hp === 3 ? 'left' : 'left'; // default
-        if (target === 'PLAYER3') {
-          intendedAim = 'LEFT'; // Handled via camera view
-        } else {
-          intendedAim = 'OPPONENT';
-        }
+        intendedAim = 'OPPONENT';
       }
     } else {
       intendedAim = target === (shooter === 'PLAYER' ? 'PLAYER' : 'DEALER') ? 'SELF' : 'OPPONENT';
@@ -1002,13 +1112,42 @@ export const useGameLogic = () => {
 
     setIsProcessing(true);
 
-    if (isThreePlayer) {
-      setAimTarget(target === shooter ? 'SELF' : (target === 'PLAYER3' ? 'LEFT' : 'OPPONENT'));
+    try {
+      if (isMultiOpponent) {
+      setAimTarget(intendedAim);
       await wait(500);
 
       const currentChamberIdx = gameStateRef.current.currentShellIndex;
-      const currentShell = gameStateRef.current.chamber[currentChamberIdx];
-      const isLive = currentShell === 'LIVE';
+      const isSawed = getPlayerState(shooter).isSawedActive;
+      const isChoked = getPlayerState(shooter).isChokeActive;
+      const chamber = gameStateRef.current.chamber;
+
+      let processedShells = 1;
+      let isLive = chamber[currentChamberIdx] === 'LIVE';
+      let damage = 0;
+
+      if (isChoked && currentChamberIdx + 1 < chamber.length) {
+        processedShells = 2;
+        const shell1 = chamber[currentChamberIdx];
+        const shell2 = chamber[currentChamberIdx + 1];
+        const live1 = shell1 === 'LIVE';
+        const live2 = shell2 === 'LIVE';
+        isLive = live1 || live2;
+
+        let chokeDamage = (live1 && live2) ? 2 : ((live1 || live2) ? 1 : 0);
+        if (isSawed && chokeDamage > 0) chokeDamage *= 2;
+        damage = chokeDamage;
+
+        if (live1 && live2) {
+          addLog('DOUBLE BARREL HIT! (2 LIVE)', 'danger');
+        } else if (live1 || live2) {
+          addLog('SPLIT SHOT (1 LIVE)', 'danger');
+        } else {
+          addLog('DOUBLE CLICK (2 BLANK)', 'safe');
+        }
+      } else {
+        damage = isLive ? (isSawed ? 2 : 1) : 0;
+      }
 
       if (isLive) {
         audioManager.playSound('liveshellshoot');
@@ -1018,33 +1157,30 @@ export const useGameLogic = () => {
 
       setAnim(p => ({
         ...p,
-        triggerRecoil: p.triggerRecoil + 1,
-        muzzleFlashIntensity: isLive ? 100 : 0,
+        triggerRecoil: p.triggerRecoil + (processedShells === 2 ? 2 : 1),
+        muzzleFlashIntensity: isLive ? (processedShells === 2 ? 140 : 100) : 0,
         isLiveShot: isLive
       }));
-      setTimeout(() => {
+
+      if (muzzleFlashTimeoutRef.current) {
+        clearTimeout(muzzleFlashTimeoutRef.current);
+      }
+      muzzleFlashTimeoutRef.current = setTimeout(() => {
         setAnim(p => ({ ...p, muzzleFlashIntensity: 0 }));
+        muzzleFlashTimeoutRef.current = null;
       }, 150);
 
-      const players = gameStateRef.current.multiplayerState?.players || [];
-      const myId = gameStateRef.current.localPlayerId || '';
-      
       const resolvedTargetOwner = target;
       const targetState = getPlayerState(resolvedTargetOwner);
       const targetSetter = getPlayerSetter(resolvedTargetOwner);
       const targetName = getPlayerNameByOwner(resolvedTargetOwner);
-      const shooterName = getPlayerNameByOwner(shooter);
 
-      let damage = 0;
-      let isDead = false;
-
-      if (isLive) {
-        const isSawed = getPlayerState(shooter).isSawedActive;
+      if (damage > 0) {
         const targetImmune = targetState.jackpotImmunityShots !== undefined && targetState.jackpotImmunityShots > 0;
         
         if (targetImmune) {
           targetSetter(p => {
-            const nextImmunity = Math.max(0, (p.jackpotImmunityShots || 0) - 1);
+            const nextImmunity = Math.max(0, (p.jackpotImmunityShots || 0) - processedShells);
             return {
               ...p,
               jackpotImmunityShots: nextImmunity,
@@ -1053,10 +1189,9 @@ export const useGameLogic = () => {
           });
           addLog(`${targetName.toUpperCase()}'S JACKPOT SHIELD BLOCKED SHOT!`, 'safe');
         } else {
-          damage = isSawed ? 2 : 1;
           const newHp = Math.max(0, targetState.hp - damage);
           
-          const hasTotem = targetState.items.includes('TOTEM');
+          const hasTotem = (targetState.items || []).includes('TOTEM') && !targetState.isFlashbanged;
           if (newHp <= 0 && hasTotem) {
             targetSetter(p => {
               const items = [...p.items];
@@ -1072,9 +1207,6 @@ export const useGameLogic = () => {
             setOverlayText(null);
           } else {
             targetSetter(p => ({ ...p, hp: newHp }));
-            if (newHp <= 0) {
-              isDead = true;
-            }
           }
         }
 
@@ -1112,14 +1244,12 @@ export const useGameLogic = () => {
 
       // Calculate final target HP after this shot to check if the round ended
       let finalTargetHp = targetState.hp;
-      if (isLive) {
-        const isSawed = getPlayerState(shooter).isSawedActive;
+      if (damage > 0) {
         const targetImmune = targetState.jackpotImmunityShots !== undefined && targetState.jackpotImmunityShots > 0;
         
         if (!targetImmune) {
-          const dmg = isSawed ? 2 : 1;
-          const newHp = Math.max(0, targetState.hp - dmg);
-          const hasTotem = targetState.items.includes('TOTEM');
+          const newHp = Math.max(0, targetState.hp - damage);
+          const hasTotem = (targetState.items || []).includes('TOTEM') && !targetState.isFlashbanged;
           if (newHp <= 0 && hasTotem) {
             finalTargetHp = 1;
           } else {
@@ -1136,7 +1266,7 @@ export const useGameLogic = () => {
       const aliveCount = (postPlayerHp > 0 ? 1 : 0) + (postDealerHp > 0 ? 1 : 0) + (postPlayer3Hp > 0 ? 1 : 0) + (postPlayer4Hp > 0 ? 1 : 0);
 
       const shooterSetter = getPlayerSetter(shooter);
-      shooterSetter(p => ({ ...p, isSawedActive: false, isFlashbanged: false }));
+      shooterSetter(p => ({ ...p, isSawedActive: false, isChokeActive: false, isFlashbanged: false }));
 
       if (aliveCount <= 1) {
         setIsProcessing(true);
@@ -1163,23 +1293,24 @@ export const useGameLogic = () => {
         return;
       }
 
-      const nextShellIndex = currentChamberIdx + 1;
+      const nextShellIndex = currentChamberIdx + processedShells;
       const remaining = gameStateRef.current.chamber.length - nextShellIndex;
       const liveCount = gameStateRef.current.chamber.slice(nextShellIndex).filter(s => s === 'LIVE').length;
       const blankCount = gameStateRef.current.chamber.slice(nextShellIndex).filter(s => s === 'BLANK').length;
 
       if (remaining === 0) {
         setGameState(prev => ({ ...prev, currentShellIndex: nextShellIndex, liveCount, blankCount, phase: 'RESOLVING' }));
-        const lastShotKeepsTurn = target === shooter && !isLive;
+        const lastShotKeepsTurn = target === shooter && damage === 0;
         if (onBatchEndRef.current) {
           onBatchEndRef.current(lastShotKeepsTurn);
         }
         return;
       }
 
-      const keepTurn = target === shooter && !isLive;
+      const keepTurn = target === shooter && damage === 0;
       let absoluteTurnOwnerId = '';
 
+      const myId = gameStateRef.current.localPlayerId || '';
       if (gameStateRef.current.multiplayerState?.players) {
         const mPlayers = gameStateRef.current.multiplayerState.players;
         const myIndex = mPlayers.findIndex(p => p.id === myId);
@@ -1193,40 +1324,44 @@ export const useGameLogic = () => {
           absoluteTurnOwnerId = shooterId;
         } else {
           const shooterIdx = mPlayers.findIndex(p => p.id === shooterId);
-          let nextIdx = (shooterIdx + 1) % size;
+          const nextIdx = (shooterIdx + 1) % size;
           
           const getNewHp = (id: string) => {
             const relativeOwner = resolveTargetOwner(id, myId, mPlayers);
-            if (relativeOwner === 'PLAYER') return playerRef.current.hp - (resolvedTargetOwner === 'PLAYER' && isLive && !targetState.items.includes('TOTEM') && (targetState.jackpotImmunityShots || 0) <= 0 ? damage : 0);
-            if (relativeOwner === 'PLAYER3') return player3Ref.current.hp - (resolvedTargetOwner === 'PLAYER3' && isLive && !targetState.items.includes('TOTEM') && (targetState.jackpotImmunityShots || 0) <= 0 ? damage : 0);
-            if (relativeOwner === 'PLAYER4') return player4Ref.current.hp - (resolvedTargetOwner === 'PLAYER4' && isLive && !targetState.items.includes('TOTEM') && (targetState.jackpotImmunityShots || 0) <= 0 ? damage : 0);
-            return dealerRef.current.hp - (resolvedTargetOwner === 'DEALER' && isLive && !targetState.items.includes('TOTEM') && (targetState.jackpotImmunityShots || 0) <= 0 ? damage : 0);
+            if (relativeOwner === 'PLAYER') return postPlayerHp;
+            if (relativeOwner === 'PLAYER3') return postPlayer3Hp;
+            if (relativeOwner === 'PLAYER4') return postPlayer4Hp;
+            return postDealerHp;
           };
 
-          while (getNewHp(mPlayers[nextIdx].id) <= 0) {
-            nextIdx = (nextIdx + 1) % size;
-          }
-
-          const nextPlayer = mPlayers[nextIdx];
-          const nextRelOwner = resolveTargetOwner(nextPlayer.id, myId, mPlayers);
-          const nextState = getPlayerState(nextRelOwner);
-          
-          if (nextState.isHandcuffed) {
-            const nextSetter = getPlayerSetter(nextRelOwner);
-            nextSetter(p => ({ ...p, isHandcuffed: false }));
-            addLog(`${nextPlayer.name.toUpperCase()} WAS CUFFED. SKIPPING.`, 'info');
-            setOverlayText(`${nextPlayer.name.toUpperCase()} CUFFED`);
-            audioManager.playSound('checkhandcuffs');
-            await wait(2500);
-            setOverlayText(null);
-
-            let nextNextIdx = (nextIdx + 1) % size;
-            while (getNewHp(mPlayers[nextNextIdx].id) <= 0) {
-              nextNextIdx = (nextNextIdx + 1) % size;
+          let currentCandidateIdx = nextIdx;
+          let iterations = 0;
+          while (iterations < size) {
+            const candidate = mPlayers[currentCandidateIdx];
+            if (getNewHp(candidate.id) > 0) {
+              const relOwner = resolveTargetOwner(candidate.id, myId, mPlayers);
+              const cState = getPlayerState(relOwner);
+              if (cState.isHandcuffed) {
+                const cSetter = getPlayerSetter(relOwner);
+                cSetter(p => ({ ...p, isHandcuffed: false }));
+                addLog(`${candidate.name.toUpperCase()} WAS CUFFED. SKIPPING.`, 'info');
+                setOverlayText(`${candidate.name.toUpperCase()} CUFFED`);
+                audioManager.playSound('checkhandcuffs');
+                await wait(2500);
+                setOverlayText(null);
+                currentCandidateIdx = (currentCandidateIdx + 1) % size;
+                iterations++;
+                continue;
+              } else {
+                absoluteTurnOwnerId = candidate.id;
+                break;
+              }
             }
-            absoluteTurnOwnerId = mPlayers[nextNextIdx].id;
-          } else {
-            absoluteTurnOwnerId = nextPlayer.id;
+            currentCandidateIdx = (currentCandidateIdx + 1) % size;
+            iterations++;
+          }
+          if (!absoluteTurnOwnerId) {
+            absoluteTurnOwnerId = mPlayers[nextIdx].id;
           }
         }
       }
@@ -1256,21 +1391,25 @@ export const useGameLogic = () => {
     matchStatsRef.current.shotsFired++;
     if (target === shooter) matchStatsRef.current.selfShots++;
 
-    await performShot(shooter, target, {
-      gameState: gameStateRef.current, setGameState, player: playerRef.current, setPlayer, dealer: dealerRef.current, setDealer,
-      setAnim, setKnownShell, setAimTarget, setCameraView, setOverlayText,
-      setOverlayColor, setShowFlash, setShowBlood, addLog, playerName,
-      startRound, setIsProcessing,
-      onBatchEnd: onBatchEndRef.current || undefined,
-      matchStats: matchStatsRef,
-      handleHardModeRoundEnd,
-      handleMPRoundEnd,
-      handleNormalModeRoundEnd,
-      opponentName: getOpponentName()
-    });
-  };
+      await performShot(shooter, target, {
+        gameState: gameStateRef.current, setGameState, player: playerRef.current, setPlayer, dealer: dealerRef.current, setDealer,
+        setAnim, setKnownShell, setAimTarget, setCameraView, setOverlayText,
+        setOverlayColor, setShowFlash, setShowBlood, addLog, playerName: playerNameRef.current,
+        startRound, setIsProcessing,
+        onBatchEnd: onBatchEndRef.current || undefined,
+        matchStats: matchStatsRef,
+        handleHardModeRoundEnd,
+        handleMPRoundEnd,
+        handleNormalModeRoundEnd,
+        opponentName: getOpponentName()
+      });
+    } catch (err) {
+      console.error("Error in fireShot:", err);
+      setIsProcessing(false);
+    }
+  }, [addLog, getOpponentName, getPlayerNameByOwner, getPlayerSetter, getPlayerState, handleHardModeRoundEnd, handleMPRoundEnd, handleNormalModeRoundEnd, resolveTargetOwner, setAnim, setOverlayColor, setOverlayText, startRound]);
 
-  const processItemEffect = async (
+  const processItemEffect = useCallback(async (
     user: TurnOwner,
     item: ItemType,
     deckCardsOverride?: string[],
@@ -1281,288 +1420,450 @@ export const useGameLogic = () => {
     targetPlayerId?: string,
     isLocalAction: boolean = true
   ): Promise<boolean> => {
-    const isThreePlayer = gameStateRef.current.isThreePlayer;
+    const isMultiOpponent = gameStateRef.current.isThreePlayer || gameStateRef.current.isFourPlayer;
     const shouldDimMusic = isLocalAction;
-    if (isThreePlayer) {
-        const players = gameStateRef.current.multiplayerState?.players || [];
-        const myId = gameStateRef.current.localPlayerId || '';
-        const userName = getPlayerNameByOwner(user);
+    if (isMultiOpponent) {
+      const players = gameStateRef.current.multiplayerState?.players || [];
+      const myId = gameStateRef.current.localPlayerId || '';
+      const userName = getPlayerNameByOwner(user);
 
-        setOverlayText(`${userName.toUpperCase()} USED ${item}`);
-        addLog(`${userName.toUpperCase()} USED ${item}`, 'info');
-        await wait(1500);
-        setOverlayText(null);
+      setOverlayText(`${userName.toUpperCase()} USED ${item}`);
+      addLog(`${userName.toUpperCase()} USED ${item}`, 'info');
+      await wait(1500);
+      setOverlayText(null);
 
-        if (user === 'PLAYER') {
-          matchStatsRef.current.itemsUsed[item] = (matchStatsRef.current.itemsUsed[item] || 0) + 1;
-        }
-        
-        const userSetter = getPlayerSetter(user);
-        userSetter(p => ({
-            ...p,
-            currentTurnItemsUsed: [...(p.currentTurnItemsUsed || []), item]
-        }));
+      if (user === 'PLAYER') {
+        matchStatsRef.current.itemsUsed[item] = (matchStatsRef.current.itemsUsed[item] || 0) + 1;
+      }
+      
+      const userSetter = getPlayerSetter(user);
+      userSetter(p => ({
+        ...p,
+        currentTurnItemsUsed: [...(p.currentTurnItemsUsed || []), item]
+      }));
 
-        let resolvedTargetOwner: TurnOwner = 'DEALER';
-        if (targetPlayerId) {
-            resolvedTargetOwner = resolveTargetOwner(targetPlayerId, myId, players);
-        }
+      let resolvedTargetOwner: TurnOwner = 'DEALER';
+      if (targetPlayerId) {
+        resolvedTargetOwner = resolveTargetOwner(targetPlayerId, myId, players);
+      }
 
-        const targetState = getPlayerState(resolvedTargetOwner);
-        const targetSetter = getPlayerSetter(resolvedTargetOwner);
-        const targetName = getPlayerNameByOwner(resolvedTargetOwner);
+      const targetState = getPlayerState(resolvedTargetOwner);
+      const targetSetter = getPlayerSetter(resolvedTargetOwner);
+      const targetName = getPlayerNameByOwner(resolvedTargetOwner);
 
-        switch (item) {
-            case 'CIGS':
-                userSetter(p => ({ ...p, hp: Math.min(p.maxHp, p.hp + 1) }));
-                setAnim(p => ({ ...p, triggerHeal: p.triggerHeal + 1 }));
-                addLog(`${userName.toUpperCase()} HEALED 1 HP`, 'safe');
-                setOverlayText(`☀️ HEALED 1 HP!`);
-                await wait(1500);
-                setOverlayText(null);
-                break;
+      switch (item) {
+        case 'CIGS':
+          userSetter(p => ({ ...p, hp: Math.min(p.maxHp, p.hp + 1) }));
+          setAnim(p => ({ ...p, triggerHeal: p.triggerHeal + 1 }));
+          addLog(`${userName.toUpperCase()} HEALED 1 HP`, 'safe');
+          setOverlayText(`☀️ HEALED 1 HP!`);
+          await wait(1500);
+          setOverlayText(null);
+          break;
 
-            case 'BEER':
-                const idx = gameStateRef.current.currentShellIndex;
-                const chamber = gameStateRef.current.chamber;
-                if (idx < chamber.length) {
-                    const ejected = chamber[idx];
-                    addLog(`BEER EJECTED A ${ejected} SHELL`, 'info');
-                    setOverlayText(`🍺 BEER EJECTED: ${ejected}!`);
-                    
-                    setAnim(p => ({ ...p, triggerDrink: p.triggerDrink + 1, triggerRack: p.triggerRack + 1 }));
-                    await wait(2000);
-                    setOverlayText(null);
+        case 'BEER': {
+          const idx = gameStateRef.current.currentShellIndex;
+          const chamber = gameStateRef.current.chamber;
+          if (idx < chamber.length) {
+            const ejected = chamber[idx];
+            addLog(`BEER EJECTED A ${ejected} SHELL`, 'info');
+            setOverlayText(`🍺 BEER EJECTED: ${ejected}!`);
+            
+            setAnim(p => ({ ...p, triggerDrink: p.triggerDrink + 1, triggerRack: p.triggerRack + 1 }));
+            await wait(2000);
+            setOverlayText(null);
 
-                    setGameState(prev => {
-                        const nextIdx = prev.currentShellIndex + 1;
-                        const remaining = prev.chamber.length - nextIdx;
-                        const liveCount = prev.chamber.slice(nextIdx).filter(s => s === 'LIVE').length;
-                        const blankCount = prev.chamber.slice(nextIdx).filter(s => s === 'BLANK').length;
-                        return {
-                            ...prev,
-                            currentShellIndex: nextIdx,
-                            liveCount,
-                            blankCount,
-                            phase: remaining === 0 ? 'RESOLVING' : prev.phase
-                        };
-                    });
+            setGameState(prev => {
+              const nextIdx = prev.currentShellIndex + 1;
+              const remaining = prev.chamber.length - nextIdx;
+              const liveCount = prev.chamber.slice(nextIdx).filter(s => s === 'LIVE').length;
+              const blankCount = prev.chamber.slice(nextIdx).filter(s => s === 'BLANK').length;
+              return {
+                ...prev,
+                currentShellIndex: nextIdx,
+                liveCount,
+                blankCount,
+                phase: remaining === 0 ? 'RESOLVING' : prev.phase
+              };
+            });
 
-                    if (idx + 1 === chamber.length) {
-                        if (onBatchEndRef.current) {
-                            onBatchEndRef.current(false);
-                        }
-                    }
-                }
-                break;
-
-            case 'SAW':
-                userSetter(p => ({ ...p, isSawedActive: true }));
-                setAnim(p => ({ ...p, triggerSparks: p.triggerSparks + 1, isSawing: true }));
-                addLog(`${userName.toUpperCase()} SAWED SHOTGUN (DOUBLE DAMAGE ACTIVE)`, 'danger');
-                setOverlayText(`🪓 SAWED SHOTGUN!`);
-                await wait(2000);
-                setAnim(p => ({ ...p, isSawing: false }));
-                setOverlayText(null);
-                break;
-
-            case 'CUFFS':
-                targetSetter(p => ({ ...p, isHandcuffed: true }));
-                setAnim(p => ({ ...p, triggerCuff: p.triggerCuff + 1 }));
-                addLog(`${userName.toUpperCase()} CUFFED ${targetName.toUpperCase()}`, 'info');
-                setOverlayText(`⛓️ ${targetName.toUpperCase()} CUFFED!`);
-                await wait(2000);
-                setOverlayText(null);
-                break;
-
-            case 'GLASS':
-                const curIdx = gameStateRef.current.currentShellIndex;
-                const shell = gameStateRef.current.chamber[curIdx];
-                if (shell) {
-                    if (user === 'PLAYER') {
-                        setKnownShell(shell);
-                        addLog(`GLASS REVEALED NEXT SHELL IS ${shell}`, 'safe');
-                        setOverlayText(`🔍 NEXT SHELL IS ${shell}`);
-                    } else {
-                        addLog(`${userName.toUpperCase()} PEEKED WITH GLASS`, 'info');
-                    }
-                    setAnim(p => ({ ...p, triggerGlass: p.triggerGlass + 1 }));
-                    await wait(2000);
-                    setOverlayText(null);
-                }
-                break;
-
-            case 'PHONE':
-                const limit = gameStateRef.current.chamber.length;
-                const currentShell = gameStateRef.current.currentShellIndex;
-                const available = [];
-                for (let i = currentShell + 2; i < limit; i++) {
-                    available.push(i);
-                }
-                const futIdx = phoneFutureIndexOverride !== undefined ? phoneFutureIndexOverride : (available.length > 0 ? available[Math.floor(Math.random() * available.length)] : null);
-                if (futIdx !== null) {
-                    const futShell = gameStateRef.current.chamber[futIdx];
-                    const offset = futIdx - currentShell;
-                    if (user === 'PLAYER') {
-                        addLog(`PHONE REVEALED SHELL ${offset + 1} IS ${futShell}`, 'safe');
-                        setOverlayText(`📞 SHELL ${offset + 1} IS ${futShell}`);
-                    } else {
-                        addLog(`${userName.toUpperCase()} USED BURNER PHONE`, 'info');
-                    }
-                    setAnim(p => ({ ...p, triggerPhone: p.triggerPhone + 1 }));
-                    await wait(2000);
-                    setOverlayText(null);
-                } else {
-                    setOverlayText(`📞 PHONE: NO FUTURE SHELLS`);
-                    await wait(1500);
-                    setOverlayText(null);
-                }
-                break;
-
-            case 'INVERTER':
-                const invIdx = gameStateRef.current.currentShellIndex;
-                const invShell = gameStateRef.current.chamber[invIdx];
-                if (invShell) {
-                    setGameState(prev => {
-                        const chamber = [...prev.chamber];
-                        chamber[invIdx] = invShell === 'LIVE' ? 'BLANK' : 'LIVE';
-                        const liveCount = chamber.slice(invIdx).filter(s => s === 'LIVE').length;
-                        const blankCount = chamber.slice(invIdx).filter(s => s === 'BLANK').length;
-                        return { ...prev, chamber, liveCount, blankCount };
-                    });
-                    setKnownShell(null);
-                    setAnim(p => ({ ...p, triggerInverter: p.triggerInverter + 1 }));
-                    addLog(`${userName.toUpperCase()} INVERTED NEXT SHELL`, 'info');
-                    setOverlayText(`🔄 POLARITY INVERTED!`);
-                    await wait(2000);
-                    setOverlayText(null);
-                }
-                break;
-
-            case 'BIG_INVERTER':
-                setGameState(prev => {
-                    const start = prev.currentShellIndex;
-                    const chamber = prev.chamber.map((s, i) => i >= start ? (s === 'LIVE' ? 'BLANK' : 'LIVE') : s);
-                    const liveCount = chamber.slice(start).filter(s => s === 'LIVE').length;
-                    const blankCount = chamber.slice(start).filter(s => s === 'BLANK').length;
-                    return { ...prev, chamber, liveCount, blankCount };
-                });
-                setKnownShell(null);
-                setAnim(p => ({ ...p, triggerBigInverter: p.triggerBigInverter + 1 }));
-                addLog(`${userName.toUpperCase()} INVERTED ALL REMAINING AMMO`, 'info');
-                setOverlayText(`🔄 ALL SHELLS INVERTED!`);
-                await wait(2000);
-                setOverlayText(null);
-                break;
-
-            case 'ADRENALINE':
-                break;
-
-            case 'CRUSHER':
-                if (targetState.items.length > 0) {
-                    const cIdx = crushIndexOverride !== undefined ? crushIndexOverride : Math.floor(Math.random() * targetState.items.length);
-                    const destroyedItem = targetState.items[cIdx];
-                    targetSetter(p => {
-                        const items = [...p.items];
-                        items.splice(cIdx, 1);
-                        return { ...p, items };
-                    });
-                    setAnim(p => ({ ...p, triggerCrusher: p.triggerCrusher + 1 }));
-                    addLog(`${userName.toUpperCase()} DESTROYED ${targetName.toUpperCase()}'S ${destroyedItem}`, 'danger');
-                    setOverlayText(`🔨 CRUSHED ${targetName.toUpperCase()}'S ${destroyedItem}!`);
-                    await wait(2000);
-                    setOverlayText(null);
-                }
-                break;
-
-            case 'FLASHBANG':
-                targetSetter(p => ({ ...p, isFlashbanged: true }));
-                setAnim(p => ({ ...p, triggerFlashbang: p.triggerFlashbang + 1 }));
-                if (resolvedTargetOwner === 'PLAYER') {
-                    setShowFlashbang(true);
-                }
-                addLog(`${userName.toUpperCase()} FLASHBANGED ${targetName.toUpperCase()}`, 'info');
-                setOverlayText(`⚡ ${targetName.toUpperCase()} BLINDED!`);
-                await wait(2000);
-                setOverlayText(null);
-                if (resolvedTargetOwner === 'PLAYER') {
-                    setShowFlashbang(false);
-                }
-                break;
-
-            case 'JACKPOT':
-                const spinOutcome = jackpotOutcomeOverride ?? resolveJackpotOutcome();
-                audioManager.playSound('slotmachine', { dimMusic: shouldDimMusic });
-                setAnim(p => ({ ...p, triggerJackpot: p.triggerJackpot + 1, jackpotResult: spinOutcome }));
-                addLog(`${userName.toUpperCase()} SPUN THE JACKPOT MACHINE`, 'info');
-                await wait(4200);
-
-                if (spinOutcome === 'JACKPOT') {
-                    addLog("JACKPOT WIN! IMMUNE TO NEXT 3 SHOTS", 'safe');
-                    setOverlayText(`✨ JACKPOT WIN! ✨\n3 SHOT IMMUNITY FOR ${userName.toUpperCase()}`);
-                    userSetter(p => ({ ...p, jackpotImmunityShots: 3, hasJackpotWinActive: true }));
-                    audioManager.playJackpotIntro({ dimMusic: shouldDimMusic });
-                } else if (spinOutcome === 'NORMAL') {
-                    addLog("NORMAL WIN! IMMUNE TO NEXT 1 SHOT", 'safe');
-                    setOverlayText(`👍 NORMAL WIN! 👍\n1 SHOT IMMUNITY FOR ${userName.toUpperCase()}`);
-                    userSetter(p => ({ ...p, jackpotImmunityShots: (p.jackpotImmunityShots || 0) + 1, hasJackpotWinActive: false }));
-                } else {
-                    addLog("NO WIN. TRY AGAIN", 'neutral');
-                    setOverlayText("❌ LOSE ❌\nBETTER LUCK NEXT TIME");
-                }
-                await wait(1500);
-                setOverlayText(null);
-                break;
-
-            case 'CONTRACT':
-                userSetter(p => {
-                    const curHp = p.hp;
-                    const hasTotem = p.items.includes('TOTEM');
-                    let nextHp = curHp - 1;
-                    let items = [...p.items];
-
-                    if (nextHp <= 0) {
-                        if (hasTotem) {
-                            nextHp = 1;
-                            const tIdx = items.indexOf('TOTEM');
-                            if (tIdx !== -1) items.splice(tIdx, 1);
-                        } else {
-                            nextHp = 0;
-                        }
-                    }
-
-                    return { ...p, hp: nextHp, items };
-                });
-
-                setAnim(p => ({ ...p, triggerContract: p.triggerContract + 1 }));
-                addLog(`${userName.toUpperCase()} SIGNED BLOOD CONTRACT`, 'danger');
-                await wait(2500);
-
-                const postState = getPlayerState(user);
-                if (postState.hp > 0) {
-                    const loot = contractLootOverride || [
-                        getRandomItem(gameStateRef.current.isHardMode, user === 'DEALER'),
-                        getRandomItem(gameStateRef.current.isHardMode, user === 'DEALER')
-                    ];
-                    userSetter(p => {
-                        const items = [...p.items];
-                        loot.forEach(l => {
-                            if (items.length < MAX_ITEMS) items.push(l);
-                        });
-                        return { ...p, items };
-                    });
-                    addLog(`${userName.toUpperCase()} GAINED: ${loot.join(', ')}`, 'safe');
-                    setOverlayText(`🩸 BLOOD CONTRACT SIGNED!\nGAINED: ${loot.join(', ')}`);
-                } else {
-                    addLog(`${userName.toUpperCase()} SACRIFICED THEIR LETHAL SHOT FOR THE CONTRACT`, 'danger');
-                    setOverlayText(`💀 SACRIFICED LETHAL SHOT!`);
-                }
-                await wait(2200);
-                setOverlayText(null);
-                break;
+            if (idx + 1 === chamber.length) {
+              if (onBatchEndRef.current) {
+                onBatchEndRef.current(false);
+              }
+            }
+          }
+          break;
         }
 
-        return false;
+        case 'SAW':
+          userSetter(p => ({ ...p, isSawedActive: true }));
+          setAnim(p => ({ ...p, triggerSparks: p.triggerSparks + 1, isSawing: true }));
+          addLog(`${userName.toUpperCase()} SAWED SHOTGUN (DOUBLE DAMAGE ACTIVE)`, 'danger');
+          setOverlayText(`🪓 SAWED SHOTGUN!`);
+          await wait(2000);
+          setAnim(p => ({ ...p, isSawing: false }));
+          setOverlayText(null);
+          break;
+
+        case 'CUFFS':
+          if (targetState.isHandcuffed) {
+            addLog(`${targetName.toUpperCase()} IS ALREADY CUFFED! (CANNOT STACK)`, 'info');
+            setOverlayText(`⛓️ ${targetName.toUpperCase()} ALREADY CUFFED!`);
+            await wait(1500);
+            setOverlayText(null);
+            break;
+          }
+          targetSetter(p => ({ ...p, isHandcuffed: true }));
+          setAnim(p => ({ ...p, triggerCuff: p.triggerCuff + 1 }));
+          addLog(`${userName.toUpperCase()} CUFFED ${targetName.toUpperCase()}`, 'info');
+          setOverlayText(`⛓️ ${targetName.toUpperCase()} CUFFED!`);
+          await wait(2000);
+          setOverlayText(null);
+          break;
+
+        case 'GLASS': {
+          const curIdx = gameStateRef.current.currentShellIndex;
+          const shell = gameStateRef.current.chamber[curIdx];
+          if (shell) {
+            if (user === 'PLAYER') {
+              setKnownShell(shell);
+              addLog(`GLASS REVEALED NEXT SHELL IS ${shell}`, 'safe');
+              setOverlayText(`🔍 NEXT SHELL IS ${shell}`);
+            } else {
+              addLog(`${userName.toUpperCase()} PEEKED WITH GLASS`, 'info');
+            }
+            setAnim(p => ({ ...p, triggerGlass: p.triggerGlass + 1 }));
+            await wait(2000);
+            setOverlayText(null);
+          }
+          break;
+        }
+
+        case 'PHONE': {
+          const limit = gameStateRef.current.chamber.length;
+          const currentShell = gameStateRef.current.currentShellIndex;
+          const available = [];
+          for (let i = currentShell + 1; i < limit; i++) {
+            available.push(i);
+          }
+          const futIdx = phoneFutureIndexOverride !== undefined ? phoneFutureIndexOverride : (available.length > 0 ? available[Math.floor(Math.random() * available.length)] : null);
+          if (futIdx !== null) {
+            const futShell = gameStateRef.current.chamber[futIdx];
+            const offset = futIdx - currentShell;
+            let posName = `${offset + 1}TH`;
+            if (offset === 1) posName = '2ND';
+            else if (offset === 2) posName = '3RD';
+            else if (offset === 3) posName = '4TH';
+            if (user === 'PLAYER') {
+              addLog(`PHONE REVEALED SHELL ${offset + 1} (${posName} SHELL) IS ${futShell}`, 'safe');
+              setOverlayText(`📞 ${posName} SHELL IS ${futShell}`);
+            } else {
+              addLog(`${userName.toUpperCase()} USED BURNER PHONE`, 'info');
+            }
+            setAnim(p => ({ ...p, triggerPhone: p.triggerPhone + 1 }));
+            await wait(2000);
+            setOverlayText(null);
+          } else {
+            setOverlayText(`📞 PHONE: NO FUTURE SHELLS`);
+            await wait(1500);
+            setOverlayText(null);
+          }
+          break;
+        }
+
+        case 'INVERTER': {
+          const invIdx = gameStateRef.current.currentShellIndex;
+          const invShell = gameStateRef.current.chamber[invIdx];
+          if (invShell) {
+            setGameState(prev => {
+              const chamber = [...prev.chamber];
+              chamber[invIdx] = invShell === 'LIVE' ? 'BLANK' : 'LIVE';
+              const liveCount = chamber.slice(invIdx).filter(s => s === 'LIVE').length;
+              const blankCount = chamber.slice(invIdx).filter(s => s === 'BLANK').length;
+              return { ...prev, chamber, liveCount, blankCount };
+            });
+            setKnownShell(null);
+            setAnim(p => ({ ...p, triggerInverter: p.triggerInverter + 1 }));
+            addLog(`${userName.toUpperCase()} INVERTED NEXT SHELL`, 'info');
+            setOverlayText(`🔄 POLARITY INVERTED!`);
+            await wait(2000);
+            setOverlayText(null);
+          }
+          break;
+        }
+
+        case 'BIG_INVERTER':
+          setGameState(prev => {
+            const start = prev.currentShellIndex;
+            const chamber = prev.chamber.map((s, i) => i >= start ? (s === 'LIVE' ? 'BLANK' : 'LIVE') : s);
+            const liveCount = chamber.slice(start).filter(s => s === 'LIVE').length;
+            const blankCount = chamber.slice(start).filter(s => s === 'BLANK').length;
+            return { ...prev, chamber, liveCount, blankCount };
+          });
+          setKnownShell(null);
+          setAnim(p => ({ ...p, triggerBigInverter: p.triggerBigInverter + 1 }));
+          addLog(`${userName.toUpperCase()} INVERTED ALL REMAINING AMMO`, 'info');
+          setOverlayText(`🔄 ALL SHELLS INVERTED!`);
+          await wait(2000);
+          setOverlayText(null);
+          break;
+
+        case 'ADRENALINE':
+          if (resolvedTargetOwner) {
+            setGameState(prev => ({ ...prev, adrenalineTargetOwner: resolvedTargetOwner }));
+          }
+          setAnim(p => ({ ...p, triggerAdrenaline: p.triggerAdrenaline + 1 }));
+          await wait(1500);
+          if (user === 'PLAYER') {
+            addLog("TIME SLOWS DOWN... PICK AN ITEM TO STEAL", 'danger');
+            setOverlayText('⚡ ADRENALINE RUSH ⚡');
+            setGameState(prev => ({ ...prev, phase: 'STEALING' }));
+            await wait(1000);
+            setOverlayText(null);
+          }
+          break;
+
+        case 'CHOKE':
+          userSetter(p => ({ ...p, isChokeActive: true }));
+          setAnim(p => ({ ...p, triggerChoke: p.triggerChoke + 1 }));
+          addLog(`${userName.toUpperCase()} EQUIPPED BARREL CHOKE (BURST 2 SHELLS)`, 'danger');
+          setOverlayText(`💥 BARREL CHOKE EQUIPPED!`);
+          await wait(2000);
+          setOverlayText(null);
+          break;
+
+        case 'REMOTE': {
+          const idx = gameStateRef.current.currentShellIndex;
+          const chamber = [...gameStateRef.current.chamber];
+          if (idx + 1 < chamber.length) {
+            const temp = chamber[idx];
+            chamber[idx] = chamber[idx + 1];
+            chamber[idx + 1] = temp;
+            setGameState(prev => ({ ...prev, chamber }));
+            setKnownShell(null);
+            setAnim(p => ({ ...p, triggerRemote: p.triggerRemote + 1 }));
+            addLog(`${userName.toUpperCase()} CYCLED CHAMBER MECHANISM (SWAPPED SHELLS)`, 'info');
+            setOverlayText(`🔄 CHAMBER CYCLED!`);
+            await wait(2000);
+            setOverlayText(null);
+          } else {
+            setOverlayText(`🔄 REMOTE: NOT ENOUGH SHELLS TO SWAP`);
+            await wait(1500);
+            setOverlayText(null);
+          }
+          break;
+        }
+
+        case 'LUCKYCHARM':
+          userSetter(p => ({ ...p, luckycharmsUsed: (p.luckycharmsUsed || 0) + 1 }));
+          setAnim(p => ({ ...p, triggerLuckycharm: p.triggerLuckycharm + 1 }));
+          addLog(`${userName.toUpperCase()} USED LUCKY CHARM (+LUCK ON NEXT SHIPMENT)`, 'safe');
+          setOverlayText(`🍀 LUCKY CHARM ACTIVATED!`);
+          await wait(2000);
+          setOverlayText(null);
+          break;
+
+        case 'MIRROR': {
+          audioManager.playSound('mirror', { dimMusic: shouldDimMusic });
+          setAnim(p => ({ ...p, triggerMirror: p.triggerMirror + 1 }));
+          await wait(2200);
+
+          const copiedItems = (targetState.lastTurnItemsUsed || []).filter(i => i !== 'MIRROR' && i !== 'ADRENALINE' && (user !== 'DEALER' || i !== 'JACKPOT'));
+          if (copiedItems.length === 0) {
+            addLog(`${userName.toUpperCase()} COPIED NO EFFECTS WITH MIRROR`, 'info');
+            setOverlayText("🪞 MIRROR: NO EFFECTS TO COPY");
+            await wait(2000);
+            setOverlayText(null);
+          } else {
+            const friendlyNames = copiedItems.join(' & ');
+            addLog(`${userName.toUpperCase()} MIRROR COPIED: ${friendlyNames}`, 'safe');
+            setOverlayText(`🪞 MIRROR DUPLICATED: ${friendlyNames}!`);
+            await wait(2200);
+            setOverlayText(null);
+
+            for (const copiedItem of copiedItems) {
+              if (gameStateRef.current.phase === 'GAME_OVER') break;
+              await processItemEffect(user, copiedItem);
+              await wait(2000);
+            }
+          }
+          break;
+        }
+
+        case 'DECK_CARD': {
+          const allTarotNames: TarotCard['name'][] = [
+            'The Magician', 'The Hanged Man', 'The Hermit', 'The Moon', 'Judgment',
+            'Wheel of Fortune', 'The Sun', 'Death', 'The Tower', 'The Fool', 'Justice', 'Temperance'
+          ];
+          let selectedNames: TarotCard['name'][];
+          if (deckCardsOverride) {
+            selectedNames = deckCardsOverride as TarotCard['name'][];
+          } else {
+            const shuffled = [...allTarotNames].sort(() => Math.random() - 0.5);
+            selectedNames = shuffled.slice(0, 6);
+          }
+          const cardPowers: Record<TarotCard['name'], string> = {
+            'The Magician': 'Gain a random item',
+            'The Hanged Man': 'Lose 1 HP',
+            'The Hermit': 'Ends turn instantly',
+            'The Moon': 'Grab opponent item',
+            'Judgment': '50% chance invert blank to live',
+            'Wheel of Fortune': 'Reshuffle ammo',
+            'The Sun': 'Gain 1 HP',
+            'Death': 'Destroy own item',
+            'The Tower': 'Destroy opponent item',
+            'The Fool': 'Chamber bullet reveal',
+            'Justice': 'Swap HP totals',
+            'Temperance': 'Swap items with opponent'
+          };
+          const deckCards: TarotCard[] = selectedNames.map(name => ({
+            name,
+            power: cardPowers[name]
+          }));
+
+          setGameState(prev => ({
+            ...prev,
+            deckCards,
+            selectedCardIndex: null,
+            phase: 'CARD_SELECT'
+          }));
+          setCameraView('TABLE');
+          addLog(`${userName.toUpperCase()} SHUFFLED TAROT CARDS`, 'info');
+          setOverlayText("🃏 SELECT A TAROT CARD...");
+          await wait(1800);
+          setOverlayText(null);
+          break;
+        }
+
+        case 'TOTEM':
+          addLog(`${userName.toUpperCase()}'S TOTEM IS PASSIVE`, 'info');
+          break;
+
+        case 'CRUSHER':
+          if (targetState.items.length > 0) {
+            const cIdx = crushIndexOverride !== undefined ? crushIndexOverride : Math.floor(Math.random() * targetState.items.length);
+            const destroyedItem = targetState.items[cIdx];
+            targetSetter(p => {
+              const items = [...p.items];
+              items.splice(cIdx, 1);
+              return { ...p, items };
+            });
+            setAnim(p => ({ ...p, triggerCrusher: p.triggerCrusher + 1 }));
+            addLog(`${userName.toUpperCase()} DESTROYED ${targetName.toUpperCase()}'S ${destroyedItem}`, 'danger');
+            setOverlayText(`🔨 CRUSHED ${targetName.toUpperCase()}'S ${destroyedItem}!`);
+            await wait(2000);
+            setOverlayText(null);
+          } else {
+            setOverlayText(`🔨 ${targetName.toUpperCase()} HAS NO ITEMS!`);
+            addLog(`${userName.toUpperCase()} USED CRUSHER: ${targetName.toUpperCase()} has no items to destroy!`, 'info');
+            await wait(1500);
+            setOverlayText(null);
+          }
+          break;
+
+        case 'FLASHBANG':
+          targetSetter(p => ({ ...p, isFlashbanged: true }));
+          setAnim(p => ({ ...p, triggerFlashbang: p.triggerFlashbang + 1 }));
+          if (resolvedTargetOwner === 'PLAYER') {
+            setShowFlashbang(true);
+          }
+          addLog(`${userName.toUpperCase()} FLASHBANGED ${targetName.toUpperCase()}`, 'info');
+          setOverlayText(`⚡ ${targetName.toUpperCase()} BLINDED!`);
+          await wait(2000);
+          setOverlayText(null);
+          if (resolvedTargetOwner === 'PLAYER') {
+            setShowFlashbang(false);
+          }
+          break;
+
+        case 'JACKPOT': {
+          const spinOutcome = jackpotOutcomeOverride ?? resolveJackpotOutcome();
+          audioManager.playSound('slotmachine', { dimMusic: shouldDimMusic });
+          setAnim(p => ({ ...p, triggerJackpot: p.triggerJackpot + 1, jackpotResult: spinOutcome }));
+          addLog(`${userName.toUpperCase()} SPUN THE JACKPOT MACHINE`, 'info');
+          await wait(4200);
+
+          if (spinOutcome === 'JACKPOT') {
+            addLog("JACKPOT WIN! IMMUNE TO NEXT 3 SHOTS", 'safe');
+            setOverlayText(`✨ JACKPOT WIN! ✨\n3 SHOT IMMUNITY FOR ${userName.toUpperCase()}`);
+            userSetter(p => ({ ...p, jackpotImmunityShots: 3, hasJackpotWinActive: true }));
+            audioManager.playJackpotIntro({ dimMusic: shouldDimMusic });
+          } else if (spinOutcome === 'NORMAL') {
+            addLog("NORMAL WIN! IMMUNE TO NEXT 1 SHOT", 'safe');
+            setOverlayText(`👍 NORMAL WIN! 👍\n1 SHOT IMMUNITY FOR ${userName.toUpperCase()}`);
+            userSetter(p => ({ ...p, jackpotImmunityShots: (p.jackpotImmunityShots || 0) + 1, hasJackpotWinActive: false }));
+          } else {
+            addLog("NO WIN. TRY AGAIN", 'neutral');
+            setOverlayText("❌ LOSE ❌\nBETTER LUCK NEXT TIME");
+          }
+          await wait(1500);
+          setOverlayText(null);
+          break;
+        }
+
+        case 'CONTRACT': {
+          const preState = getPlayerState(user);
+          const hasTotem = preState.items.includes('TOTEM') && !preState.isFlashbanged;
+          const hasJackpot = (preState.jackpotImmunityShots ?? 0) > 0;
+          let nextHp = preState.hp - 1;
+          let survived = true;
+
+          if (hasJackpot) {
+            nextHp = preState.hp;
+            userSetter(p => ({
+              ...p,
+              jackpotImmunityShots: Math.max(0, (p.jackpotImmunityShots ?? 0) - 1)
+            }));
+          } else if (nextHp <= 0) {
+            if (hasTotem) {
+              nextHp = 1;
+              userSetter(p => {
+                const items = [...p.items];
+                const tIdx = items.indexOf('TOTEM');
+                if (tIdx !== -1) items.splice(tIdx, 1);
+                return { ...p, hp: 1, items };
+              });
+              setAnim(p => ({ ...p, triggerTotem: p.triggerTotem + 1 }));
+              addLog(`${userName.toUpperCase()}'S TOTEM ACTIVATED (SURVIVED AT 1 HP)`, 'safe');
+            } else {
+              nextHp = 0;
+              survived = false;
+              userSetter(p => ({ ...p, hp: 0 }));
+            }
+          } else {
+            userSetter(p => ({ ...p, hp: nextHp }));
+          }
+
+          setAnim(p => ({ ...p, triggerContract: p.triggerContract + 1 }));
+          addLog(`${userName.toUpperCase()} SIGNED BLOOD CONTRACT`, 'danger');
+          await wait(2500);
+
+          if (survived) {
+            const loot = contractLootOverride || [
+              getRandomItem(gameStateRef.current.isHardMode, user === 'DEALER'),
+              getRandomItem(gameStateRef.current.isHardMode, user === 'DEALER')
+            ];
+            userSetter(p => {
+              const items = [...p.items];
+              loot.forEach(l => {
+                if (items.length < MAX_ITEMS) items.push(l);
+              });
+              return { ...p, items };
+            });
+            addLog(`${userName.toUpperCase()} GAINED: ${loot.join(', ')}`, 'safe');
+            setOverlayText(`🩸 BLOOD CONTRACT SIGNED!\nGAINED: ${loot.join(', ')}`);
+          } else {
+            addLog(`${userName.toUpperCase()} SACRIFICED THEIR LETHAL SHOT FOR THE CONTRACT`, 'danger');
+            setOverlayText(`💀 SACRIFICED LETHAL SHOT!`);
+          }
+          await wait(2200);
+          setOverlayText(null);
+          break;
+        }
+      }
+
+      return false;
     }
 
     if (item === 'CUFFS') {
@@ -1577,11 +1878,11 @@ export const useGameLogic = () => {
       }
     }
 
-    const userName = user === 'PLAYER' ? playerName.toUpperCase() : getOpponentName().toUpperCase();
+    const userName = user === 'PLAYER' ? (playerNameRef.current || 'PLAYER').toUpperCase() : getOpponentName().toUpperCase();
     setOverlayText(`${userName} USED ${item}`);
 
     addLog(`${userName} USED ${item}`, 'info');
-    await wait(1500); // Brief display before animation starts
+    await wait(1500);
     setOverlayText(null);
 
     // Track Item Usage
@@ -1629,7 +1930,7 @@ export const useGameLogic = () => {
 
       case 'CUFFS':
         await ItemActions.handleCuffs(user, setPlayer, setDealer, (v) => setAnim(p => ({ ...p, triggerCuff: typeof v === 'function' ? v(p.triggerCuff) : v })));
-        await wait(500); // Pause after cuffs animation
+        await wait(500);
         break;
 
       case 'GLASS':
@@ -1669,8 +1970,7 @@ export const useGameLogic = () => {
           (v) => setAnim(p => ({ ...p, triggerAdrenaline: typeof v === 'function' ? v(p.triggerAdrenaline) : v })),
           setGameState, addLog, setOverlayText, setOverlayColor
         );
-        await wait(500); // Pause before next action
-        await wait(500); // Pause before next action
+        await wait(500);
         break;
 
       case 'CHOKE':
@@ -1690,10 +1990,10 @@ export const useGameLogic = () => {
 
       case 'CONTRACT':
         await ItemActions.handleContract(
-          user, player, dealer, setPlayer, setDealer, setGameState, setAnim,
+          user, playerRef.current, dealerRef.current, setPlayer, setDealer, setGameState, setAnimState,
           (v) => setAnim(p => ({ ...p, triggerContract: typeof v === 'function' ? v(p.triggerContract) : v })),
           addLog, setOverlayText, setOverlayColor,
-          gameState.isHardMode, gameState.isMultiplayer,
+          gameStateRef.current.isHardMode, gameStateRef.current.isMultiplayer,
           handleHardModeRoundEnd, handleMPRoundEnd, handleNormalModeRoundEnd,
           contractLootOverride
         );
@@ -1717,7 +2017,7 @@ export const useGameLogic = () => {
 
       case 'CRUSHER':
         await ItemActions.handleCrusher(
-          user, player, dealer, setPlayer, setDealer,
+          user, playerRef.current, dealerRef.current, setPlayer, setDealer,
           (v) => setAnim(p => ({ ...p, triggerCrusher: typeof v === 'function' ? v(p.triggerCrusher) : v })),
           addLog, setOverlayText,
           crushIndexOverride
@@ -1725,7 +2025,6 @@ export const useGameLogic = () => {
         break;
 
       case 'JACKPOT': {
-        // Roll the jackpot outcome
         let outcome: 'JACKPOT' | 'NORMAL' | 'LOSE';
         
         if ((window as any).__debugJackpotForcedOutcome) {
@@ -1736,7 +2035,6 @@ export const useGameLogic = () => {
           outcome = resolveJackpotOutcome();
         }
 
-        // Trigger animation
         audioManager.playSound('slotmachine', { dimMusic: shouldDimMusic });
         setAnim(p => ({
           ...p,
@@ -1745,8 +2043,6 @@ export const useGameLogic = () => {
         }));
 
         addLog(`${userName} SPUN THE JACKPOT MACHINE`, 'info');
-
-        // Let the spin happen
         await wait(4200);
 
         const setOwner = user === 'PLAYER' ? setPlayer : setDealer;
@@ -1773,7 +2069,7 @@ export const useGameLogic = () => {
       case 'MIRROR': {
         audioManager.playSound('mirror', { dimMusic: shouldDimMusic });
         setAnim(p => ({ ...p, triggerMirror: p.triggerMirror + 1 }));
-        await wait(2200); // Let Mirror animation run first
+        await wait(2200);
 
         const opponentState = user === 'PLAYER' ? dealerRef.current : playerRef.current;
         const copiedItems = (opponentState.lastTurnItemsUsed || []).filter(i => i !== 'MIRROR' && i !== 'ADRENALINE' && (user !== 'DEALER' || i !== 'JACKPOT'));
@@ -1808,7 +2104,6 @@ export const useGameLogic = () => {
               roundEnded = true;
             }
             if (!roundEnded) {
-              // Wait 2.8 seconds between each item's animation so the current one completes first
               await wait(2800);
             }
           }
@@ -1864,13 +2159,123 @@ export const useGameLogic = () => {
       }
     }
 
-    // Final synchronization wait - ensures animation is visually complete before proceeding
     await wait(300);
 
     return roundEnded;
-  };
+  }, [addLog, getOpponentName, getPlayerNameByOwner, getPlayerSetter, getPlayerState, handleHardModeRoundEnd, handleMPRoundEnd, handleNormalModeRoundEnd, resolveTargetOwner, setAnim, setOverlayColor, setOverlayText, startRound]);
 
-  const usePlayerItem = async (
+  const canUsePlayerItem = useCallback((
+    index: number,
+    targetPlayerId?: string
+  ): { canUse: boolean; reason?: string } => {
+    if (gameStateRef.current.phase !== 'PLAYER_TURN') {
+      return { canUse: false, reason: "NOT YOUR TURN" };
+    }
+    if (gameStateRef.current.turnOwner !== 'PLAYER') {
+      return { canUse: false, reason: "NOT YOUR TURN" };
+    }
+    if (isProcessingRef.current) {
+      return { canUse: false, reason: "SYSTEM BUSY" };
+    }
+
+    if (cameraView === 'GUN' || aimTarget !== 'IDLE') {
+      return { canUse: false, reason: "CAN'T USE ITEMS WHILE HOLDING GUN" };
+    }
+
+    const item = playerRef.current.items[index];
+    if (!item) {
+      return { canUse: false, reason: "INVALID ITEM" };
+    }
+
+    if (playerRef.current.isFlashbanged) {
+      return { canUse: false, reason: "YOU ARE BLINDED (FLASHBANGED)! CAN'T USE ITEMS" };
+    }
+
+    if (item === 'TOTEM') {
+      return { canUse: false, reason: "TOTEM IS A PASSIVE ITEM! TRIGGERS ON LETHAL DAMAGE" };
+    }
+
+    if (item === 'CONTRACT') {
+      const hasTotem = playerRef.current.items.includes('TOTEM') && !playerRef.current.isFlashbanged;
+      const hasJackpot = (playerRef.current.jackpotImmunityShots ?? 0) > 0;
+      if (playerRef.current.hp <= 1 && !hasTotem && !hasJackpot) {
+        return { canUse: false, reason: "CANNOT SIGN BLOOD CONTRACT AT 1 HP (SUICIDAL)" };
+      }
+    }
+
+    if (item === 'SAW' && playerRef.current.isSawedActive) {
+      return { canUse: false, reason: "BARREL ALREADY SAWED OFF (2X DAMAGE ACTIVE)" };
+    }
+
+    if (item === 'CHOKE' && playerRef.current.isChokeActive) {
+      return { canUse: false, reason: "CHOKE MOD ALREADY EQUIPPED (2 SHELL BURST ACTIVE)" };
+    }
+
+    if (item === 'REMOTE' && gameStateRef.current.currentShellIndex + 1 >= gameStateRef.current.chamber.length) {
+      return { canUse: false, reason: "CANNOT CYCLE: ONLY ONE SHELL REMAINING IN CHAMBER" };
+    }
+
+    if (item === 'PHONE' && gameStateRef.current.currentShellIndex + 1 >= gameStateRef.current.chamber.length) {
+      return { canUse: false, reason: "NO FUTURE SHELLS REMAINING TO INSPECT" };
+    }
+
+    if ((item === 'INVERTER' || item === 'BIG_INVERTER') && gameStateRef.current.currentShellIndex >= gameStateRef.current.chamber.length) {
+      return { canUse: false, reason: "CHAMBER IS EMPTY" };
+    }
+
+    if (item === 'BEER' && gameStateRef.current.currentShellIndex >= gameStateRef.current.chamber.length) {
+      return { canUse: false, reason: "CHAMBER IS EMPTY" };
+    }
+
+    if (item === 'CUFFS') {
+      const isMulti = gameStateRef.current.isThreePlayer || gameStateRef.current.isFourPlayer;
+      const targetOwner = isMulti && targetPlayerId ? resolveTargetOwner(targetPlayerId, gameStateRef.current.localPlayerId || '', gameStateRef.current.multiplayerState?.players || []) : 'DEALER';
+      const oppState = getPlayerState(targetOwner);
+      if (oppState.isHandcuffed) {
+        return { canUse: false, reason: `${getPlayerNameByOwner(targetOwner).toUpperCase()} IS ALREADY CUFFED!` };
+      }
+    }
+
+    if (item === 'CRUSHER') {
+      const isMulti = gameStateRef.current.isThreePlayer || gameStateRef.current.isFourPlayer;
+      const targetOwner = isMulti && targetPlayerId ? resolveTargetOwner(targetPlayerId, gameStateRef.current.localPlayerId || '', gameStateRef.current.multiplayerState?.players || []) : 'DEALER';
+      const targetItems = getPlayerState(targetOwner).items;
+      if (targetItems.length === 0) {
+        return { canUse: false, reason: "OPPONENT HAS NO ITEMS TO CRUSH" };
+      }
+    }
+
+    if (item === 'MIRROR') {
+      const isMulti = gameStateRef.current.isThreePlayer || gameStateRef.current.isFourPlayer;
+      const targetOwner = isMulti && targetPlayerId ? resolveTargetOwner(targetPlayerId, gameStateRef.current.localPlayerId || '', gameStateRef.current.multiplayerState?.players || []) : 'DEALER';
+      const oppState = getPlayerState(targetOwner);
+      const copiedItems = (oppState.lastTurnItemsUsed || []).filter(i => i !== 'MIRROR' && i !== 'ADRENALINE');
+      if (copiedItems.length === 0) {
+        return { canUse: false, reason: "NO ITEM EFFECTS TO COPY FROM LAST TURN" };
+      }
+    }
+
+    if (item === 'ADRENALINE') {
+      const isMulti = gameStateRef.current.isThreePlayer || gameStateRef.current.isFourPlayer;
+      if (isMulti) {
+        const targetOwner = targetPlayerId ? resolveTargetOwner(targetPlayerId, gameStateRef.current.localPlayerId || '', gameStateRef.current.multiplayerState?.players || []) : 'DEALER';
+        const targetState = getPlayerState(targetOwner);
+        const stealableItems = targetState.items.filter(i => i !== 'ADRENALINE' && i !== 'JACKPOT' && i !== 'TOTEM' && i !== null);
+        if (stealableItems.length === 0) {
+          return { canUse: false, reason: `NOTHING TO STEAL FROM ${getPlayerNameByOwner(targetOwner).toUpperCase()}` };
+        }
+      } else {
+        const stealableItems = dealerRef.current.items.filter(i => i !== 'ADRENALINE' && i !== 'JACKPOT' && i !== 'TOTEM' && i !== null);
+        if (stealableItems.length === 0) {
+          return { canUse: false, reason: "NOTHING TO STEAL FROM OPPONENT" };
+        }
+      }
+    }
+
+    return { canUse: true };
+  }, [aimTarget, cameraView, getPlayerNameByOwner, getPlayerState, resolveTargetOwner]);
+
+  const usePlayerItem = useCallback(async (
     index: number,
     deckCardsOverride?: string[],
     jackpotOutcomeOverride?: 'JACKPOT' | 'NORMAL' | 'LOSE',
@@ -1878,588 +2283,656 @@ export const useGameLogic = () => {
     contractLootOverride?: ItemType[],
     phoneFutureIndexOverride?: number,
     targetPlayerId?: string
-  ) => {
-    if (gameStateRef.current.phase !== 'PLAYER_TURN') return;
-    if (gameStateRef.current.turnOwner !== 'PLAYER') return; // Strict turn check
-    if (isProcessing) return;
-
-    if (cameraView === 'GUN' || aimTarget !== 'IDLE') {
-      addLog("CAN'T USE ITEMS WHILE HOLDING GUN", 'info');
-      return;
+  ): Promise<boolean> => {
+    resumeAudioContext().catch(() => {});
+    const check = canUsePlayerItem(index, targetPlayerId);
+    if (!check.canUse) {
+      if (check.reason) {
+        addLog(check.reason, 'info');
+        setOverlayText(`❌ ${check.reason}`);
+        setTimeout(() => setOverlayText?.(null), 2000);
+      }
+      return false;
     }
 
     const item = playerRef.current.items[index];
-    if (!item) return;
+    if (!item) return false;
 
     if (item === 'ADRENALINE') {
-      if (gameStateRef.current.isThreePlayer) {
-        const targetOwner = targetPlayerId ? resolveTargetOwner(targetPlayerId, gameStateRef.current.localPlayerId || '', gameStateRef.current.multiplayerState?.players || []) : 'DEALER';
-        const targetState = getPlayerState(targetOwner);
-        const stealableItems = targetState.items.filter(i => i !== 'ADRENALINE' && i !== 'JACKPOT' && i !== null);
-        if (stealableItems.length === 0) {
-          addLog(`NOTHING TO STEAL FROM ${getPlayerNameByOwner(targetOwner).toUpperCase()}`, 'info');
-          return;
-        }
+      const isMulti = gameStateRef.current.isThreePlayer || gameStateRef.current.isFourPlayer;
+      if (isMulti && targetPlayerId) {
+        const targetOwner = resolveTargetOwner(targetPlayerId, gameStateRef.current.localPlayerId || '', gameStateRef.current.multiplayerState?.players || []);
         setGameState(prev => ({ ...prev, adrenalineTargetOwner: targetOwner }));
-      } else {
-        const stealableItems = dealerRef.current.items.filter(i => i !== 'ADRENALINE' && i !== 'JACKPOT' && i !== null);
-        if (stealableItems.length === 0) {
-          addLog("NOTHING TO STEAL", 'info');
-          return;
-        }
       }
     }
 
     setIsProcessing(true);
 
-    const itemsMap = matchStatsRef.current.itemsUsed || {};
-    itemsMap[item] = (itemsMap[item] || 0) + 1;
-    matchStatsRef.current.itemsUsed = itemsMap;
+    try {
+      const itemsMap = matchStatsRef.current.itemsUsed || {};
+      itemsMap[item] = (itemsMap[item] || 0) + 1;
+      matchStatsRef.current.itemsUsed = itemsMap;
 
-    const newItems = [...playerRef.current.items];
-    newItems.splice(index, 1);
-    setPlayer(p => ({ ...p, items: newItems }));
+      const newItems = [...playerRef.current.items];
+      newItems.splice(index, 1);
+      setPlayer(p => ({ ...p, items: newItems }));
 
-    await processItemEffect('PLAYER', item, deckCardsOverride, jackpotOutcomeOverride, crushIndexOverride, contractLootOverride, phoneFutureIndexOverride, targetPlayerId);
+      const roundEnded = await processItemEffect('PLAYER', item, deckCardsOverride, jackpotOutcomeOverride, crushIndexOverride, contractLootOverride, phoneFutureIndexOverride, targetPlayerId);
 
-    setIsProcessing(false);
-  };
+      if (!roundEnded) {
+        setIsProcessing(false);
+      }
+      return true;
+    } catch (err) {
+      console.error("Error in usePlayerItem:", err);
+      setIsProcessing(false);
+      return false;
+    }
+  }, [addLog, canUsePlayerItem, processItemEffect, resolveTargetOwner, setOverlayText]);
 
-  // Helper to directly set game phase (useful for multiplayer)
-  const setGamePhase = (phase: GameState['phase']) => {
+  const setGamePhase = useCallback((phase: GameState['phase']) => {
     setGameState(prev => ({ ...prev, phase }));
-  };
+  }, []);
 
-  const stealItem = async (index: number, stealer: TurnOwner = 'PLAYER') => {
-    if (isProcessing) return;
+  const canStealItem = useCallback((index: number, stealer: TurnOwner = 'PLAYER'): { canSteal: boolean; reason?: string } => {
+    if (index === -1) return { canSteal: true };
+    if (isProcessingRef.current) return { canSteal: false, reason: "SYSTEM BUSY" };
 
-    const isThreePlayer = gameStateRef.current.isThreePlayer;
+    const isMultiOpponent = gameStateRef.current.isThreePlayer || gameStateRef.current.isFourPlayer;
     let target = stealer === 'PLAYER' ? dealerRef.current : playerRef.current;
-    let user = stealer === 'PLAYER' ? playerRef.current : dealerRef.current;
-    let setUser = stealer === 'PLAYER' ? setPlayer : setDealer;
+
+    if (isMultiOpponent) {
+      const targetOwner = gameStateRef.current.adrenalineTargetOwner || (stealer === 'PLAYER' ? 'DEALER' : 'PLAYER');
+      target = getPlayerState(targetOwner);
+    }
+
+    const itemToSteal = target.items[index];
+    if (!itemToSteal) return { canSteal: false, reason: "INVALID ITEM" };
+
+    if (itemToSteal === 'ADRENALINE') {
+      return { canSteal: false, reason: "CAN'T STEAL ADRENALINE! PICK ANOTHER" };
+    }
+
+    if (itemToSteal === 'TOTEM') {
+      return { canSteal: false, reason: "CAN'T STEAL TOTEM! PICK ANOTHER" };
+    }
+
+    if (itemToSteal === 'JACKPOT') {
+      return { canSteal: false, reason: "CAN'T STEAL JACKPOT! PICK ANOTHER" };
+    }
+
+    if (itemToSteal === 'CONTRACT') {
+      const stealerState = getPlayerState(stealer);
+      const hasTotem = stealerState.items.includes('TOTEM') && !stealerState.isFlashbanged;
+      const hasJackpot = (stealerState.jackpotImmunityShots ?? 0) > 0;
+      if (stealerState.hp <= 1 && !hasTotem && !hasJackpot) {
+        return { canSteal: false, reason: "CANNOT STEAL CONTRACT AT 1 HP (SUICIDAL)!" };
+      }
+    }
+
+    if (itemToSteal === 'SAW' && getPlayerState(stealer).isSawedActive) {
+      return { canSteal: false, reason: "BARREL ALREADY SAWED OFF! PICK ANOTHER" };
+    }
+
+    if (itemToSteal === 'CHOKE' && getPlayerState(stealer).isChokeActive) {
+      return { canSteal: false, reason: "CHOKE MOD ALREADY ATTACHED! PICK ANOTHER" };
+    }
+
+    if (itemToSteal === 'CUFFS' && target.isHandcuffed) {
+      return { canSteal: false, reason: "OPPONENT ALREADY HANDCUFFED! PICK ANOTHER" };
+    }
+
+    if (itemToSteal === 'CRUSHER' && target.items.length <= 1) {
+      return { canSteal: false, reason: "OPPONENT HAS NO OTHER ITEMS TO CRUSH! PICK ANOTHER" };
+    }
+
+    if (itemToSteal === 'MIRROR') {
+      const oppUsed = (target.lastTurnItemsUsed || []).filter(i => i !== 'MIRROR' && i !== 'ADRENALINE');
+      if (oppUsed.length === 0) {
+        return { canSteal: false, reason: "NO ITEMS TO COPY FROM LAST TURN! PICK ANOTHER" };
+      }
+    }
+
+    return { canSteal: true };
+  }, [getPlayerState]);
+
+  const stealItem = useCallback(async (index: number, stealer: TurnOwner = 'PLAYER') => {
+    if (index === -1) {
+      const stealerPhase = stealer === 'PLAYER' ? 'PLAYER_TURN' : (stealer === 'PLAYER3' ? 'PLAYER3_TURN' : (stealer === 'PLAYER4' ? 'PLAYER4_TURN' : 'DEALER_TURN'));
+      setGameState(p => ({ ...p, phase: stealerPhase, adrenalineTargetOwner: undefined }));
+      addLog(`${stealer === 'PLAYER' ? 'YOU' : stealer} CANCELLED EXTRACTION`, 'info');
+      return;
+    }
+
+    const check = canStealItem(index, stealer);
+    if (!check.canSteal) {
+      if (stealer === 'PLAYER') {
+        addLog(check.reason || "CANNOT STEAL ITEM", 'danger');
+        setOverlayText(`❌ ${check.reason || "CANNOT STEAL ITEM"}`);
+        await wait(2000);
+        setOverlayText(null);
+      }
+      return;
+    }
+
+    const isMultiOpponent = gameStateRef.current.isThreePlayer || gameStateRef.current.isFourPlayer;
+    let target = stealer === 'PLAYER' ? dealerRef.current : playerRef.current;
     let setTarget = stealer === 'PLAYER' ? setDealer : setPlayer;
 
-    if (isThreePlayer) {
-      if (stealer === 'PLAYER') {
-        const targetOwner = gameStateRef.current.adrenalineTargetOwner || 'DEALER';
-        target = getPlayerState(targetOwner);
-        setTarget = getPlayerSetter(targetOwner);
-      } else {
-        target = playerRef.current;
-        setTarget = setPlayer;
-        user = getPlayerState(stealer);
-        setUser = getPlayerSetter(stealer);
-      }
+    if (isMultiOpponent) {
+      const targetOwner = gameStateRef.current.adrenalineTargetOwner || (stealer === 'PLAYER' ? 'DEALER' : 'PLAYER');
+      target = getPlayerState(targetOwner);
+      setTarget = getPlayerSetter(targetOwner);
     }
 
     const itemToSteal = target.items[index];
     if (!itemToSteal) return;
 
-    if (itemToSteal === 'ADRENALINE') {
-      if (stealer === 'PLAYER') {
-        addLog("CAN'T STEAL ADRENALINE!", 'danger');
-        setOverlayText("❌ CAN'T STEAL ADRENALINE! PICK ANOTHER");
-        await wait(2000);
-        setOverlayText(null);
-      }
-      return;
-    }
-
-    if (itemToSteal === 'TOTEM') {
-      if (stealer === 'PLAYER') {
-        addLog("CAN'T STEAL TOTEM!", 'danger');
-        setOverlayText("❌ CAN'T STEAL TOTEM! PICK ANOTHER");
-        await wait(2000);
-        setOverlayText(null);
-      }
-      return;
-    }
-
-    if (itemToSteal === 'JACKPOT') {
-      if (stealer === 'PLAYER') {
-        addLog("CAN'T STEAL JACKPOT!", 'danger');
-        setOverlayText("❌ CAN'T STEAL JACKPOT! PICK ANOTHER");
-        await wait(2000);
-        setOverlayText(null);
-      }
-      return;
-    }
-
     setIsProcessing(true);
 
-    const newTargetItems = [...target.items];
-    newTargetItems.splice(index, 1);
-    setTarget(prev => ({ ...prev, items: newTargetItems }));
+    try {
+      const newTargetItems = [...target.items];
+      newTargetItems.splice(index, 1);
+      setTarget(prev => ({ ...prev, items: newTargetItems }));
 
-    const stealerName = stealer === 'PLAYER' ? (playerName || 'PLAYER') : (gameStateRef.current.opponentName || 'OPPONENT');
-    addLog(`${stealerName.toUpperCase()} STOLE ${itemToSteal}`, 'info');
-    setOverlayText(`🎯 ${stealerName.toUpperCase()} STOLE ${itemToSteal}!`);
-    await wait(800);
-    setOverlayText(null);
+      const stealerName = stealer === 'PLAYER' ? (playerNameRef.current || 'PLAYER') : (gameStateRef.current.opponentName || 'OPPONENT');
+      addLog(`${stealerName.toUpperCase()} STOLE ${itemToSteal}`, 'info');
+      setOverlayText(`🎯 ${stealerName.toUpperCase()} STOLE ${itemToSteal}!`);
+      await wait(800);
+      setOverlayText(null);
 
-    if (stealer === 'PLAYER') {
-      setGameState(p => ({ ...p, phase: 'PLAYER_TURN' }));
-    } else {
-      setGameState(p => ({ ...p, phase: 'DEALER_TURN' }));
+      const stealerPhase = stealer === 'PLAYER' ? 'PLAYER_TURN' : (stealer === 'PLAYER3' ? 'PLAYER3_TURN' : (stealer === 'PLAYER4' ? 'PLAYER4_TURN' : 'DEALER_TURN'));
+      setGameState(p => ({ ...p, phase: stealerPhase }));
+
+      await wait(100);
+      await processItemEffect(stealer, itemToSteal);
+
+      await wait(300);
+      setIsProcessing(false);
+    } catch (err) {
+      console.error("Error in stealItem:", err);
+      setIsProcessing(false);
     }
+  }, [addLog, canStealItem, getPlayerSetter, getPlayerState, processItemEffect, setDealer, setOverlayText, setPlayer]);
 
-    await wait(100);
-    await processItemEffect(stealer, itemToSteal);
-
-    await wait(300);
-    setIsProcessing(false);
-  };
-
-  const selectTarotCard = async (index: number, cardRandomsOverride?: any) => {
+  const selectTarotCard = useCallback(async (index: number, cardRandomsOverride?: any) => {
     if (gameStateRef.current.selectedCardIndex !== null && gameStateRef.current.selectedCardIndex !== undefined) return;
     
     setIsProcessing(true);
     
-    setGameState(prev => ({
-      ...prev,
-      selectedCardIndex: index
-    }));
-
-    audioManager.playSound('cards', { dimMusic: true });
-
-    const cards = gameStateRef.current.deckCards;
-    if (!cards || !cards[index]) {
-      setIsProcessing(false);
-      const nextPhase = gameStateRef.current.turnOwner === 'PLAYER' ? 'PLAYER_TURN' : 'DEALER_TURN';
-      setGameState(prev => ({ ...prev, phase: nextPhase, deckCards: undefined, selectedCardIndex: null }));
-      setCameraView('PLAYER');
-      return;
-    }
-
-    const chosenCard = cards[index];
-    const turnOwner = gameStateRef.current.turnOwner;
-    const userName = turnOwner === 'PLAYER' ? (playerName || 'PLAYER') : (gameStateRef.current.opponentName || 'OPPONENT');
-    const wasCuffedBeforeHermit = getPlayerState(turnOwner).isHandcuffed;
-    
-    setOverlayText(`🃏 ${userName.toUpperCase()} REVEALED: ${chosenCard.name.toUpperCase()}...`);
-
-    await wait(1800);
-    setCameraView('PLAYER');
-    await wait(1700);
-
-    let deathTriggered = false;
-
-    const dealDamage = async (target: TurnOwner, amount: number) => {
-      const isPlayerTarget = target === 'PLAYER';
-      const currentHp = isPlayerTarget ? playerRef.current.hp : dealerRef.current.hp;
-      const currentItems = isPlayerTarget ? playerRef.current.items : dealerRef.current.items;
-      const hasTotem = currentItems.includes('TOTEM');
-      const newHp = currentHp - amount;
-      
-      if (newHp <= 0) {
-        if (hasTotem) {
-          const setTarget = isPlayerTarget ? setPlayer : setDealer;
-          setTarget(p => {
-            const idx = p.items.indexOf('TOTEM');
-            const newItems = [...p.items];
-            if (idx !== -1) newItems.splice(idx, 1);
-            return { ...p, hp: 1, items: newItems };
-          });
-          
-          setOverlayText(`✨ ${isPlayerTarget ? 'PLAYER' : 'DEALER'} SAVED BY TOTEM ✨`);
-          setAnim(prev => ({
-            ...prev,
-            triggerTotem: (prev.triggerTotem || 0) + 1,
-            totemTarget: target
-          }));
-          audioManager.playSound('totem');
-          addLog(`${isPlayerTarget ? 'PLAYER' : 'DEALER'}'S TOTEM OF UNDYING SAVED THEM!`, 'safe');
-          await wait(3000);
-          setOverlayText(null);
-        } else {
-          const setTarget = isPlayerTarget ? setPlayer : setDealer;
-          setTarget(p => ({ ...p, hp: 0 }));
-          addLog(`${isPlayerTarget ? 'PLAYER' : 'DEALER'} DIED TO HANGED MAN EFFECT.`, 'danger');
-          
-          const isHardMode = gameStateRef.current.isHardMode;
-          const isMultiplayer = gameStateRef.current.isMultiplayer;
-          
-          if (isPlayerTarget) {
-            if (isHardMode) {
-              handleHardModeRoundEnd('DEALER');
-              return true;
-            }
-            if (isMultiplayer && handleMPRoundEnd) {
-              handleMPRoundEnd('DEALER');
-              return true;
-            }
-            if (!isMultiplayer && !isHardMode && handleNormalModeRoundEnd) {
-              handleNormalModeRoundEnd('DEALER');
-              return true;
-            }
-            setGameState(prev => ({ ...prev, winner: 'DEALER', phase: 'GAME_OVER' }));
-          } else {
-            if (isHardMode) {
-              handleHardModeRoundEnd('PLAYER');
-              return true;
-            }
-            if (isMultiplayer && handleMPRoundEnd) {
-              handleMPRoundEnd('PLAYER');
-              return true;
-            }
-            if (!isMultiplayer && !isHardMode && handleNormalModeRoundEnd) {
-              handleNormalModeRoundEnd('PLAYER');
-              return true;
-            }
-            setGameState(prev => ({ ...prev, winner: 'PLAYER', phase: 'GAME_OVER' }));
-          }
-          return true;
-        }
-      } else {
-        const setTarget = isPlayerTarget ? setPlayer : setDealer;
-        setTarget(p => ({ ...p, hp: newHp }));
-        addLog(`${isPlayerTarget ? 'PLAYER' : 'DEALER'} lost ${amount} HP from Hanged Man card.`, 'danger');
-      }
-      return false;
-    };
-
-    switch (chosenCard.name) {
-      case 'The Magician': {
-        const item = (cardRandomsOverride && cardRandomsOverride.magicianItem)
-          ? cardRandomsOverride.magicianItem
-          : getRandomItem(gameStateRef.current.isHardMode, turnOwner === 'DEALER');
-        const setOwner = turnOwner === 'PLAYER' ? setPlayer : setDealer;
-        const ownerItems = turnOwner === 'PLAYER' ? playerRef.current.items : dealerRef.current.items;
-        
-        if (ownerItems.length < MAX_ITEMS) {
-          setOwner(p => ({ ...p, items: [...p.items, item] }));
-          addLog(`${userName} gained a random item: ${item}`, 'safe');
-          setOverlayText(`🔮 THE MAGICIAN: GAINED ${item}!`);
-        } else {
-          addLog(`${userName}'s inventory is full. Magic item was discarded.`, 'info');
-          setOverlayText("🔮 THE MAGICIAN: INVENTORY FULL!");
-        }
-        break;
-      }
-      
-      case 'The Hanged Man': {
-        deathTriggered = await dealDamage(turnOwner, 1);
-        setOverlayText(`🩸 THE HANGED MAN: ${userName} LOST 1 HP!`);
-        break;
-      }
-      
-      case 'The Hermit': {
-        const nextOpponent: TurnOwner = turnOwner === 'PLAYER' ? 'DEALER' : 'PLAYER';
-        let resolvedNextOwner: TurnOwner = nextOpponent;
-        if (gameStateRef.current.isMultiplayer && (gameStateRef.current.isThreePlayer || gameStateRef.current.isFourPlayer)) {
-          const mPlayers = gameStateRef.current.multiplayerState?.players || [];
-          const size = mPlayers.length;
-          const myId = gameStateRef.current.localPlayerId || '';
-          const myIndex = mPlayers.findIndex(p => p.id === myId);
-
-          let currentId = myId;
-          if (turnOwner === 'DEALER') currentId = mPlayers[(myIndex + 2) % size]?.id;
-          else if (turnOwner === 'PLAYER3') currentId = mPlayers[(myIndex + 1) % size]?.id;
-          else if (turnOwner === 'PLAYER4') currentId = mPlayers[(myIndex + 3) % size]?.id;
-
-          const currentIdx = mPlayers.findIndex(p => p.id === currentId);
-          if (currentIdx !== -1) {
-            let nextIdx = (currentIdx + 1) % size;
-            const getHp = (playerObj: any) => {
-              const relOwner = resolveTargetOwner(playerObj.id, myId, mPlayers);
-              return getPlayerState(relOwner).hp;
-            };
-            while (getHp(mPlayers[nextIdx]) <= 0) {
-              nextIdx = (nextIdx + 1) % size;
-            }
-            resolvedNextOwner = resolveTargetOwner(mPlayers[nextIdx].id, myId, mPlayers);
-          }
-        }
-
-        const drawerState = getPlayerState(turnOwner);
-        const receiverState = getPlayerState(resolvedNextOwner);
-
-        if (drawerState.isHandcuffed) {
-          const setOwner = getPlayerSetter(turnOwner);
-          setOwner(p => ({ ...p, isHandcuffed: false }));
-          addLog(`${userName} broke cuffs with The Hermit.`, 'safe');
-          setOverlayText(`⛓️ THE HERMIT: CUFFS BROKEN! TURN RETAINED.`);
-        } else if (receiverState.isHandcuffed) {
-          const setReceiver = getPlayerSetter(resolvedNextOwner);
-          setReceiver(p => ({ ...p, isHandcuffed: false }));
-          const receiverName = getPlayerNameByOwner(resolvedNextOwner);
-          addLog(`${receiverName} broke cuffs with The Hermit.`, 'safe');
-          setOverlayText(`⛓️ THE HERMIT: ${receiverName.toUpperCase()}'S CUFFS BROKEN! TURN TRANSFERRED.`);
-        } else {
-          addLog(`${userName} ends turn instantly with The Hermit.`, 'danger');
-          const opponentNameText = getPlayerNameByOwner(resolvedNextOwner);
-          setOverlayText(`⛓️ THE HERMIT: TURN TRANSFERRED TO ${opponentNameText.toUpperCase()}!`);
-        }
-        break;
-      }
-      
-      case 'The Moon': {
-        const opponent = turnOwner === 'PLAYER' ? dealerRef.current : playerRef.current;
-        const setOpponent = turnOwner === 'PLAYER' ? setDealer : setPlayer;
-        const setOwner = turnOwner === 'PLAYER' ? setPlayer : setDealer;
-        const owner = turnOwner === 'PLAYER' ? playerRef.current : dealerRef.current;
-        
-        const stealableIndices = opponent.items
-          .map((item, idx) => ({ item, idx }))
-          .filter(x => x.item !== null && x.item !== 'TOTEM' && x.item !== 'JACKPOT')
-          .map(x => x.idx);
-        
-        if (stealableIndices.length > 0) {
-          const randIdx = (cardRandomsOverride && cardRandomsOverride.moonIndex !== undefined)
-            ? cardRandomsOverride.moonIndex
-            : stealableIndices[Math.floor(Math.random() * stealableIndices.length)];
-          const stolenItem = opponent.items[randIdx];
-          
-          setOpponent(p => {
-            const items = [...p.items];
-            // Remove exactly at the index to prevent duplicate issues
-            items.splice(randIdx, 1);
-            return { ...p, items };
-          });
-          
-          if (owner.items.length < MAX_ITEMS) {
-            setOwner(p => ({ ...p, items: [...p.items, stolenItem] }));
-            addLog(`${userName} stole opponent's ${stolenItem}!`, 'safe');
-            setOverlayText(`🌙 THE MOON: STOLE ${stolenItem}!`);
-          } else {
-            addLog(`${userName} stole ${stolenItem} but inventory was full (discarded)!`, 'info');
-            setOverlayText(`🌙 THE MOON: STOLE ${stolenItem} (DISCARDED)`);
-          }
-        } else {
-          addLog("Opponent has no items to steal.", 'info');
-          setOverlayText("🌙 THE MOON: OPPONENT HAS NO ITEMS");
-        }
-        break;
-      }
-      
-      case 'Judgment': {
-        const chamber = [...gameStateRef.current.chamber];
-        const idx = gameStateRef.current.currentShellIndex;
-        if (idx < chamber.length) {
-          if (chamber[idx] === 'BLANK') {
-            const success = (cardRandomsOverride && cardRandomsOverride.hasOwnProperty('judgmentSuccess'))
-              ? cardRandomsOverride.judgmentSuccess
-              : (Math.random() < 0.5);
-            if (success) {
-              chamber[idx] = 'LIVE';
-              setGameState(prev => ({ ...prev, chamber }));
-            }
-          }
-          addLog("Current shell was judged by Judgment.", 'info');
-          setOverlayText("⚖️ JUDGMENT: CURRENT SHELL JUDGED!");
-        } else {
-          setOverlayText("⚖️ JUDGMENT: CHAMBER EMPTY");
-        }
-        break;
-      }
-      
-      case 'Wheel of Fortune': {
-        const chamber = [...gameStateRef.current.chamber];
-        const idx = gameStateRef.current.currentShellIndex;
-        const remaining = chamber.slice(idx);
-        if (remaining.length > 0) {
-          if (cardRandomsOverride && cardRandomsOverride.wheelChamber) {
-            setGameState(prev => {
-              const liveCount = cardRandomsOverride.wheelChamber.slice(idx).filter((s: string) => s === 'LIVE').length;
-              const blankCount = cardRandomsOverride.wheelChamber.slice(idx).filter((s: string) => s === 'BLANK').length;
-              return {
-                ...prev,
-                chamber: cardRandomsOverride.wheelChamber,
-                liveCount,
-                blankCount
-              };
-            });
-          } else {
-            const shuffledRemaining = remaining.sort(() => Math.random() - 0.5);
-            for (let i = 0; i < shuffledRemaining.length; i++) {
-              chamber[idx + i] = shuffledRemaining[i];
-            }
-            const liveCount = chamber.slice(idx).filter(s => s === 'LIVE').length;
-            const blankCount = chamber.slice(idx).filter(s => s === 'BLANK').length;
-            setGameState(prev => ({ ...prev, chamber, liveCount, blankCount }));
-          }
-          setKnownShell(null);
-          addLog("Ammo chamber reshuffled!", 'info');
-          setOverlayText("🎡 WHEEL OF FORTUNE: SHUFFLED CHAMBER!");
-        } else {
-          setOverlayText("🎡 WHEEL OF FORTUNE: CHAMBER EMPTY");
-        }
-        break;
-      }
-      
-      case 'The Sun': {
-        const setOwner = turnOwner === 'PLAYER' ? setPlayer : setDealer;
-        const ownerState = turnOwner === 'PLAYER' ? playerRef.current : dealerRef.current;
-        const newHp = Math.min(ownerState.maxHp, ownerState.hp + 1);
-        setOwner(p => ({ ...p, hp: newHp }));
-        addLog(`${userName} healed 1 HP.`, 'safe');
-        setOverlayText("☀️ THE SUN: HEALED 1 HP!");
-        break;
-      }
-      
-      case 'Death': {
-        const setOwner = turnOwner === 'PLAYER' ? setPlayer : setDealer;
-        const ownerState = turnOwner === 'PLAYER' ? playerRef.current : dealerRef.current;
-        if (ownerState.items.length > 0) {
-          const randIdx = (cardRandomsOverride && cardRandomsOverride.deathIndex !== undefined)
-            ? cardRandomsOverride.deathIndex
-            : Math.floor(Math.random() * ownerState.items.length);
-          const destroyedItem = ownerState.items[randIdx];
-          setOwner(p => {
-            const items = [...p.items];
-            items.splice(randIdx, 1);
-            return { ...p, items };
-          });
-          addLog(`${userName} destroyed own item: ${destroyedItem}`, 'danger');
-          setOverlayText(`💀 DEATH: DESTROYED OWN ${destroyedItem}!`);
-        } else {
-          addLog(`${userName} has no items to destroy.`, 'info');
-          setOverlayText("💀 DEATH: NO ITEMS TO DESTROY");
-        }
-        break;
-      }
-      
-      case 'The Tower': {
-        const setOpponent = turnOwner === 'PLAYER' ? setDealer : setPlayer;
-        const opponentState = turnOwner === 'PLAYER' ? dealerRef.current : playerRef.current;
-        const destroyableItems = opponentState.items.filter(i => i !== null && i !== 'TOTEM');
-        
-        if (destroyableItems.length > 0) {
-          const randIdx = (cardRandomsOverride && cardRandomsOverride.towerIndex !== undefined)
-            ? cardRandomsOverride.towerIndex
-            : Math.floor(Math.random() * destroyableItems.length);
-          const destroyedItem = destroyableItems[randIdx];
-          setOpponent(p => {
-            const items = [...p.items];
-            const idx = items.indexOf(destroyedItem);
-            if (idx !== -1) items.splice(idx, 1);
-            return { ...p, items };
-          });
-          addLog(`${userName} destroyed opponent's item: ${destroyedItem}`, 'safe');
-          setOverlayText(`🏰 THE TOWER: DESTROYED OPPONENT'S ${destroyedItem}!`);
-        } else {
-          addLog("Opponent has no items to destroy.", 'info');
-          setOverlayText("🏰 THE TOWER: OPPONENT HAS NO ITEMS");
-        }
-        break;
-      }
-      
-      case 'The Fool': {
-        const checkLimit = gameStateRef.current.chamber.length;
-        const current = gameStateRef.current.currentShellIndex;
-        const remaining = checkLimit - current;
-        
-        let randomIndex = current;
-        let positionText = "CURRENT SHELL";
-        
-        if (remaining > 2) {
-          const offset = 1 + Math.floor(Math.random() * (remaining - 1));
-          randomIndex = current + offset;
-          positionText = `${offset + 1}TH SHELL`;
-        } else if (remaining === 2) {
-          randomIndex = current + 1;
-          positionText = "2ND SHELL";
-        } else {
-          randomIndex = current;
-          positionText = "CURRENT SHELL";
-        }
-        
-        const actualShell = gameStateRef.current.chamber[randomIndex];
-        const lieProb = remaining > 2 ? 0.0 : (remaining === 2 ? 0.10 : 0.25);
-        const isLying = Math.random() < lieProb;
-        const displayedShell = isLying ? (actualShell === 'LIVE' ? 'BLANK' : 'LIVE') : actualShell;
-
-        const displayText = `🃏 THE FOOL: ${positionText} IS ${displayedShell}`;
-        addLog(`Tarot reveal: ${positionText} is ${displayedShell}`, 'info');
-
-        if (turnOwner === 'PLAYER') {
-          setOverlayText(displayText);
-        } else {
-          setOverlayText(`🃏 THE FOOL: ${userName.toUpperCase()} IS SEEING THE FUTURE...`);
-        }
-        break;
-      }
-      
-      case 'Justice': {
-        const playerHp = playerRef.current.hp;
-        const dealerHp = dealerRef.current.hp;
-        setPlayer(p => ({ ...p, hp: dealerHp }));
-        setDealer(d => ({ ...d, hp: playerHp }));
-        addLog(`HP Swapped! Player HP: ${dealerHp}, Dealer HP: ${playerHp}`, 'safe');
-        setOverlayText("⚖️ JUSTICE: HP SWAPPED!");
-        break;
-      }
-      
-      case 'Temperance': {
-        const playerItems = [...playerRef.current.items];
-        const dealerItems = [...dealerRef.current.items];
-        setPlayer(p => ({ ...p, items: dealerItems }));
-        setDealer(d => ({ ...d, items: playerItems }));
-        addLog(`Items Swapped! Player gained ${dealerItems.length} items, Dealer gained ${playerItems.length} items.`, 'safe');
-        setOverlayText("🔀 TEMPERANCE: ITEMS SWAPPED!");
-        break;
-      }
-    }
-
-    await wait(3000);
-    setOverlayText(null);
-
-    if (!deathTriggered && gameStateRef.current.phase !== 'GAME_OVER') {
-      let nextOwner = turnOwner;
-      if (chosenCard.name === 'The Hermit') {
-        const nextOpponent: TurnOwner = turnOwner === 'PLAYER' ? 'DEALER' : 'PLAYER';
-        let resolvedNextOwner: TurnOwner = nextOpponent;
-        if (gameStateRef.current.isMultiplayer && (gameStateRef.current.isThreePlayer || gameStateRef.current.isFourPlayer)) {
-          const mPlayers = gameStateRef.current.multiplayerState?.players || [];
-          const size = mPlayers.length;
-          const myId = gameStateRef.current.localPlayerId || '';
-          const myIndex = mPlayers.findIndex(p => p.id === myId);
-
-          let currentId = myId;
-          if (turnOwner === 'DEALER') currentId = mPlayers[(myIndex + 2) % size]?.id;
-          else if (turnOwner === 'PLAYER3') currentId = mPlayers[(myIndex + 1) % size]?.id;
-          else if (turnOwner === 'PLAYER4') currentId = mPlayers[(myIndex + 3) % size]?.id;
-
-          const currentIdx = mPlayers.findIndex(p => p.id === currentId);
-          if (currentIdx !== -1) {
-            let nextIdx = (currentIdx + 1) % size;
-            const getHp = (playerObj: any) => {
-              const relOwner = resolveTargetOwner(playerObj.id, myId, mPlayers);
-              return getPlayerState(relOwner).hp;
-            };
-            while (getHp(mPlayers[nextIdx]) <= 0) {
-              nextIdx = (nextIdx + 1) % size;
-            }
-            resolvedNextOwner = resolveTargetOwner(mPlayers[nextIdx].id, myId, mPlayers);
-          }
-        }
-
-        const receiverWasCuffed = getPlayerState(resolvedNextOwner).isHandcuffed;
-
-        if (wasCuffedBeforeHermit) {
-          nextOwner = turnOwner;
-        } else {
-          nextOwner = resolvedNextOwner;
-        }
-      }
-      const nextPhase = nextOwner === 'PLAYER' ? 'PLAYER_TURN' : (nextOwner === 'PLAYER3' ? 'PLAYER3_TURN' : (nextOwner === 'PLAYER4' ? 'PLAYER4_TURN' : 'DEALER_TURN'));
+    try {
       setGameState(prev => ({
         ...prev,
-        phase: nextPhase,
-        turnOwner: nextOwner,
-        deckCards: undefined,
-        selectedCardIndex: null
+        selectedCardIndex: index
       }));
+
+      audioManager.playSound('cards', { dimMusic: true });
+
+      const cards = gameStateRef.current.deckCards;
+      if (!cards || !cards[index]) {
+        setIsProcessing(false);
+        const owner = gameStateRef.current.turnOwner;
+        const nextPhase = owner === 'PLAYER' ? 'PLAYER_TURN' : (owner === 'PLAYER3' ? 'PLAYER3_TURN' : (owner === 'PLAYER4' ? 'PLAYER4_TURN' : 'DEALER_TURN'));
+        setGameState(prev => ({ ...prev, phase: nextPhase, deckCards: undefined, selectedCardIndex: null }));
+        setCameraView('PLAYER');
+        return;
+      }
+
+      const chosenCard = cards[index];
+      const cardName = typeof chosenCard === 'string' ? chosenCard : chosenCard?.name || '';
+      const turnOwner = gameStateRef.current.turnOwner;
+      const userName = turnOwner === 'PLAYER' ? (playerNameRef.current || 'PLAYER') : (gameStateRef.current.opponentName || 'OPPONENT');
+      const wasCuffedBeforeHermit = getPlayerState(turnOwner).isHandcuffed;
+      
+      setOverlayText(`🃏 ${userName.toUpperCase()} REVEALED: ${cardName.toUpperCase()}...`);
+
+      await wait(1800);
+      setCameraView('PLAYER');
+      await wait(1700);
+
+      let deathTriggered = false;
+
+      const dealDamage = async (target: TurnOwner, amount: number) => {
+        const isPlayerTarget = target === 'PLAYER';
+        const targetState = getPlayerState(target);
+        const setTarget = getPlayerSetter(target);
+        const targetName = getPlayerNameByOwner(target).toUpperCase();
+        const currentHp = targetState.hp;
+        const currentItems = targetState.items;
+        const isTargetFlashbanged = targetState.isFlashbanged;
+        const hasTotem = currentItems.includes('TOTEM') && !isTargetFlashbanged;
+        const newHp = currentHp - amount;
+        
+        if (newHp <= 0) {
+          if (hasTotem) {
+            setTarget(p => {
+              const idx = p.items.indexOf('TOTEM');
+              const newItems = [...p.items];
+              if (idx !== -1) newItems.splice(idx, 1);
+              return { ...p, hp: 1, items: newItems };
+            });
+            
+            setOverlayText(`✨ ${targetName} SAVED BY TOTEM ✨`);
+            setAnim(prev => ({
+              ...prev,
+              triggerTotem: (prev.triggerTotem || 0) + 1,
+              totemTarget: target
+            }));
+            audioManager.playSound('totem');
+            addLog(`${targetName}'S TOTEM OF UNDYING SAVED THEM!`, 'safe');
+            await wait(3000);
+            setOverlayText(null);
+          } else {
+            setTarget(p => ({ ...p, hp: 0 }));
+            addLog(`${targetName} DIED TO HANGED MAN EFFECT.`, 'danger');
+            
+            const isHardMode = gameStateRef.current.isHardMode;
+            const isMultiplayer = gameStateRef.current.isMultiplayer;
+            
+            if (isPlayerTarget) {
+              if (isHardMode) {
+                handleHardModeRoundEnd('DEALER');
+                return true;
+              }
+              if (isMultiplayer && handleMPRoundEnd) {
+                handleMPRoundEnd('DEALER');
+                return true;
+              }
+              if (!isMultiplayer && !isHardMode && handleNormalModeRoundEnd) {
+                handleNormalModeRoundEnd('DEALER');
+                return true;
+              }
+              setGameState(prev => ({ ...prev, winner: 'DEALER', phase: 'GAME_OVER' }));
+            } else {
+              if (isHardMode) {
+                handleHardModeRoundEnd('PLAYER');
+                return true;
+              }
+              if (isMultiplayer && handleMPRoundEnd) {
+                handleMPRoundEnd('PLAYER');
+                return true;
+              }
+              if (!isMultiplayer && !isHardMode && handleNormalModeRoundEnd) {
+                handleNormalModeRoundEnd('PLAYER');
+                return true;
+              }
+              setGameState(prev => ({ ...prev, winner: 'PLAYER', phase: 'GAME_OVER' }));
+            }
+            return true;
+          }
+        } else {
+          setTarget(p => ({ ...p, hp: newHp }));
+          addLog(`${targetName} lost ${amount} HP from Hanged Man card.`, 'danger');
+        }
+        return false;
+      };
+
+      switch (cardName) {
+        case 'The Magician': {
+          const item = (cardRandomsOverride && cardRandomsOverride.magicianItem)
+            ? cardRandomsOverride.magicianItem
+            : getRandomItem(gameStateRef.current.isHardMode, turnOwner === 'DEALER');
+          const setOwner = getPlayerSetter(turnOwner);
+          const ownerItems = getPlayerState(turnOwner).items;
+          
+          if (ownerItems.length < MAX_ITEMS) {
+            setOwner(p => ({ ...p, items: [...p.items, item] }));
+            addLog(`${userName} gained a random item: ${item}`, 'safe');
+            setOverlayText(`🔮 THE MAGICIAN: GAINED ${item}!`);
+          } else {
+            addLog(`${userName}'s inventory is full. Magic item was discarded.`, 'info');
+            setOverlayText("🔮 THE MAGICIAN: INVENTORY FULL!");
+          }
+          break;
+        }
+        
+        case 'The Hanged Man': {
+          deathTriggered = await dealDamage(turnOwner, 1);
+          setOverlayText(`🩸 THE HANGED MAN: ${userName} LOST 1 HP!`);
+          break;
+        }
+        
+        case 'The Hermit': {
+          const nextOpponent: TurnOwner = turnOwner === 'PLAYER' ? 'DEALER' : 'PLAYER';
+          let resolvedNextOwner: TurnOwner = nextOpponent;
+          if (gameStateRef.current.isMultiplayer && (gameStateRef.current.isThreePlayer || gameStateRef.current.isFourPlayer)) {
+            const mPlayers = gameStateRef.current.multiplayerState?.players || [];
+            const size = mPlayers.length;
+            const myId = gameStateRef.current.localPlayerId || '';
+            const myIndex = mPlayers.findIndex(p => p.id === myId);
+
+            let currentId = myId;
+            if (turnOwner === 'DEALER') currentId = mPlayers[(myIndex + 2) % size]?.id;
+            else if (turnOwner === 'PLAYER3') currentId = mPlayers[(myIndex + 1) % size]?.id;
+            else if (turnOwner === 'PLAYER4') currentId = mPlayers[(myIndex + 3) % size]?.id;
+
+            const currentIdx = mPlayers.findIndex(p => p.id === currentId);
+            if (currentIdx !== -1) {
+              let nextIdx = (currentIdx + 1) % size;
+              const getHp = (playerObj: any) => {
+                const relOwner = resolveTargetOwner(playerObj.id, myId, mPlayers);
+                return getPlayerState(relOwner).hp;
+              };
+              let attempts = 0;
+              while (getHp(mPlayers[nextIdx]) <= 0 && attempts < size) {
+                nextIdx = (nextIdx + 1) % size;
+                attempts++;
+              }
+              resolvedNextOwner = resolveTargetOwner(mPlayers[nextIdx].id, myId, mPlayers);
+            }
+          }
+
+          const drawerState = getPlayerState(turnOwner);
+          const receiverState = getPlayerState(resolvedNextOwner);
+
+          if (drawerState.isHandcuffed) {
+            const setOwner = getPlayerSetter(turnOwner);
+            setOwner(p => ({ ...p, isHandcuffed: false }));
+            addLog(`${userName} broke cuffs with The Hermit.`, 'safe');
+            setOverlayText(`⛓️ THE HERMIT: CUFFS BROKEN! TURN RETAINED.`);
+          } else if (receiverState.isHandcuffed) {
+            const setReceiver = getPlayerSetter(resolvedNextOwner);
+            setReceiver(p => ({ ...p, isHandcuffed: false }));
+            const receiverName = getPlayerNameByOwner(resolvedNextOwner);
+            addLog(`${receiverName} broke cuffs with The Hermit.`, 'safe');
+            setOverlayText(`⛓️ THE HERMIT: ${receiverName.toUpperCase()}'S CUFFS BROKEN! TURN TRANSFERRED.`);
+          } else {
+            addLog(`${userName} ends turn instantly with The Hermit.`, 'danger');
+            const opponentNameText = getPlayerNameByOwner(resolvedNextOwner);
+            setOverlayText(`⛓️ THE HERMIT: TURN TRANSFERRED TO ${opponentNameText.toUpperCase()}!`);
+          }
+          break;
+        }
+        
+        case 'The Moon': {
+          const opponent = turnOwner === 'PLAYER' ? dealerRef.current : playerRef.current;
+          const setOpponent = turnOwner === 'PLAYER' ? setDealer : setPlayer;
+          const setOwner = turnOwner === 'PLAYER' ? setPlayer : setDealer;
+          const owner = turnOwner === 'PLAYER' ? playerRef.current : dealerRef.current;
+          
+          const stealableIndices = opponent.items
+            .map((item, idx) => ({ item, idx }))
+            .filter(x => x.item !== null && x.item !== 'TOTEM' && x.item !== 'JACKPOT')
+            .map(x => x.idx);
+          
+          if (stealableIndices.length > 0) {
+            const randIdx = (cardRandomsOverride && cardRandomsOverride.moonIndex !== undefined)
+              ? cardRandomsOverride.moonIndex
+              : stealableIndices[Math.floor(Math.random() * stealableIndices.length)];
+            const stolenItem = opponent.items[randIdx];
+            
+            setOpponent(p => {
+              const items = [...p.items];
+              items.splice(randIdx, 1);
+              return { ...p, items };
+            });
+            
+            if (owner.items.length < MAX_ITEMS) {
+              setOwner(p => ({ ...p, items: [...p.items, stolenItem] }));
+              addLog(`${userName} stole opponent's ${stolenItem}!`, 'safe');
+              setOverlayText(`🌙 THE MOON: STOLE ${stolenItem}!`);
+            } else {
+              addLog(`${userName} stole ${stolenItem} but inventory was full (discarded)!`, 'info');
+              setOverlayText(`🌙 THE MOON: STOLE ${stolenItem} (DISCARDED)`);
+            }
+          } else {
+            addLog("Opponent has no items to steal.", 'info');
+            setOverlayText("🌙 THE MOON: OPPONENT HAS NO ITEMS");
+          }
+          break;
+        }
+        
+        case 'Judgment': {
+          const chamber = [...gameStateRef.current.chamber];
+          const idx = gameStateRef.current.currentShellIndex;
+          if (idx < chamber.length) {
+            if (chamber[idx] === 'BLANK') {
+              const success = (cardRandomsOverride && cardRandomsOverride.hasOwnProperty('judgmentSuccess'))
+                ? cardRandomsOverride.judgmentSuccess
+                : (Math.random() < 0.5);
+              if (success) {
+                chamber[idx] = 'LIVE';
+                setGameState(prev => ({ ...prev, chamber }));
+              }
+            }
+            addLog("Current shell was judged by Judgment.", 'info');
+            setOverlayText("⚖️ JUDGMENT: CURRENT SHELL JUDGED!");
+          } else {
+            setOverlayText("⚖️ JUDGMENT: CHAMBER EMPTY");
+          }
+          break;
+        }
+        
+        case 'Wheel of Fortune': {
+          const chamber = [...gameStateRef.current.chamber];
+          const idx = gameStateRef.current.currentShellIndex;
+          const remaining = chamber.slice(idx);
+          if (remaining.length > 0) {
+            if (cardRandomsOverride && cardRandomsOverride.wheelChamber) {
+              setGameState(prev => {
+                const liveCount = cardRandomsOverride.wheelChamber.slice(idx).filter((s: string) => s === 'LIVE').length;
+                const blankCount = cardRandomsOverride.wheelChamber.slice(idx).filter((s: string) => s === 'BLANK').length;
+                return {
+                  ...prev,
+                  chamber: cardRandomsOverride.wheelChamber,
+                  liveCount,
+                  blankCount
+                };
+              });
+            } else {
+              const shuffledRemaining = remaining.sort(() => Math.random() - 0.5);
+              for (let i = 0; i < shuffledRemaining.length; i++) {
+                chamber[idx + i] = shuffledRemaining[i];
+              }
+              const liveCount = chamber.slice(idx).filter(s => s === 'LIVE').length;
+              const blankCount = chamber.slice(idx).filter(s => s === 'BLANK').length;
+              setGameState(prev => ({ ...prev, chamber, liveCount, blankCount }));
+            }
+            setKnownShell(null);
+            addLog("Ammo chamber reshuffled!", 'info');
+            setOverlayText("🎡 WHEEL OF FORTUNE: SHUFFLED CHAMBER!");
+          } else {
+            setOverlayText("🎡 WHEEL OF FORTUNE: CHAMBER EMPTY");
+          }
+          break;
+        }
+        
+        case 'The Sun': {
+          const setOwner = getPlayerSetter(turnOwner);
+          const ownerState = getPlayerState(turnOwner);
+          const newHp = Math.min(ownerState.maxHp, ownerState.hp + 1);
+          setOwner(p => ({ ...p, hp: newHp }));
+          addLog(`${userName} healed 1 HP.`, 'safe');
+          setOverlayText("☀️ THE SUN: HEALED 1 HP!");
+          break;
+        }
+        
+        case 'Death': {
+          const setOwner = getPlayerSetter(turnOwner);
+          const ownerState = getPlayerState(turnOwner);
+          if (ownerState.items.length > 0) {
+            const randIdx = (cardRandomsOverride && cardRandomsOverride.deathIndex !== undefined)
+              ? cardRandomsOverride.deathIndex
+              : Math.floor(Math.random() * ownerState.items.length);
+            const destroyedItem = ownerState.items[randIdx];
+            setOwner(p => {
+              const items = [...p.items];
+              items.splice(randIdx, 1);
+              return { ...p, items };
+            });
+            addLog(`${userName} destroyed own item: ${destroyedItem}`, 'danger');
+            setOverlayText(`💀 DEATH: DESTROYED OWN ${destroyedItem}!`);
+          } else {
+            addLog(`${userName} has no items to destroy.`, 'info');
+            setOverlayText("💀 DEATH: NO ITEMS TO DESTROY");
+          }
+          break;
+        }
+        
+        case 'The Tower': {
+          const setOpponent = turnOwner === 'PLAYER' ? setDealer : setPlayer;
+          const opponentState = turnOwner === 'PLAYER' ? dealerRef.current : playerRef.current;
+          const destroyableItems = opponentState.items.filter(i => i !== null && i !== 'TOTEM');
+          
+          if (destroyableItems.length > 0) {
+            const randIdx = (cardRandomsOverride && cardRandomsOverride.towerIndex !== undefined)
+              ? cardRandomsOverride.towerIndex
+              : Math.floor(Math.random() * destroyableItems.length);
+            const destroyedItem = destroyableItems[randIdx];
+            setOpponent(p => {
+              const items = [...p.items];
+              const idx = items.indexOf(destroyedItem);
+              if (idx !== -1) items.splice(idx, 1);
+              return { ...p, items };
+            });
+            addLog(`${userName} destroyed opponent's item: ${destroyedItem}`, 'safe');
+            setOverlayText(`🏰 THE TOWER: DESTROYED OPPONENT'S ${destroyedItem}!`);
+          } else {
+            addLog("Opponent has no items to destroy.", 'info');
+            setOverlayText("🏰 THE TOWER: OPPONENT HAS NO ITEMS");
+          }
+          break;
+        }
+        
+        case 'The Fool': {
+          const checkLimit = gameStateRef.current.chamber.length;
+          const current = gameStateRef.current.currentShellIndex;
+          const remaining = checkLimit - current;
+          
+          let randomIndex = current;
+          let positionText = "CURRENT SHELL";
+          
+          if (remaining > 2) {
+            const offset = 1 + Math.floor(Math.random() * (remaining - 1));
+            randomIndex = current + offset;
+            positionText = `${offset + 1}TH SHELL`;
+          } else if (remaining === 2) {
+            randomIndex = current + 1;
+            positionText = "2ND SHELL";
+          } else {
+            randomIndex = current;
+            positionText = "CURRENT SHELL";
+          }
+          
+          const actualShell = gameStateRef.current.chamber[randomIndex];
+          const lieProb = remaining > 2 ? 0.0 : (remaining === 2 ? 0.10 : 0.25);
+          const isLying = Math.random() < lieProb;
+          const displayedShell = isLying ? (actualShell === 'LIVE' ? 'BLANK' : 'LIVE') : actualShell;
+
+          const displayText = `🃏 THE FOOL: ${positionText} IS ${displayedShell}`;
+          addLog(`Tarot reveal: ${positionText} is ${displayedShell}`, 'info');
+
+          if (turnOwner === 'PLAYER') {
+            setOverlayText(displayText);
+          } else {
+            setOverlayText(`🃏 THE FOOL: ${userName.toUpperCase()} IS SEEING THE FUTURE...`);
+          }
+          break;
+        }
+        
+        case 'Justice': {
+          const playerHp = playerRef.current.hp;
+          const dealerHp = dealerRef.current.hp;
+          setPlayer(p => ({ ...p, hp: dealerHp }));
+          setDealer(d => ({ ...d, hp: playerHp }));
+          addLog(`HP Swapped! Player HP: ${dealerHp}, Dealer HP: ${playerHp}`, 'safe');
+          setOverlayText("⚖️ JUSTICE: HP SWAPPED!");
+          break;
+        }
+        
+        case 'Temperance': {
+          const playerItems = [...playerRef.current.items];
+          const dealerItems = [...dealerRef.current.items];
+          setPlayer(p => ({ ...p, items: dealerItems }));
+          setDealer(d => ({ ...d, items: playerItems }));
+          addLog(`Items Swapped! Player gained ${dealerItems.length} items, Dealer gained ${playerItems.length} items.`, 'safe');
+          setOverlayText("🔀 TEMPERANCE: ITEMS SWAPPED!");
+          break;
+        }
+      }
+
+      await wait(3000);
+      setOverlayText(null);
+
+      if (!deathTriggered && gameStateRef.current.phase !== 'GAME_OVER') {
+        let nextOwner = turnOwner;
+        if (cardName === 'The Hermit') {
+          const nextOpponent: TurnOwner = turnOwner === 'PLAYER' ? 'DEALER' : 'PLAYER';
+          let resolvedNextOwner: TurnOwner = nextOpponent;
+          if (gameStateRef.current.isMultiplayer && (gameStateRef.current.isThreePlayer || gameStateRef.current.isFourPlayer)) {
+            const mPlayers = gameStateRef.current.multiplayerState?.players || [];
+            const size = mPlayers.length;
+            const myId = gameStateRef.current.localPlayerId || '';
+            const myIndex = mPlayers.findIndex(p => p.id === myId);
+
+            let currentId = myId;
+            if (turnOwner === 'DEALER') currentId = mPlayers[(myIndex + 2) % size]?.id;
+            else if (turnOwner === 'PLAYER3') currentId = mPlayers[(myIndex + 1) % size]?.id;
+            else if (turnOwner === 'PLAYER4') currentId = mPlayers[(myIndex + 3) % size]?.id;
+
+            const currentIdx = mPlayers.findIndex(p => p.id === currentId);
+            if (currentIdx !== -1) {
+              let nextIdx = (currentIdx + 1) % size;
+              const getHp = (playerObj: any) => {
+                const relOwner = resolveTargetOwner(playerObj.id, myId, mPlayers);
+                return getPlayerState(relOwner).hp;
+              };
+              let attempts = 0;
+              while (getHp(mPlayers[nextIdx]) <= 0 && attempts < size) {
+                nextIdx = (nextIdx + 1) % size;
+                attempts++;
+              }
+              resolvedNextOwner = resolveTargetOwner(mPlayers[nextIdx].id, myId, mPlayers);
+            }
+          }
+
+          if (wasCuffedBeforeHermit) {
+            nextOwner = turnOwner;
+          } else {
+            nextOwner = resolvedNextOwner;
+          }
+        }
+        const nextPhase = nextOwner === 'PLAYER' ? 'PLAYER_TURN' : (nextOwner === 'PLAYER3' ? 'PLAYER3_TURN' : (nextOwner === 'PLAYER4' ? 'PLAYER4_TURN' : 'DEALER_TURN'));
+        setGameState(prev => ({
+          ...prev,
+          phase: nextPhase,
+          turnOwner: nextOwner,
+          deckCards: undefined,
+          selectedCardIndex: null
+        }));
+      }
+      
+      setCameraView('PLAYER');
+      setIsProcessing(false);
+    } catch (err) {
+      console.error("Error in selectTarotCard:", err);
+      setIsProcessing(false);
     }
-    
-    setCameraView('PLAYER');
-    setIsProcessing(false);
-  };
+  }, [addLog, getPlayerNameByOwner, getPlayerSetter, getPlayerState, handleHardModeRoundEnd, handleMPRoundEnd, handleNormalModeRoundEnd, resolveTargetOwner, setAnim, setOverlayText]);
 
+  const syncState = useCallback((data: { player: PlayerState, dealer: PlayerState, player3?: PlayerState, player4?: PlayerState, gameState: Partial<GameState> }) => {
+    if (data.player) setPlayer(p => ({ ...p, ...data.player }));
+    if (data.dealer) setDealer(d => ({ ...d, ...data.dealer }));
+    if (data.player3) setPlayer3(p3 => ({ ...p3, ...data.player3 }));
+    if (data.player4) setPlayer4(p4 => ({ ...p4, ...data.player4 }));
+    if (data.gameState) setGameState(s => {
+      const nextState = { ...s, ...data.gameState };
+      if (s.phase === 'STEALING' && s.turnOwner === 'PLAYER') {
+        nextState.phase = 'STEALING';
+      }
+      return nextState;
+    });
+  }, []);
 
+  const setOnBatchEnd = useCallback((cb: (keepTurn: boolean) => void) => {
+    onBatchEndRef.current = cb;
+  }, []);
 
+  const setOnMPRoundEnd = useCallback((cb: (winner: TurnOwner, pWin?: number, oWin?: number) => void | Promise<void>) => {
+    onMPRoundEndRef.current = cb;
+  }, []);
 
-  return {
+  return useMemo(() => ({
     gameState,
     player,
     dealer,
@@ -2485,7 +2958,9 @@ export const useGameLogic = () => {
     startGame,
     fireShot,
     usePlayerItem,
-    stealItem, // Exported
+    canUsePlayerItem,
+    stealItem,
+    canStealItem,
     selectTarotCard,
     setAimTarget,
     setCameraView,
@@ -2495,55 +2970,67 @@ export const useGameLogic = () => {
     processItemEffect,
     resetGame,
     setPlayerName,
-    pickupGun: (picker: TurnOwner = 'PLAYER') => {
-      const isMP = gameStateRef.current.isMultiplayer;
-      if (!isMP) {
-        if (gameStateRef.current.phase !== 'PLAYER_TURN' && gameStateRef.current.phase !== 'DEALER_TURN' && gameStateRef.current.phase !== 'PLAYER3_TURN' && gameStateRef.current.phase !== 'PLAYER4_TURN' && gameStateRef.current.phase !== 'RESOLVING') return;
-      }
-
-      // Strict turn check
-      if (picker === 'PLAYER' && gameStateRef.current.turnOwner !== 'PLAYER') return;
-      if (picker === 'DEALER' && gameStateRef.current.turnOwner !== 'DEALER' && !isMP) return;
-      if (picker === 'PLAYER3' && gameStateRef.current.turnOwner !== 'PLAYER3' && !isMP) return;
-      if (picker === 'PLAYER4' && gameStateRef.current.turnOwner !== 'PLAYER4' && !isMP) return;
-
-      if (picker === 'PLAYER') {
-        setCameraView('GUN');
-        setAimTarget('CHOOSING');
-      } else if (picker === 'PLAYER3') {
-        setCameraView('PLAYER3_GUN');
-        setAimTarget('IDLE');
-      } else if (picker === 'PLAYER4') {
-        setCameraView('PLAYER4_GUN');
-        setAimTarget('IDLE');
-      } else {
-        setCameraView('DEALER_GUN');
-        setAimTarget('IDLE');
-      }
-    },
-    syncState: (data: { player: PlayerState, dealer: PlayerState, player3?: PlayerState, player4?: PlayerState, gameState: Partial<GameState> }) => {
-      if (data.player) setPlayer(p => ({ ...p, ...data.player }));
-      if (data.dealer) setDealer(d => ({ ...d, ...data.dealer }));
-      if (data.player3) setPlayer3(p3 => ({ ...p3, ...data.player3 }));
-      if (data.player4) setPlayer4(p4 => ({ ...p4, ...data.player4 }));
-      if (data.gameState) setGameState(s => {
-        const nextState = { ...s, ...data.gameState };
-        if (s.phase === 'STEALING' && s.turnOwner === 'PLAYER') {
-          nextState.phase = 'STEALING';
-        }
-        return nextState;
-      });
-    },
+    pickupGun,
+    syncState,
     setGamePhase,
     setOverlayText,
-    matchStats: matchStatsRef.current,
-    setOnBatchEnd: (cb: (keepTurn: boolean) => void) => { onBatchEndRef.current = cb; },
-    setOnMPRoundEnd: (cb: (winner: TurnOwner, pWin?: number, oWin?: number) => void | Promise<void>) => { onMPRoundEndRef.current = cb; },
+    get matchStats() {
+      const elapsed = Math.max(1, Math.round((Date.now() - matchStartTimeRef.current) / 1000));
+      return {
+        ...matchStatsRef.current,
+        duration: elapsed
+      };
+    },
+    setOnBatchEnd,
+    setOnMPRoundEnd,
     startRound,
+    addLog,
     handleHardModeRoundEnd,
     handleMPRoundEnd,
     handleNormalModeRoundEnd,
     dealerModel,
     setDealerModel
-  };
+  }), [
+    gameState,
+    player,
+    dealer,
+    player3,
+    player4,
+    logs,
+    addLog,
+    animState,
+    knownShell,
+    playerName,
+    aimTarget,
+    cameraView,
+    overlayColor,
+    overlayText,
+    showBlood,
+    showFlash,
+    showFlashbang,
+    receivedItems,
+    showLootOverlay,
+    isProcessing,
+    dealerModel,
+    startGame,
+    fireShot,
+    usePlayerItem,
+    canUsePlayerItem,
+    stealItem,
+    canStealItem,
+    selectTarotCard,
+    processItemEffect,
+    resetGame,
+    setPlayerName,
+    pickupGun,
+    syncState,
+    setGamePhase,
+    setOverlayText,
+    setOnBatchEnd,
+    setOnMPRoundEnd,
+    startRound,
+    handleHardModeRoundEnd,
+    handleMPRoundEnd,
+    handleNormalModeRoundEnd
+  ]);
 };

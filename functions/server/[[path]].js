@@ -1,17 +1,18 @@
-// Cloudflare Pages Function: Proxies all /server/* requests to the HuggingFace Space backend.
-// This avoids needing Discord's proxy path mapping (which can't reach HF Spaces reliably).
+// Cloudflare Pages Function: Proxies all /server/* requests to the backend server.
 // Supports GET, POST, PUT, DELETE, PATCH, OPTIONS and WebSocket upgrade requests.
 
-const HF_BACKEND = "https://yoakatsuki-buckshot.hf.space";
+const DEFAULT_HF_BACKEND = "https://yoakatsuki-buckshot.hf.space";
 
 export async function onRequest(context) {
-  const { request, params } = context;
+  const { request, params, env } = context;
   const url = new URL(request.url);
   
+  const backendBase = env?.HF_BACKEND || env?.VITE_HF_BACKEND_URL || env?.VITE_SERVER_URL || DEFAULT_HF_BACKEND;
+
   // Reconstruct the path: strip the /server prefix
   // params.path is an array of path segments after /server/
   const backendPath = params.path ? params.path.join("/") : "";
-  const backendUrl = `${HF_BACKEND}/${backendPath}${url.search}`;
+  const backendUrl = `${backendBase}/${backendPath}${url.search}`;
 
   // Handle CORS preflight
   if (request.method === "OPTIONS") {

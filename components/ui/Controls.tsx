@@ -79,8 +79,8 @@ const ControlsComponent: React.FC<ControlsProps> = ({
                         }}
                         disabled={isProcessing || isRecovering}
                         className={isPotato
-                            ? `bg-neutral-900 border ${isRecovering ? 'border-red-800 text-red-500' : 'border-stone-700 text-stone-300 hover:bg-neutral-800'} px-6 py-4 lg:px-10 lg:py-6 font-black text-xs lg:text-xl tracking-wider flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed translate-y-4 sm:translate-y-0`
-                            : `bg-black/90 border px-6 py-4 lg:px-10 lg:py-6 font-black text-xs lg:text-xl transition-all active:scale-95 tracking-wider flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed translate-y-4 sm:translate-y-0 ${isRecovering
+                            ? `bg-neutral-900 border ${isRecovering ? 'border-red-800 text-red-500' : 'border-stone-700 text-stone-300 hover:bg-neutral-800'} px-6 py-4 lg:px-10 lg:py-6 min-h-[48px] min-w-[48px] font-black text-xs lg:text-xl tracking-wider flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed translate-y-4 sm:translate-y-0 touch-manipulation`
+                            : `bg-black/90 border px-6 py-4 lg:px-10 lg:py-6 min-h-[48px] min-w-[48px] font-black text-xs lg:text-xl transition-all active:scale-95 tracking-wider flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed translate-y-4 sm:translate-y-0 touch-manipulation ${isRecovering
                                 ? 'border-red-800 text-red-500 disabled:animate-none'
                                 : `border-stone-500 text-stone-200 hover:bg-stone-800 hover:text-white hover:border-white ${isBalanced ? '' : 'animate-pulse shadow-lg'}`
                             }`
@@ -129,12 +129,12 @@ const ControlsComponent: React.FC<ControlsProps> = ({
                             };
 
                             let shootFrontBtnClass = isPotato
-                                ? "bg-neutral-900 border border-red-800 px-4 py-2 text-red-500 font-black text-xs hover:bg-neutral-850 hover:text-white tracking-wide flex items-center gap-1 disabled:opacity-50"
-                                : "bg-black/90 border border-red-800 px-4 py-2.5 text-red-500 font-black text-xs hover:bg-red-900 hover:text-white transition-all active:scale-95 tracking-wide flex items-center gap-1.5 disabled:opacity-50 shadow-lg rounded-lg";
+                                ? "bg-neutral-900 border border-red-800 px-4 py-2.5 min-h-[44px] sm:min-h-[48px] text-red-400 font-black text-xs hover:bg-neutral-850 hover:text-white tracking-wide flex items-center gap-1 disabled:opacity-50 touch-manipulation"
+                                : "bg-black/90 border border-red-800 px-4 py-2.5 min-h-[44px] sm:min-h-[48px] text-red-400 font-black text-xs hover:bg-red-900 hover:text-white transition-all active:scale-95 tracking-wide flex items-center gap-1.5 disabled:opacity-50 shadow-lg rounded-lg touch-manipulation";
 
                             let shootSelfBtnClass = isPotato
-                                ? "bg-neutral-900 border border-stone-850 px-4 py-2 text-stone-400 font-black text-xs hover:bg-neutral-850 hover:text-white tracking-wide flex items-center gap-1 disabled:opacity-50"
-                                : "bg-black/90 border border-stone-700 px-4 py-2.5 text-stone-400 font-black text-xs hover:bg-stone-800 hover:text-white transition-all active:scale-95 tracking-wide flex items-center gap-1.5 disabled:opacity-50 shadow-lg rounded-lg";
+                                ? "bg-neutral-900 border border-stone-850 px-4 py-2.5 min-h-[44px] sm:min-h-[48px] text-stone-300 font-black text-xs hover:bg-neutral-850 hover:text-white tracking-wide flex items-center gap-1 disabled:opacity-50 touch-manipulation"
+                                : "bg-black/90 border border-stone-700 px-4 py-2.5 min-h-[44px] sm:min-h-[48px] text-stone-300 font-black text-xs hover:bg-stone-800 hover:text-white transition-all active:scale-95 tracking-wide flex items-center gap-1.5 disabled:opacity-50 shadow-lg rounded-lg touch-manipulation";
 
                             return (
                                 <div className="grid grid-cols-3 gap-3 max-w-md w-full justify-center items-center">
@@ -217,9 +217,9 @@ const ControlsComponent: React.FC<ControlsProps> = ({
                                     mpOpponents.map((opp) => {
                                         let oppBtnClass = "";
                                         if (isPotato) {
-                                            oppBtnClass = "bg-neutral-900 border border-red-800 px-5 py-3 lg:px-6 lg:py-4 text-red-500 font-black text-xs lg:text-lg hover:bg-neutral-850 hover:text-white tracking-wide flex items-center gap-1 lg:gap-2 disabled:opacity-50";
+                                            oppBtnClass = "bg-neutral-900 border border-red-800 px-5 py-3 lg:px-6 lg:py-4 min-h-[48px] text-red-400 font-black text-xs lg:text-lg hover:bg-neutral-850 hover:text-white tracking-wide flex items-center gap-1 lg:gap-2 disabled:opacity-50 touch-manipulation";
                                         } else {
-                                            oppBtnClass = `bg-black/90 border border-red-800 px-5 py-3 lg:px-6 lg:py-4 text-red-500 font-black text-xs lg:text-lg hover:bg-red-900 hover:text-white transition-all active:scale-95 tracking-wide flex items-center gap-1 lg:gap-2 disabled:opacity-50 ${isBalanced ? '' : 'shadow-lg'}`;
+                                            oppBtnClass = `bg-black/90 border border-red-800 px-5 py-3 lg:px-6 lg:py-4 min-h-[48px] text-red-400 font-black text-xs lg:text-lg hover:bg-red-900 hover:text-white transition-all active:scale-95 tracking-wide flex items-center gap-1 lg:gap-2 disabled:opacity-50 touch-manipulation ${isBalanced ? '' : 'shadow-lg'}`;
                                         }
                                         return (
                                             <button
@@ -248,8 +248,8 @@ const ControlsComponent: React.FC<ControlsProps> = ({
                                         onMouseEnter={() => window.matchMedia('(hover: hover)').matches && !isProcessing && onHoverTarget('OPPONENT')}
                                         onMouseLeave={() => window.matchMedia('(hover: hover)').matches && !isProcessing && onHoverTarget('CHOOSING')}
                                         className={isPotato
-                                            ? "bg-neutral-900 border border-red-800 px-5 py-3 lg:px-8 lg:py-5 text-red-500 font-black text-xs lg:text-xl hover:bg-neutral-850 hover:text-white tracking-wide flex items-center gap-2 disabled:opacity-50"
-                                            : `bg-black/90 border border-red-800 px-5 py-3 lg:px-8 lg:py-5 text-red-500 font-black text-xs lg:text-xl hover:bg-red-900 hover:text-white transition-all active:scale-95 tracking-wide flex items-center gap-2 disabled:opacity-50 ${isBalanced ? '' : 'shadow-lg'}`
+                                            ? "bg-neutral-900 border border-red-800 px-5 py-3 lg:px-8 lg:py-5 min-h-[48px] text-red-400 font-black text-xs lg:text-xl hover:bg-neutral-850 hover:text-white tracking-wide flex items-center gap-2 disabled:opacity-50 touch-manipulation"
+                                            : `bg-black/90 border border-red-800 px-5 py-3 lg:px-8 lg:py-5 min-h-[48px] text-red-400 font-black text-xs lg:text-xl hover:bg-red-900 hover:text-white transition-all active:scale-95 tracking-wide flex items-center gap-2 disabled:opacity-50 touch-manipulation ${isBalanced ? '' : 'shadow-lg'}`
                                         }
                                     >
                                         <Target size={18} className="lg:w-6 lg:h-6" />
@@ -266,8 +266,8 @@ const ControlsComponent: React.FC<ControlsProps> = ({
                                     onMouseEnter={() => window.matchMedia('(hover: hover)').matches && !isProcessing && onHoverTarget('SELF', mpMyPlayerId || undefined)}
                                     onMouseLeave={() => window.matchMedia('(hover: hover)').matches && !isProcessing && onHoverTarget('CHOOSING')}
                                     className={isPotato
-                                        ? "bg-neutral-900 border border-stone-850 px-5 py-3 lg:px-8 lg:py-5 text-stone-400 font-black text-xs lg:text-xl hover:bg-neutral-850 hover:text-white tracking-wide flex items-center gap-2 disabled:opacity-50"
-                                        : `bg-black/90 border border-stone-700 px-5 py-3 lg:px-8 lg:py-5 text-stone-400 font-black text-xs lg:text-xl hover:bg-stone-800 hover:text-white transition-all active:scale-95 tracking-wide flex items-center gap-2 disabled:opacity-50 ${isBalanced ? '' : 'shadow-lg'}`
+                                        ? "bg-neutral-900 border border-stone-850 px-5 py-3 lg:px-8 lg:py-5 min-h-[48px] text-stone-300 font-black text-xs lg:text-xl hover:bg-neutral-850 hover:text-white tracking-wide flex items-center gap-2 disabled:opacity-50 touch-manipulation"
+                                        : `bg-black/90 border border-stone-700 px-5 py-3 lg:px-8 lg:py-5 min-h-[48px] text-stone-300 font-black text-xs lg:text-xl hover:bg-stone-800 hover:text-white transition-all active:scale-95 tracking-wide flex items-center gap-2 disabled:opacity-50 touch-manipulation ${isBalanced ? '' : 'shadow-lg'}`
                                     }
                                 >
                                     <User size={18} className="lg:w-6 lg:h-6" />

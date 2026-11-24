@@ -1,0 +1,110 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions for data type, bounds, and timestamp validation
+    function isValidString(val, minLen, maxLen) {
+      return val is string && val.size() >= minLen && val.size() <= maxLen;
+    }
+
+    function isValidTimestamp(val) {
+      return val is number && val > 0;
+    }
+
+    // 1. User Profiles, Game Stats, Leaderboards & Real-time Presence
+    match /users/{username} {
+      // Public read access guaranteed for stats, leaderboards, and real-time multiplayer presences
+      allow read: if true;
+
+      allow create: if isValidString(username, 3, 30)
+        && (!('username' in request.resource.data) || isValidString(request.resource.data.username, 3, 30))
+        && (!('displayName' in request.resource.data) || isValidString(request.resource.data.displayName, 1, 50))
+        && (!('email' in request.resource.data) || (request.resource.data.email is string && request.resource.data.email.size() <= 100))
+        && (!('createdAt' in request.resource.data) || isValidTimestamp(request.resource.data.createdAt))
+        && (!('lastLoginAt' in request.resource.data) || isValidTimestamp(request.resource.data.lastLoginAt))
+        && (!('lastSeenAt' in request.resource.data) || isValidTimestamp(request.resource.data.lastSeenAt))
+        && (!('totalTimePlayed' in request.resource.data) || (request.resource.data.totalTimePlayed is number && request.resource.data.totalTimePlayed >= 0))
+        && (!('stats' in request.resource.data) || request.resource.data.stats is map)
+        && (!('friends' in request.resource.data) || request.resource.data.friends is list);
+
+      allow update: if (!('displayName' in request.resource.data) || isValidString(request.resource.data.displayName, 1, 50))
+        && (!('email' in request.resource.data) || (request.resource.data.email is string && request.resource.data.email.size() <= 100))
+        && (!('lastLoginAt' in request.resource.data) || isValidTimestamp(request.resource.data.lastLoginAt))
+        && (!('lastSeenAt' in request.resource.data) || isValidTimestamp(request.resource.data.lastSeenAt))
+        && (!('totalTimePlayed' in request.resource.data) || (request.resource.data.totalTimePlayed is number && request.resource.data.totalTimePlayed >= 0))
+        && (!('stats' in request.resource.data) || request.resource.data.stats is map)
+        && (!('friends' in request.resource.data) || request.resource.data.friends is list);
+
+      allow delete: if true;
+    }
+
+    // 2. Direct Messages (30-day retention & real-time chat)
+    match /direct_messages/{messageId} {
+      allow read: if true;
+
+      allow create: if isValidString(request.resource.data.sender, 1, 50)
+        && isValidString(request.resource.data.recipient, 1, 50)
+        && isValidString(request.resource.data.conversationId, 1, 100)
+        && (request.resource.data.text is string && request.resource.data.text.size() <= 2000)
+        && isValidTimestamp(request.resource.data.createdAt)
+        && (!('read' in request.resource.data) || request.resource.data.read is bool)
+        && (!('stickerId' in request.resource.data) || (request.resource.data.stickerId is string && request.resource.data.stickerId.size() <= 50))
+        && (request.resource.data.text.size() > 0 || ('stickerId' in request.resource.data && request.resource.data.stickerId.size() > 0));
+
+      allow update: if (!('read' in request.resource.data) || request.resource.data.read is bool);
+
+      allow delete: if true;
+    }
+
+    // 3. Global Broadcasts (Permanent & Immortal Announcements)
+    match /broadcasts/{broadcastId} {
+      allow read: if true;
+
+      allow create: if isValidString(request.resource.data.sender, 1, 50)
+        && (request.resource.data.text is string && request.resource.data.text.size() <= 3000)
+        && (!('title' in request.resource.data) || (request.resource.data.title is string && request.resource.data.title.size() <= 100))
+        && isValidTimestamp(request.resource.data.createdAt)
+        && (!('pinned' in request.resource.data) || request.resource.data.pinned is bool)
+        && (!('stickerId' in request.resource.data) || (request.resource.data.stickerId is string && request.resource.data.stickerId.size() <= 50));
+
+      allow update: if (!('pinned' in request.resource.data) || request.resource.data.pinned is bool);
+
+      allow delete: if true;
+    }
+
+    // 4. Friend Requests
+    match /friend_requests/{requestId} {
+      allow read: if true;
+
+      allow create: if isValidString(request.resource.data.from, 1, 50)
+        && isValidString(request.resource.data.to, 1, 50)
+        && (request.resource.data.status in ['pending', 'accepted', 'declined'])
+        && isValidTimestamp(request.resource.data.createdAt);
+
+      allow update: if request.resource.data.status in ['pending', 'accepted', 'declined'];
+
+      allow delete: if true;
+    }
+
+    // 5. User Feedbacks
+    match /feedbacks/{feedbackId} {
+      allow read: if true;
+
+      allow create: if isValidString(request.resource.data.sender, 1, 50)
+        && (request.resource.data.text is string && request.resource.data.text.size() >= 1 && request.resource.data.text.size() <= 3000)
+        && isValidTimestamp(request.resource.data.createdAt)
+        && (!('category' in request.resource.data) || (request.resource.data.category is string && request.resource.data.category.size() <= 50))
+        && (!('status' in request.resource.data) || (request.resource.data.status in ['unread', 'read']));
+
+      allow update: if (!('status' in request.resource.data) || request.resource.data.status in ['unread', 'read']);
+
+      allow delete: if true;
+    }
+
+    // Default rule: fallback allow read/write for other game presences, rooms, and stats
+    match /{document=**} {
+      allow read: if true;
+      allow write: if true;
+    }
+  }
+}

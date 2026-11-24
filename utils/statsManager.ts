@@ -8,6 +8,9 @@ export interface GameStats {
     damageDealt: number;
     itemsUsed: number;
     highestRound: number;
+    totalPlaytime?: number; // total playtime in seconds
+    mostUsedItem?: string;
+    itemPoints?: number;
     matchHistory: MatchStats[];
 }
 
@@ -21,6 +24,8 @@ export interface MatchStats {
     damageDealt: number;
     damageTaken: number;
     totalScore: number;
+    duration?: number; // match duration in seconds
+    matchId?: string;
     timestamp?: number;
     isHardMode?: boolean;
     roundResults?: string[]; // e.g. ['WIN', 'LOSS', 'WIN']
@@ -30,7 +35,7 @@ export interface MatchStats {
 
 const STORAGE_KEY = 'aadish_roulette_stats_v1';
 
-const emptyStats = (): GameStats => ({
+export const emptyStats = (): GameStats => ({
     wins: 0,
     losses: 0,
     totalRounds: 0,
@@ -40,6 +45,7 @@ const emptyStats = (): GameStats => ({
     damageDealt: 0,
     itemsUsed: 0,
     highestRound: 0,
+    totalPlaytime: 0,
     matchHistory: []
 });
 
@@ -68,10 +74,43 @@ const createMatchHistorySignature = (entry: any): string => {
     ].join('|');
 };
 
-
-export const getStoredStats = (): GameStats => {
+export const getActiveUsername = (): string | null => {
     try {
-        const saved = localStorage.getItem(STORAGE_KEY);
+        const session = localStorage.getItem('aadish_roulette_logged_in_user');
+        if (session) {
+            const parsed = JSON.parse(session);
+            if (parsed?.username) return parsed.username.toLowerCase();
+        }
+    } catch (e) {}
+    return null;
+};
+
+export const getUserStatsKey = (username?: string | null): string => {
+    const u = username || getActiveUsername();
+    return u ? `aadish_roulette_stats_user_${u.toLowerCase()}` : 'aadish_roulette_stats_guest';
+};
+
+export const setUserActiveStats = (username: string, stats: GameStats) => {
+    const key = getUserStatsKey(username);
+    localStorage.setItem(key, JSON.stringify(stats));
+    // Clean out shared generic key to prevent cross-contamination
+    localStorage.removeItem(STORAGE_KEY);
+};
+
+export const clearActiveStatsSession = () => {
+    try {
+        localStorage.removeItem('aadish_roulette_logged_in_user');
+        localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem('aadish_roulette_stats_guest');
+        localStorage.removeItem('aadish_roulette_stats');
+        localStorage.removeItem('bugshot_stats');
+    } catch (e) {}
+};
+
+export const getStoredStats = (username?: string): GameStats => {
+    try {
+        const userKey = getUserStatsKey(username);
+        const saved = localStorage.getItem(userKey);
         if (saved) {
             const parsed = JSON.parse(saved) || {};
             const matchHistory = Array.isArray(parsed.matchHistory) ? parsed.matchHistory : [];
@@ -81,6 +120,20 @@ export const getStoredStats = (): GameStats => {
                 matchHistory,
                 shotsHit: parsed.shotsHit ?? 0
             };
+        }
+
+        // If no user-specific key exists yet, check if active user has stats in their session object
+        const activeUser = username || getActiveUsername();
+        if (activeUser) {
+            const session = localStorage.getItem('aadish_roulette_logged_in_user');
+            if (session) {
+                const parsedUser = JSON.parse(session);
+                if (parsedUser?.username?.toLowerCase() === activeUser.toLowerCase() && parsedUser.stats) {
+                    const stats = parsedUser.stats;
+                    localStorage.setItem(userKey, JSON.stringify(stats));
+                    return stats;
+                }
+            }
         }
     } catch (e) {
         console.error("Failed to load stats", e);
@@ -119,7 +172,11 @@ export const calculateMatchScore = (stats: MatchStats): number => {
     return score;
 };
 
-import { saveUserStatsToRedis } from './redisService';
+import { saveUserStatsToFirebase, syncPendingStatsToFirebase } from './firebaseService';
+
+export const syncPendingStats = async (): Promise<void> => {
+    return syncPendingStatsToFirebase();
+};
 
 export const mergeGameStats = (localStats?: GameStats | null, remoteStats?: GameStats | null): GameStats => {
     const base = localStats ? { ...emptyStats(), ...localStats } : emptyStats();
@@ -142,7 +199,7 @@ export const mergeGameStats = (localStats?: GameStats | null, remoteStats?: Game
         .entries.sort((a: any, b: any) => (b.timestamp || 0) - (a.timestamp || 0))
         .slice(0, 20);
 
-    const totals = mergedMatchHistory.reduce((acc: GameStats, entry: any) => {
+    const historyTotals = mergedMatchHistory.reduce((acc: GameStats, entry: any) => {
         if (entry.result === 'WIN') acc.wins += 1;
         else if (entry.result === 'LOSS') acc.losses += 1;
 
@@ -152,21 +209,33 @@ export const mergeGameStats = (localStats?: GameStats | null, remoteStats?: Game
         acc.selfShots += entry.selfShots || 0;
         acc.damageDealt += entry.damageDealt || 0;
 
-        const itemCount = Object.values(entry.itemsUsed || {})
-            .reduce((sum: number, count: any) => sum + (Number(count) || 0), 0);
+        const itemCount = (Object.values(entry.itemsUsed || {}) as (number | string)[])
+            .reduce<number>((sum: number, count) => sum + (Number(count) || 0), 0);
         acc.itemsUsed += itemCount;
         acc.highestRound = Math.max(acc.highestRound, entry.roundsSurvived || 0);
         return acc;
     }, emptyStats());
 
     return {
-        ...totals,
+        wins: Math.max(base.wins, incoming.wins, historyTotals.wins),
+        losses: Math.max(base.losses, incoming.losses, historyTotals.losses),
+        totalRounds: Math.max(base.totalRounds, incoming.totalRounds, historyTotals.totalRounds),
+        shotsFired: Math.max(base.shotsFired, incoming.shotsFired, historyTotals.shotsFired),
+        shotsHit: Math.max(base.shotsHit || 0, incoming.shotsHit || 0, historyTotals.shotsHit),
+        selfShots: Math.max(base.selfShots, incoming.selfShots, historyTotals.selfShots),
+        damageDealt: Math.max(base.damageDealt, incoming.damageDealt, historyTotals.damageDealt),
+        itemsUsed: Math.max(base.itemsUsed, incoming.itemsUsed, historyTotals.itemsUsed),
+        highestRound: Math.max(base.highestRound, incoming.highestRound, historyTotals.highestRound),
+        totalPlaytime: Math.max(base.totalPlaytime || 0, incoming.totalPlaytime || 0),
+        mostUsedItem: base.mostUsedItem || incoming.mostUsedItem,
+        itemPoints: Math.max(base.itemPoints || 0, incoming.itemPoints || 0),
         matchHistory: mergedMatchHistory
     };
 };
 
 export const saveGameStats = async (matchStats: MatchStats): Promise<GameStats> => {
-    const current = getStoredStats();
+    const activeUsername = getActiveUsername();
+    const current = getStoredStats(activeUsername || undefined);
 
     // Update Totals
     if (matchStats.result === 'WIN') current.wins++;
@@ -180,37 +249,41 @@ export const saveGameStats = async (matchStats: MatchStats): Promise<GameStats> 
 
     // Update Item Stats
     let totalItemsMatch = 0;
-    Object.entries(matchStats.itemsUsed).forEach(([item, count]) => {
-        totalItemsMatch += count;
+    Object.entries(matchStats.itemsUsed || {}).forEach(([, count]) => {
+        totalItemsMatch += Number(count) || 0;
     });
     current.itemsUsed += totalItemsMatch;
     current.highestRound = Math.max(current.highestRound, matchStats.roundsSurvived);
-    // itemsUsed is maintained; itemPoints and mostUsedItem removed
+
+    // Playtime accumulation
+    const matchDuration = (matchStats.duration && matchStats.duration > 0)
+        ? Math.round(matchStats.duration)
+        : Math.max(30, (matchStats.roundsSurvived || 1) * 45);
+    current.totalPlaytime = (current.totalPlaytime || 0) + matchDuration;
 
     // Add History
     if (!current.matchHistory) current.matchHistory = [];
     const historyEntry: MatchStats = {
         ...matchStats,
-        totalScore: calculateMatchScore(matchStats), // Ensure score is set with multiplier
+        duration: matchDuration,
+        totalScore: calculateMatchScore(matchStats),
         timestamp: Date.now(),
         isMultiplayer: Boolean(matchStats.isMultiplayer),
         mpPlayers: matchStats.mpPlayers || []
     };
     current.matchHistory = [historyEntry, ...current.matchHistory].slice(0, 20);
-    // mostUsedItem removed
 
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(current));
+    // Save strictly to user-scoped key
+    const userKey = getUserStatsKey(activeUsername);
+    localStorage.setItem(userKey, JSON.stringify(current));
 
-    // Sync to Upstash Redis if user session is active
-    const loggedInUser = localStorage.getItem('aadish_roulette_logged_in_user');
-    if (loggedInUser) {
+    // Instantly sync to Firebase if user is logged in
+    if (activeUsername) {
         try {
-            const userObj = JSON.parse(loggedInUser);
-            if (userObj && userObj.username) {
-                await saveUserStatsToRedis(userObj.username, current);
-            }
+            await saveUserStatsToFirebase(activeUsername, current, matchDuration);
+            console.log(`[StatsManager] Match saved & synced to Firebase for @${activeUsername} (${matchDuration}s played, total: ${current.totalPlaytime}s)`);
         } catch (e) {
-            console.error("Error parsing logged-in user for Redis sync:", e);
+            console.error("Error saving user stats to Firebase:", e);
         }
     }
 

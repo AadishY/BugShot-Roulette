@@ -23,7 +23,7 @@ interface ShootingContext {
     setShowBlood: StateSetter<boolean>;
     addLog: (text: string, type: LogEntry['type']) => void;
     playerName: string;
-    startRound: (resetItems?: boolean) => void;
+    startRound: (resetItems?: boolean) => Promise<void> | void;
     setIsProcessing: StateSetter<boolean>;
     matchStats?: React.MutableRefObject<MatchStats>; // Added
     handleHardModeRoundEnd?: (winner: TurnOwner) => void;
@@ -46,33 +46,35 @@ export const performShot = async (
     } = ctx;
 
     setIsProcessing(true);
-    // Align gun before firing
-    await wait(450);
 
-    const { chamber, currentShellIndex } = gameState;
+    try {
+        // Align gun before firing
+        await wait(450);
 
-    if (currentShellIndex >= chamber.length) {
-        setGameState(prev => ({ ...prev, phase: 'RESOLVING' })); // Mark as resolving while waiting
-        console.log("CHAMBER EMPTY - SYNCING...");
-        if (gameState.isMultiplayer) {
-            if (onBatchEnd) {
-                // Chamber was empty before firing – no shot happened, so no "keep turn" bonus
-                onBatchEnd(false);
+        const { chamber, currentShellIndex } = gameState;
+
+        if (currentShellIndex >= chamber.length) {
+            setGameState(prev => ({ ...prev, phase: 'RESOLVING' })); // Mark as resolving while waiting
+            console.log("CHAMBER EMPTY - SYNCING...");
+            if (gameState.isMultiplayer) {
+                if (onBatchEnd) {
+                    // Chamber was empty before firing – no shot happened, so no "keep turn" bonus
+                    onBatchEnd(false);
+                } else {
+                    addLog("WAITING FOR REPLENISHMENT...", 'info');
+                    setOverlayText("WAITING FOR HOST...");
+                }
             } else {
-                addLog("WAITING FOR REPLENISHMENT...", 'info');
-                setOverlayText("WAITING FOR HOST...");
+                await startRound();
             }
-        } else {
-            startRound();
+            // Don't setIsProcessing(false) yet, we are waiting for the next round
+            return;
         }
-        // Don't setIsProcessing(false) yet, we are waiting for the next round
-        return;
-    }
 
-    setGameState(prev => ({ ...prev, phase: 'RESOLVING' }));
+        setGameState(prev => ({ ...prev, phase: 'RESOLVING' }));
 
-    const shell = chamber[currentShellIndex];
-    const isLive = shell === 'LIVE';
+        const shell = chamber[currentShellIndex];
+        const isLive = shell === 'LIVE';
 
     const isSawed = shooter === 'PLAYER' ? player.isSawedActive : dealer.isSawedActive;
     const isChoked = shooter === 'PLAYER' ? player.isChokeActive : dealer.isChokeActive;
@@ -99,9 +101,10 @@ export const performShot = async (
         if (isLive && isSawed) damage = 2;
     }
 
-    const isLethal = willHit && damage >= (target === 'PLAYER' ? player.hp : dealer.hp);
+    const targetHasJackpot = ((target === 'PLAYER' ? player.jackpotImmunityShots : dealer.jackpotImmunityShots) ?? 0) > 0;
+    const isLethal = willHit && !targetHasJackpot && damage >= (target === 'PLAYER' ? player.hp : dealer.hp);
     const targetIsFlashbanged = target === 'PLAYER' ? player.isFlashbanged : dealer.isFlashbanged;
-    const targetHasTotem = (target === 'PLAYER' ? player.items.includes('TOTEM') : dealer.items.includes('TOTEM')) && !targetIsFlashbanged;
+    const targetHasTotem = (target === 'PLAYER' ? (player.items || []).includes('TOTEM') : (dealer.items || []).includes('TOTEM')) && !targetIsFlashbanged;
     const isSavedByTotem = isLethal && targetHasTotem;
 
     setTimeout(() => {
@@ -230,27 +233,15 @@ export const performShot = async (
     }
 
     // --- INSTANT SHELL COUNT UPDATE ---
-    let consumedLives = 0;
-    let consumedBlanks = 0;
-    for (let i = 0; i < processedShells; i++) {
-        if (chamber[currentShellIndex + i] === 'LIVE') consumedLives++;
-        else consumedBlanks++;
-    }
     const nextIndex = currentShellIndex + processedShells;
 
     setGameState(prev => {
-        let finalLivesDecrement = consumedLives;
-        let finalBlanksDecrement = consumedBlanks;
-        if (consumedLives > prev.liveCount) {
-            const excess = consumedLives - prev.liveCount;
-            finalLivesDecrement = prev.liveCount;
-            finalBlanksDecrement = consumedBlanks + excess;
-        }
+        const remainingShells = prev.chamber.slice(nextIndex);
         return {
             ...prev,
             currentShellIndex: nextIndex,
-            liveCount: Math.max(0, prev.liveCount - finalLivesDecrement),
-            blankCount: Math.max(0, prev.blankCount - finalBlanksDecrement)
+            liveCount: remainingShells.filter(s => s === 'LIVE').length,
+            blankCount: remainingShells.filter(s => s === 'BLANK').length
         };
     });
 
@@ -523,7 +514,7 @@ export const performShot = async (
                 setOverlayText("WAITING FOR HOST...");
             }
         } else {
-            startRound();
+            await startRound();
         }
         // Don't setIsProcessing(false) yet
         return;
@@ -597,4 +588,8 @@ export const performShot = async (
     }
 
     setIsProcessing(false);
+  } catch (err) {
+    console.error("Critical error in performShot:", err);
+    setIsProcessing(false);
+  }
 };

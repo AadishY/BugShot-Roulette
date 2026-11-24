@@ -148,10 +148,12 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
 
     const defaultWeights = getMultiplayerDefaultWeights(roomPlayers.length);
     const itemWeights = roomSettings.itemWeights || defaultWeights;
-    const totalWeight = Object.keys(defaultWeights).reduce((sum, item) => {
-        const w = itemWeights[item] !== undefined ? itemWeights[item] : defaultWeights[item];
-        return sum + w;
-    }, 0);
+    const totalWeight = Object.keys(defaultWeights)
+        .filter(item => item !== 'REMOTE')
+        .reduce((sum, item) => {
+            const w = itemWeights[item] !== undefined ? itemWeights[item] : defaultWeights[item];
+            return sum + w;
+        }, 0);
 
     return (
         <div
@@ -397,7 +399,7 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
                         {showAdvanced && (
                             <div className="pt-3 mt-2 border-t border-stone-900 grid grid-cols-2 lg:grid-cols-3 gap-1.5 sm:gap-2.5 animate-in fade-in slide-in-from-top-2 duration-300">
                                 {Object.keys(defaultWeights)
-                                    .filter(item => item !== 'REMOTE' || roomPlayers.length > 2)
+                                    .filter(item => item !== 'REMOTE')
                                     .map((item) => {
                                         const weight = itemWeights[item] !== undefined ? itemWeights[item] : defaultWeights[item];
                                         const percentage = totalWeight > 0 ? Math.round((weight / totalWeight) * 100) : 0;

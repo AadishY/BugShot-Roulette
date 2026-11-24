@@ -59,4 +59,13 @@ export class SocketBatcher {
 
         this.callback(actions);
     }
+
+    clear() {
+        this.queuedActions.length = 0;
+        this.lastQueuedKey = null;
+        if (this.timerId !== null) {
+            window.clearTimeout(this.timerId);
+            this.timerId = null;
+        }
+    }
 }

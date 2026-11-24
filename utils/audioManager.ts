@@ -1,8 +1,54 @@
 import { GameSettings } from '../types';
 
+let globalAudioCtx: AudioContext | null = null;
 
+/**
+ * Safely retrieve or create the Web Audio API AudioContext singleton.
+ * Guards against DOMException when running in iframes or sandboxed webviews.
+ */
+export function getAudioContext(): AudioContext | null {
+    if (typeof window === 'undefined') return null;
+    if (!globalAudioCtx) {
+        try {
+            const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+            if (AudioContextClass) {
+                globalAudioCtx = new AudioContextClass();
+            }
+        } catch {
+            // Silently catch creation errors in restricted environments (e.g. iframes without user gesture)
+        }
+    }
+    return globalAudioCtx;
+}
 
-class AudioManager {
+/**
+ * Safely resume the AudioContext upon user gesture.
+ * Guards against DOMException: "The AudioContext was not allowed to start".
+ * Guarantees Web Audio API unlock on mobile Safari and Android Chrome by playing a 1-sample silent buffer.
+ */
+export async function resumeAudioContext(): Promise<boolean> {
+    const ctx = getAudioContext();
+    if (!ctx) return false;
+    try {
+        if (ctx.state === 'suspended' || (ctx.state as string) === 'interrupted') {
+            await ctx.resume();
+        }
+        // Force iOS Safari & Chrome mobile to release audio lock by playing a 1-sample silent buffer
+        if (ctx.state === 'running' || ctx.state === 'suspended') {
+            const buffer = ctx.createBuffer(1, 1, 22050);
+            const source = ctx.createBufferSource();
+            source.buffer = buffer;
+            source.connect(ctx.destination);
+            source.start(0);
+        }
+        return ctx.state === 'running';
+    } catch {
+        // Silently catch DOMException autoplay policy errors
+        return false;
+    }
+}
+
+export class AudioManager {
     private sounds: { [key: string]: HTMLAudioElement } = {};
     private music: { [key: string]: HTMLAudioElement } = {};
     private currentMusic: string | null = null;
@@ -14,6 +60,8 @@ class AudioManager {
     private loadPromises: Promise<void>[] = [];
     private pendingMusic: string | null = null;
     public isInitialized: boolean = false;
+    private activeClonedSounds: Set<HTMLAudioElement> = new Set();
+    private musicCrossfadeTimer: any = null;
 
     constructor() {
         this.loadAssets();
@@ -91,15 +139,52 @@ class AudioManager {
         }
     }
 
-    private applyMusicVolume() {
-        if (!this.currentMusic || !this.music[this.currentMusic]) return;
+    private clearMusicFadeTimer() {
+        if (this.musicCrossfadeTimer) {
+            clearInterval(this.musicCrossfadeTimer);
+            this.musicCrossfadeTimer = null;
+        }
+    }
+
+    private getTargetMusicVolume(): number {
         let scale = 1.0;
         if (this.isJackpotActive) {
             scale = 0.05; // Lower it even more, almost mute (5%)
         } else if (this.activeDimmingCount > 0) {
             scale = 0.35; // Dim music to 35% of its set volume
         }
-        this.music[this.currentMusic].volume = this.musicVolume * scale;
+        return Math.max(0, Math.min(1.0, this.musicVolume * scale));
+    }
+
+    private applyMusicVolume(immediate: boolean = false) {
+        if (!this.currentMusic || !this.music[this.currentMusic]) return;
+        const targetVol = this.getTargetMusicVolume();
+        const track = this.music[this.currentMusic];
+
+        if (immediate || Math.abs(track.volume - targetVol) < 0.02) {
+            track.volume = targetVol;
+            return;
+        }
+
+        // Smooth volume adjustment when dimming / un-dimming
+        this.clearMusicFadeTimer();
+        const startVol = track.volume;
+        const diff = targetVol - startVol;
+        const steps = 8;
+        let step = 0;
+
+        this.musicCrossfadeTimer = setInterval(() => {
+            step++;
+            if (step >= steps || !this.currentMusic || !this.music[this.currentMusic]) {
+                if (this.currentMusic && this.music[this.currentMusic]) {
+                    this.music[this.currentMusic].volume = targetVol;
+                }
+                this.clearMusicFadeTimer();
+                return;
+            }
+            const progress = step / steps;
+            track.volume = Math.max(0, Math.min(1.0, startVol + diff * progress));
+        }, 16);
     }
 
     public getAudioLoadingProgress(): number {
@@ -120,7 +205,7 @@ class AudioManager {
 
     // Call this on the first user interaction (e.g., clicking "ENTER" or anywhere on splash screen)
     public async initialize() {
-        if (this.initialized) {
+        if (this.isInitialized) {
             return;
         }
 
@@ -130,6 +215,9 @@ class AudioManager {
 
         this.initializationPromise = (async () => {
             try {
+                // Safely resume Web Audio AudioContext upon user gesture
+                await resumeAudioContext().catch(() => {});
+
                 await Promise.allSettled(this.loadPromises);
 
                 const allAudio = [
@@ -142,7 +230,7 @@ class AudioManager {
                     s.muted = true;
                     try {
                         await s.play();
-                    } catch (error) {
+                    } catch {
                         // Ignore autoplay prevention errors, we only want playback unlocking if possible.
                     }
                     s.pause();
@@ -151,8 +239,10 @@ class AudioManager {
                 }));
 
                 const anySuccess = results.some(r => r.status === 'fulfilled');
-                this.isInitialized = anySuccess || allAudio.length === 0;
-                this.initialized = true;
+                if (anySuccess || allAudio.length === 0) {
+                    this.isInitialized = true;
+                    this.initialized = true;
+                }
 
                 if (this.currentMusic && this.music[this.currentMusic]) {
                     const music = this.music[this.currentMusic];
@@ -164,8 +254,7 @@ class AudioManager {
                     this.playMusic(queued);
                 }
             } catch (e) {
-                this.initialized = true;
-                console.warn('Audio initialization failed:', e);
+                console.warn('Audio initialization notice:', e);
             } finally {
                 this.initializationPromise = null;
             }
@@ -227,34 +316,59 @@ class AudioManager {
             sound.playbackRate = options.playbackRate;
         }
 
-        const playPromise = sound.play();
-        if (playPromise !== undefined) {
-            playPromise.catch(error => {
-                if (shouldDimMusic) {
-                    this.activeDimmingCount = Math.max(0, this.activeDimmingCount - 1);
-                    this.applyMusicVolume();
-                }
-                // Auto-play was prevented. This happens if playSound is called before any user interaction.
-                // We silently ignore it to avoid console spam.
-                if (error.name !== 'NotAllowedError') {
-                    console.warn(`SFX '${key}' error:`, error);
-                }
-            });
-        }
+        this.activeClonedSounds.add(sound);
 
-        // Cleanup when done (garbage collection help)
-        sound.onended = () => {
-            sound.pause();
-            sound.src = '';
-            sound.onended = null;
+        const cleanupSound = () => {
+            if (!this.activeClonedSounds.has(sound)) return;
+            this.activeClonedSounds.delete(sound);
+            try {
+                sound.onended = null;
+                sound.onerror = null;
+                sound.pause();
+                sound.src = '';
+            } catch {}
             if (shouldDimMusic) {
                 this.activeDimmingCount = Math.max(0, this.activeDimmingCount - 1);
                 this.applyMusicVolume();
             }
         };
+
+        sound.onended = cleanupSound;
+        sound.onerror = cleanupSound;
+
+        const playPromise = sound.play();
+        if (playPromise !== undefined) {
+            playPromise.catch(error => {
+                cleanupSound();
+                // Auto-play was prevented. This happens if playSound is called before any user interaction or in restricted iframes.
+                // We silently ignore NotAllowedError and AbortError to prevent console spam.
+                if (error && error.name !== 'NotAllowedError' && error.name !== 'AbortError') {
+                    console.warn(`SFX '${key}' error:`, error);
+                }
+            });
+        }
     }
 
-    public playMusic(key: string) {
+    public stopAllSFX() {
+        this.clearMusicFadeTimer();
+        this.activeClonedSounds.forEach((sound) => {
+            try {
+                sound.onended = null;
+                sound.onerror = null;
+                sound.pause();
+                sound.currentTime = 0;
+                sound.src = '';
+            } catch (e) {
+                // Ignore cleanup errors
+            }
+        });
+        this.activeClonedSounds.clear();
+        this.activeDimmingCount = 0;
+        this.stopJackpotMusic();
+        this.applyMusicVolume(false);
+    }
+
+    public playMusic(key: string, transitionDurationMs: number = 350) {
         if (this.currentMusic === key) {
             const track = this.music[key];
             if (track && this.isInitialized) {
@@ -262,37 +376,80 @@ class AudioManager {
                     track.currentTime = 0;
                     track.play().catch(() => { });
                 }
+                this.applyMusicVolume(false);
             }
             return;
         }
 
-        if (this.currentMusic && this.music[this.currentMusic]) {
-            const oldMusic = this.music[this.currentMusic];
-            oldMusic.pause();
-            oldMusic.currentTime = 0;
-        }
-
+        const oldTrack = this.currentMusic ? this.music[this.currentMusic] : null;
         this.currentMusic = key;
-        const newMusic = this.music[key];
+        const newTrack = this.music[key];
 
         if (!this.isInitialized) {
             this.pendingMusic = key;
             return;
         }
 
-        if (newMusic) {
-            this.applyMusicVolume();
-            newMusic.currentTime = 0;
+        this.clearMusicFadeTimer();
 
-            const playPromise = newMusic.play();
-            if (playPromise !== undefined) {
-                playPromise.catch(error => {
-                    if (error.name === 'NotAllowedError') {
-                        this.pendingMusic = key;
-                    } else {
-                        console.warn(`Music '${key}' error:`, error);
+        if (newTrack) {
+            const targetVol = this.getTargetMusicVolume();
+            newTrack.currentTime = 0;
+
+            if (oldTrack && !oldTrack.paused && transitionDurationMs > 50) {
+                // Smooth crossfade between old and new music tracks
+                const oldStartVol = oldTrack.volume;
+                newTrack.volume = 0;
+                const playPromise = newTrack.play();
+                if (playPromise !== undefined) {
+                    playPromise.catch(error => {
+                        if (error && (error.name === 'NotAllowedError' || error.name === 'AbortError')) {
+                            this.pendingMusic = key;
+                        } else {
+                            console.warn(`Music '${key}' error:`, error);
+                        }
+                    });
+                }
+
+                const steps = Math.max(1, Math.round(transitionDurationMs / 25));
+                let step = 0;
+                this.musicCrossfadeTimer = setInterval(() => {
+                    step++;
+                    const progress = Math.min(1.0, step / steps);
+                    if (oldTrack) {
+                        oldTrack.volume = Math.max(0, oldStartVol * (1 - progress));
                     }
-                });
+                    if (newTrack) {
+                        newTrack.volume = Math.min(1.0, targetVol * progress);
+                    }
+                    if (step >= steps) {
+                        this.clearMusicFadeTimer();
+                        if (oldTrack) {
+                            oldTrack.pause();
+                            oldTrack.currentTime = 0;
+                            oldTrack.volume = targetVol;
+                        }
+                        if (newTrack) {
+                            newTrack.volume = targetVol;
+                        }
+                    }
+                }, 25);
+            } else {
+                if (oldTrack) {
+                    oldTrack.pause();
+                    oldTrack.currentTime = 0;
+                }
+                newTrack.volume = targetVol;
+                const playPromise = newTrack.play();
+                if (playPromise !== undefined) {
+                    playPromise.catch(error => {
+                        if (error && (error.name === 'NotAllowedError' || error.name === 'AbortError')) {
+                            this.pendingMusic = key;
+                        } else {
+                            console.warn(`Music '${key}' error:`, error);
+                        }
+                    });
+                }
             }
         }
     }
@@ -309,12 +466,30 @@ class AudioManager {
         }
     }
 
-    public stopMusic() {
-        if (this.currentMusic && this.music[this.currentMusic]) {
-            this.music[this.currentMusic].pause();
-            this.music[this.currentMusic].currentTime = 0;
-        }
+    public stopMusic(fadeDurationMs: number = 250) {
+        if (!this.currentMusic || !this.music[this.currentMusic]) return;
+        const track = this.music[this.currentMusic];
         this.currentMusic = null;
+        this.clearMusicFadeTimer();
+
+        if (fadeDurationMs > 50 && !track.paused) {
+            const startVol = track.volume;
+            const steps = Math.max(1, Math.round(fadeDurationMs / 25));
+            let step = 0;
+            this.musicCrossfadeTimer = setInterval(() => {
+                step++;
+                const progress = Math.min(1.0, step / steps);
+                track.volume = Math.max(0, startVol * (1 - progress));
+                if (step >= steps) {
+                    this.clearMusicFadeTimer();
+                    track.pause();
+                    track.currentTime = 0;
+                }
+            }, 25);
+        } else {
+            track.pause();
+            track.currentTime = 0;
+        }
     }
 
     private jackpotIntroAudio: HTMLAudioElement | null = null;
@@ -339,7 +514,9 @@ class AudioManager {
             this.playJackpotLoop({ dimMusic: shouldDimMusic });
         };
         this.jackpotIntroAudio.play().catch(e => {
-            console.warn("Jackpot intro blocked", e);
+            if (e && e.name !== 'NotAllowedError' && e.name !== 'AbortError') {
+                console.warn("Jackpot intro blocked", e);
+            }
         });
     }
 
@@ -347,7 +524,14 @@ class AudioManager {
         if (this.jackpotIntroAudio) {
             this.jackpotIntroAudio.onended = null;
             this.jackpotIntroAudio.pause();
+            this.jackpotIntroAudio.src = '';
             this.jackpotIntroAudio = null;
+        }
+
+        if (this.jackpotLoopAudio) {
+            this.jackpotLoopAudio.pause();
+            this.jackpotLoopAudio.src = '';
+            this.jackpotLoopAudio = null;
         }
 
         const loop = this.sounds['jackpotloop'];
@@ -369,17 +553,23 @@ class AudioManager {
         this.jackpotLoopAudio = loop.cloneNode() as HTMLAudioElement;
         this.jackpotLoopAudio.loop = true;
         this.jackpotLoopAudio.volume = this.sfxVolume;
-        this.jackpotLoopAudio.play().catch(e => console.warn("Jackpot loop blocked", e));
+        this.jackpotLoopAudio.play().catch(e => {
+            if (e && e.name !== 'NotAllowedError' && e.name !== 'AbortError') {
+                console.warn("Jackpot loop blocked", e);
+            }
+        });
     }
 
     public stopJackpotMusic() {
         if (this.jackpotIntroAudio) {
             this.jackpotIntroAudio.onended = null;
             this.jackpotIntroAudio.pause();
+            this.jackpotIntroAudio.src = '';
             this.jackpotIntroAudio = null;
         }
         if (this.jackpotLoopAudio) {
             this.jackpotLoopAudio.pause();
+            this.jackpotLoopAudio.src = '';
             this.jackpotLoopAudio = null;
         }
         this.isJackpotActive = false;
@@ -388,3 +578,36 @@ class AudioManager {
 }
 
 export const audioManager = new AudioManager();
+
+let isAudioUnlockSetup = false;
+
+// Global unlock listener for pointers, touch, and keys to automatically unlock Web Audio & HTMLAudio on user gesture
+export function setupMobileAudioUnlock() {
+    if (typeof window === 'undefined' || isAudioUnlockSetup) return;
+    isAudioUnlockSetup = true;
+    const unlockEvents = ['pointerdown', 'touchstart', 'touchend', 'mousedown', 'mouseup', 'click', 'keydown'] as const;
+    const onUserInteraction = async () => {
+        try {
+            await resumeAudioContext();
+            await audioManager.initialize();
+        } catch {
+            // Safe silent fallback
+        } finally {
+            if (audioManager.isInitialized || (globalAudioCtx && globalAudioCtx.state === 'running')) {
+                unlockEvents.forEach(evt => {
+                    window.removeEventListener(evt, onUserInteraction, true);
+                    document.removeEventListener(evt, onUserInteraction, true);
+                });
+                isAudioUnlockSetup = false;
+            }
+        }
+    };
+    unlockEvents.forEach(evt => {
+        window.addEventListener(evt, onUserInteraction, { capture: true, passive: true });
+        document.addEventListener(evt, onUserInteraction, { capture: true, passive: true });
+    });
+}
+
+if (typeof window !== 'undefined') {
+    setupMobileAudioUnlock();
+}

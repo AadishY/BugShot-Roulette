@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
-import { CameraView, TurnOwner, AimTarget, AnimationState, GameSettings, SceneContext, PlayerState, GameState, PlayerModelKey, isUltraPerf, isLowPerf, isBalancedPerf, isHighPerf } from '../types';
+import { CameraView, TurnOwner, AimTarget, AnimationState, GameSettings, SceneContext, PlayerState, GameState, PlayerModelKey, getGraphicsPreset, isUltraPerf, isLowPerf, isBalancedPerf, isHighPerf } from '../types';
 
 import { updateScene } from '../utils/sceneLogic';
 import { initThreeScene, cleanScene } from '../utils/three/sceneSetup';
@@ -29,12 +29,62 @@ interface ThreeSceneProps {
     dealerModel?: PlayerModelKey;
 }
 
+interface NameTagItem {
+    name: string;
+    x: number;
+    y: number;
+    visible: boolean;
+}
+
+const createTagPool = (size: number): NameTagItem[] => {
+    const list: NameTagItem[] = [];
+    for (let i = 0; i < size; i++) {
+        list.push({ name: '', x: 0, y: 0, visible: false });
+    }
+    return list;
+};
+
+const getCachedHead = (scene: THREE.Scene, cacheKey: string, groupName: string): THREE.Object3D | null => {
+    if (scene.userData[cacheKey] === undefined) {
+        const group = scene.getObjectByName(groupName);
+        scene.userData[cacheKey] = group?.getObjectByName('HEAD') || null;
+    }
+    return scene.userData[cacheKey] as THREE.Object3D | null;
+};
+
+const projectHeadTag = (
+    head: THREE.Object3D | null,
+    label: string,
+    camera: THREE.Camera,
+    worldPos: THREE.Vector3,
+    bbox3: THREE.Box3,
+    target: NameTagItem
+): boolean => {
+    if (!head) return false;
+    head.getWorldPosition(worldPos);
+    if (head.userData._headTagOffset === undefined) {
+        bbox3.setFromObject(head);
+        if (bbox3.isEmpty()) {
+            head.userData._headTagOffset = 2.4;
+        } else {
+            const topY = bbox3.max.y;
+            const headHeight = bbox3.max.y - bbox3.min.y;
+            head.userData._headTagOffset = (topY - worldPos.y) + Math.max(0.08, headHeight * 0.08);
+        }
+    }
+    worldPos.y += head.userData._headTagOffset;
+    worldPos.project(camera);
+    target.name = label;
+    target.x = (worldPos.x * 0.5 + 0.5) * 100;
+    target.y = Math.min(100, (worldPos.y * -0.5 + 0.5) * 100 + 7);
+    target.visible = worldPos.z <= 1.0;
+    return true;
+};
+
 const calculatePixelScale = (settings: GameSettings, width: number) => {
     const ua = navigator.userAgent.toLowerCase();
     const isMobileUA = /android|webos|iphone|ipod|blackberry|iemobile|opera mini/i.test(ua);
     const isTabletUA = /ipad|tablet|playbook|silk/i.test(ua) || (ua.includes('macintosh') && 'ontouchend' in document);
-    const pixelRatio = window.devicePixelRatio || 1;
-    const isAndroid = ua.includes('android');
 
     let isMob = false;
     let isTab = false;
@@ -45,19 +95,16 @@ const calculatePixelScale = (settings: GameSettings, width: number) => {
         isMob = true;
     }
 
-    const isUltra = isUltraPerf(settings);
-    const isLow = isLowPerf(settings);
-    const isBalanced = isBalancedPerf(settings) && !isLow;
-
+    const preset = getGraphicsPreset(settings);
     let mobilePixelScale = 2;
     if (isMob) {
-        mobilePixelScale = isUltra ? 4.8 : (isLow ? 3.4 : (isBalanced ? 2.4 : 1.6));
+        mobilePixelScale = preset === 'potato' ? 4.8 : (preset === 'low' ? 3.2 : (preset === 'balanced' ? 2.4 : 1.6));
     } else if (isTab) {
-        mobilePixelScale = isUltra ? 3.6 : (isLow ? 2.6 : (isBalanced ? 2.0 : 1.4));
+        mobilePixelScale = preset === 'potato' ? 3.6 : (preset === 'low' ? 2.6 : (preset === 'balanced' ? 2.0 : 1.4));
     }
     mobilePixelScale = Math.max(mobilePixelScale, settings.pixelScale || 0);
 
-    const desktopProfileMin = isUltra ? 4.2 : (isLow ? 3.2 : (isBalanced ? 2.4 : 0));
+    const desktopProfileMin = preset === 'potato' ? 4.2 : (preset === 'low' ? 3.0 : (preset === 'balanced' ? 2.4 : 1.8));
     const desktopPixelScale = settings.pixelScale || 2.4;
     const desktopBaseScale = desktopProfileMin > 0 ? Math.max(desktopProfileMin, desktopPixelScale) : desktopPixelScale;
 
@@ -77,30 +124,50 @@ const syncResolution = (container: HTMLDivElement, sceneContext: SceneContext, s
     // Save settings back to scene userData so they are readable in updates
     scene.userData.settings = settings;
 
-    const ua = navigator.userAgent.toLowerCase();
-    const isMobile = /android|webos|iphone|ipod|blackberry|iemobile|opera mini/i.test(ua) || width < 900;
-    const isTablet = /ipad|tablet|playbook|silk/i.test(ua) || (ua.includes('macintosh') && 'ontouchend' in document);
-
-    const isUltra = isUltraPerf(settings);
-    const isLow = isLowPerf(settings);
-    const isBalanced = isBalancedPerf(settings) && !isLow;
+    const preset = getGraphicsPreset(settings);
+    const nativeDpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
 
     const pxScale = calculatePixelScale(settings, width);
-    const isLowEndDevice = (isMobile && (width < 600 || window.devicePixelRatio < 2 || (typeof navigator !== 'undefined' && navigator.hardwareConcurrency && navigator.hardwareConcurrency < 6))) || isUltra || isLow;
-    const maxPixelRatio = isUltra
-        ? (isLowEndDevice ? 0.85 : 1.0)
-        : (isLow 
-            ? (isLowEndDevice ? 0.85 : 1.0) 
-            : (isBalanced 
-                ? (isMobile ? 1.25 : 1.35) 
-                : (isMobile ? Math.min(window.devicePixelRatio, 1.6) : Math.min(window.devicePixelRatio, 2.0))));
-    const customHeadModels = Object.values(scene.userData.multiplayerDebugModels || {}).some((model: any) =>
-        ['ASP', 'YUVRAJ', 'AADISH', 'YASH'].includes(model)
-    );
-    const shouldUseAutoRendering = true;
+
+    // Clamped DPR per preset (Android-aware to prevent GPU fillrate thermal throttling):
+    const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
+    let maxPixelRatio = 1.0;
+    if (isAndroid) {
+        switch (preset) {
+            case 'potato':
+                maxPixelRatio = Math.min(nativeDpr, 0.75);
+                break;
+            case 'low':
+                maxPixelRatio = Math.min(nativeDpr, 0.88);
+                break;
+            case 'balanced':
+                maxPixelRatio = Math.min(nativeDpr, 1.0);
+                break;
+            case 'high':
+                maxPixelRatio = Math.min(nativeDpr, 1.25);
+                break;
+        }
+    } else {
+        switch (preset) {
+            case 'potato':
+                maxPixelRatio = Math.min(nativeDpr, 0.85);
+                break;
+            case 'low':
+                maxPixelRatio = Math.min(nativeDpr, 0.95);
+                break;
+            case 'balanced':
+                maxPixelRatio = Math.min(nativeDpr, 1.1);
+                break;
+            case 'high':
+                maxPixelRatio = Math.min(nativeDpr, 1.6);
+                break;
+        }
+    }
+
     scene.userData.basePixelRatio = maxPixelRatio;
     const dynamicScale = scene.userData.dynamicPixelRatioScale ?? 1.0;
-    const effectivePixelRatio = Math.max(0.75, Math.min(maxPixelRatio, maxPixelRatio * dynamicScale));
+    const minDpr = isAndroid ? 0.55 : 0.65;
+    const effectivePixelRatio = Math.max(minDpr, Math.min(maxPixelRatio, maxPixelRatio * dynamicScale));
     renderer.setPixelRatio(effectivePixelRatio);
     renderer.setSize(width / pxScale, height / pxScale, false);
     renderer.domElement.style.imageRendering = 'auto';
@@ -194,9 +261,10 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
     const tagProjectionVec = useRef(new THREE.Vector3());
     const worldPositionVec = useRef(new THREE.Vector3());
     const _headBox3 = useRef(new THREE.Box3());
-    const prevTagsRef = useRef<{ name: string, x: number, y: number, visible: boolean }[]>([]);
-    const _tagsScratch = useRef<{ name: string, x: number, y: number, visible: boolean }[]>([]);
-    const tagsOutputPool = useRef<{ name: string, x: number, y: number, visible: boolean }[]>([]);
+    const prevTagsRef = useRef<NameTagItem[]>([]);
+    const _tagsScratch = useRef<NameTagItem[]>(createTagPool(8));
+    const tagsOutputPool = useRef<NameTagItem[]>([]);
+    const _rayIntersectsScratch = useRef<THREE.Intersection[]>([]);
     const containerRectRef = useRef<DOMRect | null>(null);
 
 
@@ -252,7 +320,10 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
 
         let frameCount = 0;
         let fpsTimeStart = performance.now();
-        let fpsAverages: number[] = [];
+        const FPS_SAMPLE_COUNT = 3;
+        const fpsSamples = new Float32Array(FPS_SAMPLE_COUNT);
+        let fpsSampleIndex = 0;
+        let fpsSampleCount = 0;
         let hasShownPerfWarning = false;
         let nameTagFrameCounter = 0;
         const nameTagUpdateInterval = 3;
@@ -269,16 +340,25 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
         const handleVisibilityChange = () => {
             if (document.hidden || document.visibilityState !== 'visible') {
                 isTabVisible = false;
+                if (frameId) {
+                    cancelAnimationFrame(frameId);
+                    frameId = 0;
+                }
             } else {
                 isTabVisible = true;
                 lastTime = performance.now();
                 lastFrameTime = performance.now();
                 fpsTimeStart = performance.now();
                 frameCount = 0;
-                fpsAverages = [];
+                fpsSampleIndex = 0;
+                fpsSampleCount = 0;
+                fpsSamples.fill(0);
                 frameDeltaIndex = 0;
                 frameDeltaCount = 0;
                 frameDeltas.fill(0);
+                if (!frameId) {
+                    frameId = requestAnimationFrame(animate);
+                }
             }
         };
         document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -286,10 +366,8 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
         const animate = (currentTime: number = performance.now()) => {
             frameId = requestAnimationFrame(animate);
             if (!sceneRef.current) return;
-            if (propsRef.current.isPaused) {
-                lastTime = currentTime; lastFrameTime = currentTime; return;
-            }
-            if (!isTabVisible || document.hidden || document.visibilityState !== 'visible' || sceneRef.current.scene.userData?.isContextLost) {
+            // Skip/pause 3D render loop when window is hidden or when 2D overlays (like full-screen menus) completely obscure the scene
+            if (propsRef.current.isPaused || !isTabVisible || document.hidden || document.visibilityState !== 'visible' || sceneRef.current.scene.userData?.isContextLost) {
                 lastTime = currentTime; 
                 lastFrameTime = currentTime; 
                 fpsTimeStart = currentTime;
@@ -300,12 +378,11 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
             const phase = propsRef.current.gameState?.phase;
             const isInMenu = phase === 'BOOT' || phase === 'INTRO' || phase === 'LOAD';
 
-            const isUltra = isUltraPerf(propsRef.current.settings);
-            const isLow = isLowPerf(propsRef.current.settings);
-            const isBalanced = isBalancedPerf(propsRef.current.settings) && !isLow;
-            const currentTargetFPS = isInMenu ? 30 : (isUltra ? 35 : (isLow ? 50 : 60));
-            const currentFrameInterval = 1000 / currentTargetFPS;
-            const shouldLimitFrame = isInMenu || isUltra || isLow;
+            const preset = getGraphicsPreset(propsRef.current.settings);
+            // Target FPS: 30 in menu to save battery, 60 during active match
+            const currentTargetFPS = isInMenu ? 30 : 60;
+            const currentFrameInterval = currentTargetFPS > 0 ? (1000 / currentTargetFPS) : 0;
+            const shouldLimitFrame = currentTargetFPS > 0;
 
             // Frame Limiting Logic (Enforce based on performance settings to save battery/thermal)
             if (shouldLimitFrame) {
@@ -316,7 +393,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
                 lastFrameTime = currentTime;
             }
 
-            // FPS Detection Logic for Performance Warning
+            // FPS Detection Logic for Performance Warning (zero-allocation rolling buffer)
             frameCount++;
             const fpsElapsed = currentTime - fpsTimeStart;
             if (fpsElapsed >= 2000) {
@@ -324,17 +401,17 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
                 frameCount = 0;
                 fpsTimeStart = currentTime;
 
-                fpsAverages.push(currentFps);
-                if (fpsAverages.length > 3) {
-                    fpsAverages.shift();
+                fpsSamples[fpsSampleIndex] = currentFps;
+                fpsSampleIndex = (fpsSampleIndex + 1) % FPS_SAMPLE_COUNT;
+                if (fpsSampleCount < FPS_SAMPLE_COUNT) {
+                    fpsSampleCount++;
                 }
 
-                if (fpsAverages.length === 3) {
-                    const avgFps = fpsAverages.reduce((a, b) => a + b, 0) / 3;
-                    const currentSettings = propsRef.current.settings;
-                    
+                if (fpsSampleCount === FPS_SAMPLE_COUNT) {
+                    const avgFps = (fpsSamples[0] + fpsSamples[1] + fpsSamples[2]) / 3;
+                    const preset = getGraphicsPreset(propsRef.current.settings);
                     const alreadyShownWarning = sessionStorage.getItem('aadish_roulette_perf_warning_shown') === 'true';
-                    if (avgFps < 20 && !isUltra && !hasShownPerfWarning && !alreadyShownWarning) {
+                    if (avgFps < 20 && preset !== 'potato' && !hasShownPerfWarning && !alreadyShownWarning) {
                         hasShownPerfWarning = true;
                         try {
                             sessionStorage.setItem('aadish_roulette_perf_warning_shown', 'true');
@@ -368,13 +445,14 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
                 }
                 const avgFrameTimeSec = sumDelta / FRAME_DELTA_HISTORY_SIZE;
                 const dynamicFps = avgFrameTimeSec > 0 ? (1 / avgFrameTimeSec) : 60;
-                const isTargetMobileOrLow = isMobile || isLowEndMobile || isLow || isUltra;
+                const isTargetMobileOrLow = isMobile || isLowEndMobile || isAndroid || preset === 'potato';
 
                 if (isTargetMobileOrLow && sceneRef.current) {
                     const scene = sceneRef.current.scene;
                     const renderer = sceneRef.current.renderer;
                     const baseRatio = (scene.userData.basePixelRatio as number) || 1.0;
-                    const minScale = isUltra ? 0.60 : (isLow ? 0.70 : 0.75);
+                    const minScale = isAndroid ? (preset === 'potato' ? 0.55 : 0.70) : (preset === 'potato' ? 0.60 : 0.75);
+                    const minRatio = isAndroid ? 0.55 : 0.60;
 
                     // If average frame rate drops below 30 FPS on mobile/low-end devices, adaptively lower pixel ratio
                     if (dynamicFps < 30) {
@@ -383,7 +461,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
                             scene.userData.dynamicPixelRatioScale = dynamicPixelRatioScale;
                             lastAdaptiveScaleTime = currentTime;
 
-                            const adaptedRatio = Math.max(0.60, Math.min(baseRatio, baseRatio * dynamicPixelRatioScale));
+                            const adaptedRatio = Math.max(minRatio, Math.min(baseRatio, baseRatio * dynamicPixelRatioScale));
                             renderer.setPixelRatio(adaptedRatio);
                             if (containerRef.current && containerRef.current.clientWidth > 0 && containerRef.current.clientHeight > 0) {
                                 const pxScale = calculatePixelScale(propsRef.current.settings, containerRef.current.clientWidth);
@@ -398,7 +476,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
                         scene.userData.dynamicPixelRatioScale = dynamicPixelRatioScale;
                         lastAdaptiveScaleTime = currentTime;
 
-                        const adaptedRatio = Math.max(0.60, Math.min(baseRatio, baseRatio * dynamicPixelRatioScale));
+                        const adaptedRatio = Math.max(minRatio, Math.min(baseRatio, baseRatio * dynamicPixelRatioScale));
                         renderer.setPixelRatio(adaptedRatio);
                         if (containerRef.current && containerRef.current.clientWidth > 0 && containerRef.current.clientHeight > 0) {
                             const pxScale = calculatePixelScale(propsRef.current.settings, containerRef.current.clientWidth);
@@ -436,41 +514,6 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
                 const worldPos = worldPositionVec.current;
                 const bbox3 = _headBox3.current;
                 const tagsList = _tagsScratch.current;
-                tagsList.length = 0;
-
-                const getCachedHead = (cacheKey: string, groupName: string) => {
-                    if (scene.userData[cacheKey] === undefined) {
-                        const group = scene.getObjectByName(groupName);
-                        scene.userData[cacheKey] = group?.getObjectByName('HEAD') || null;
-                    }
-                    return scene.userData[cacheKey] as THREE.Object3D | null;
-                };
-
-                const addHeadTag = (head: THREE.Object3D | null, label: string) => {
-                    if (!head) return;
-
-                    head.getWorldPosition(worldPos);
-                    // Cache head vertical tag offset once to eliminate heavy setFromObject geometry hierarchy traversal on every frame
-                    if (head.userData._headTagOffset === undefined) {
-                        bbox3.setFromObject(head);
-                        if (bbox3.isEmpty()) {
-                            head.userData._headTagOffset = 2.4;
-                        } else {
-                            const topY = bbox3.max.y;
-                            const headHeight = bbox3.max.y - bbox3.min.y;
-                            head.userData._headTagOffset = (topY - worldPos.y) + Math.max(0.08, headHeight * 0.08);
-                        }
-                    }
-
-                    worldPos.y += head.userData._headTagOffset;
-                    worldPos.project(camera);
-
-                    const x = (worldPos.x * 0.5 + 0.5) * 100;
-                    const y = Math.min(100, (worldPos.y * -0.5 + 0.5) * 100 + 7);
-                    const visible = worldPos.z <= 1.0;
-
-                    tagsList.push({ name: label, x, y, visible });
-                };
 
                 const players = propsRef.current.gameState.multiplayerState?.players || [];
                 const myId = propsRef.current.gameState.localPlayerId || '';
@@ -478,31 +521,39 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
 
                 const dealerHead = scene.userData.cachedDealerHead || dealerGroup.getObjectByName('HEAD');
                 if (!scene.userData.cachedDealerHead) scene.userData.cachedDealerHead = dealerHead;
-                addHeadTag(dealerHead, propsRef.current.gameState.opponentName || 'OPPONENT');
 
-                const player3Head = getCachedHead('cachedPlayer3Head', 'PLAYER3');
+                let tagCount = 0;
+                if (dealerHead && projectHeadTag(dealerHead, propsRef.current.gameState.opponentName || 'OPPONENT', camera, worldPos, bbox3, tagsList[tagCount])) {
+                    tagCount++;
+                }
+
+                const player3Head = getCachedHead(scene, 'cachedPlayer3Head', 'PLAYER3');
                 let player3Name = 'OPPONENT 2';
                 if (myIndex !== -1) {
                     const size = players.length >= 4 ? 4 : 3;
                     const sideOpponent = players[(myIndex + 1) % size];
                     if (sideOpponent) player3Name = sideOpponent.name;
                 }
-                addHeadTag(player3Head, player3Name);
+                if (player3Head && projectHeadTag(player3Head, player3Name, camera, worldPos, bbox3, tagsList[tagCount])) {
+                    tagCount++;
+                }
 
                 if (players.length >= 4) {
-                    const player4Head = getCachedHead('cachedPlayer4Head', 'PLAYER4');
+                    const player4Head = getCachedHead(scene, 'cachedPlayer4Head', 'PLAYER4');
                     let player4Name = 'OPPONENT 3';
                     if (myIndex !== -1) {
                         const rightOpponent = players[(myIndex + 3) % 4];
                         if (rightOpponent) player4Name = rightOpponent.name;
                     }
-                    addHeadTag(player4Head, player4Name);
+                    if (player4Head && projectHeadTag(player4Head, player4Name, camera, worldPos, bbox3, tagsList[tagCount])) {
+                        tagCount++;
+                    }
                 }
 
                 // Throttle state updates: only notify parent if tags or positions changed measurably
-                let hasChanged = tagsList.length !== prevTagsRef.current.length;
+                let hasChanged = tagCount !== prevTagsRef.current.length;
                 if (!hasChanged) {
-                    for (let i = 0; i < tagsList.length; i++) {
+                    for (let i = 0; i < tagCount; i++) {
                         const cur = tagsList[i];
                         const prev = prevTagsRef.current[i];
                         if (cur.name !== prev.name || cur.visible !== prev.visible || Math.abs(cur.x - prev.x) > 0.08 || Math.abs(cur.y - prev.y) > 0.08) {
@@ -513,11 +564,11 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
                 }
                 if (hasChanged) {
                     const pool = tagsOutputPool.current;
-                    while (pool.length < tagsList.length) {
+                    while (pool.length < tagCount) {
                         pool.push({ name: '', x: 0, y: 0, visible: false });
                     }
-                    pool.length = tagsList.length;
-                    for (let i = 0; i < tagsList.length; i++) {
+                    pool.length = tagCount;
+                    for (let i = 0; i < tagCount; i++) {
                         pool[i].name = tagsList[i].name;
                         pool[i].x = tagsList[i].x;
                         pool[i].y = tagsList[i].y;
@@ -581,7 +632,9 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
             if (currentGameState.phase === 'CARD_SELECT' && currentGameState.turnOwner === 'PLAYER' && currentGameState.selectedCardIndex == null) {
                 if (sceneRef.current.itemDeckCards) {
                     sceneRef.current.raycaster.setFromCamera(sceneRef.current.mouse, sceneRef.current.camera);
-                    const intersects = sceneRef.current.raycaster.intersectObjects(sceneRef.current.itemDeckCards, true);
+                    const intersects = _rayIntersectsScratch.current;
+                    intersects.length = 0;
+                    sceneRef.current.raycaster.intersectObjects(sceneRef.current.itemDeckCards, true, intersects);
                     let hoveredIdx: number | null = null;
                     if (intersects.length > 0) {
                         let parentGroup: THREE.Object3D | null = intersects[0].object;
@@ -630,7 +683,9 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
                 const itemDeckCards = sceneRef.current.itemDeckCards;
                 if (itemDeckCards && itemDeckCards.length > 0) {
                     sceneRef.current.raycaster.setFromCamera(sceneRef.current.mouse, sceneRef.current.camera);
-                    const intersects = sceneRef.current.raycaster.intersectObjects(itemDeckCards, true);
+                    const intersects = _rayIntersectsScratch.current;
+                    intersects.length = 0;
+                    sceneRef.current.raycaster.intersectObjects(itemDeckCards, true, intersects);
                     if (intersects.length > 0) {
                         let parentGroup: THREE.Object3D | null = intersects[0].object;
                         while (parentGroup && !parentGroup.name.startsWith('ITEM_DECK_CARD_')) {
@@ -650,7 +705,9 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
             sceneRef.current.raycaster.setFromCamera(sceneRef.current.mouse, sceneRef.current.camera);
             const gunHitTargets = sceneRef.current.gunGroup.children;
             if (gunHitTargets && gunHitTargets.length > 0) {
-                const intersects = sceneRef.current.raycaster.intersectObjects(gunHitTargets, true);
+                const intersects = _rayIntersectsScratch.current;
+                intersects.length = 0;
+                sceneRef.current.raycaster.intersectObjects(gunHitTargets, true, intersects);
                 if (intersects.length > 0 && intersects.some(i => i.object.userData.type === 'GUN') && currentProps.onGunClick) {
                     currentProps.onGunClick();
                 }
@@ -712,6 +769,9 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
                 cleanScene(sceneRef.current.scene);
                 try {
                     const renderer = sceneRef.current.renderer;
+                    if (renderer.renderLists) {
+                        renderer.renderLists.dispose();
+                    }
                     renderer.dispose();
                 } catch (e) {
                     console.warn('Error disposing renderer during cleanup:', e);
@@ -810,41 +870,14 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
         if (!sceneRef.current || !sceneRef.current.chokeMesh) return;
         const { chokeMesh } = sceneRef.current;
 
-        // Show if active (Animation handles temporary visibility during attach)
         const isVisible = propsRef.current.isChokeActive;
-        // Note: animations.ts forces visibility during the attach sequence (chokeTime < 2.2)
-        // This effect ensures it stays visible AFTER animation if active, and hides after shot.
 
-        // However, if we only rely on isChokeActive, there is a gap:
-        // 0.0s: Click -> Trigger++ -> isChokeActive=False. Effect sets Visible=False. Anim sets Visible=True. (OK)
-        // 1.5s: isChokeActive=True. Effect sets Visible=True. (OK)
-        // Shot: isChokeActive=False. Effect sets Visible=False. Anim skipped. (OK)
-
-        // Wait, does React Effect override Animation Loop?
-        // React Effect runs ONCE per change. Animation Loop runs 60 times/sec.
-        // Animation Loop WINS during animation.
-        // This Effect WINS when state changes (like shooting).
-        // Since Animation Loop stops touching it after 2.2s, the Effect's last state must be correct.
-        // When isChokeActive becomes True (at 1.5s), Effect sets True. It stays True.
-        // When Shot (at X s), isChokeActive becomes False. Effect sets False. It stays False.
-        // This logic is sound.
-
-        // One caveat: If Effect sets it to False at 0.0s, does it flicker?
-        // Anim loop sets it True immediately. Should be fine.
-
+        // Sync choke visibility: maintains state after animation completes and hides on shot
         if (!animState.triggerChoke) {
-            // Initial load safety
             chokeMesh.visible = !!isVisible;
         } else {
-            // Let animation loop handle it if animating, but ensure state consistency
             if (isVisible) chokeMesh.visible = true;
             else if (animState.triggerChoke > 0 && !isVisible) {
-                // It's false. But is it animating?
-                // We don't know time here.
-                // But we know isChokeActive is false.
-                // If we set visible = false here, the anim loop will set it back to true next frame if animating.
-                // So "fighting" is okay because Anim Loop is per-frame.
-                // Just setting it here is fine.
                 chokeMesh.visible = false;
             }
         }

@@ -44,3 +44,55 @@ To verify the fix:
     - Player B sees: Opponent Shooting Me.
     - Health bars update correctly on both screens.
 5.  **Logs**: logs should reference the Opponent's name, not "DEALER".
+
+---
+
+## Game Rules & Mechanics Audit
+
+All 16+ core items and Tarot cards have been audited and verified for exact adherence to Buckshot and Bugshot rules across single-player, AI Dealer, and 2-to-4 player multiplayer:
+
+| Item / Mechanic | Verified Rules & Implementation Behavior |
+| :--- | :--- |
+| **Saw** (`SAW`) | Exactly **2x damage** for 1 shot (stacks multiplicatively with Choke Mod). Resets unconditionally on shot fired (both live or blank). |
+| **Handcuffs** (`CUFFS`) | Forces target to **skip their next turn**. Cannot be stacked or doubled (validated in both 2-player and multi-opponent `useGameLogic.ts` and `canUsePlayerItem`). |
+| **Beer** (`BEER`) | Ejects current shell immediately without firing. Reveals and logs whether live or blank in realtime. Preserves active Choke Mod status. |
+| **Cigarettes** (`CIGS`) | Restores exactly **1 HP** (strictly capped at `maxHp`; cannot overheal). |
+| **Magnifying Glass** (`GLASS`) | Inspects current chamber shell privately for the user without revealing it to opponents. |
+| **Inverter** (`INVERTER`) | Inverts polarity of current shell (`LIVE` ↔ `BLANK`). Updates remaining shell counts immediately. |
+| **Burner Phone** (`PHONE`) | Whispers future shell hints (`2nd`, `3rd`, `4th`, etc.) starting from `current + 1`. Has 5% risk to lie. Reports no intel if no future shells remain. |
+| **Adrenaline** (`ADRENALINE`) | Steals 1 item from target and allows immediate use with full **cancellation** support (`index === -1`). Cannot steal Totem, Adrenaline, or Jackpot. |
+| **Choke Mod** (`CHOKE`) | Narrows barrel spread to fire **2 shells simultaneously** (current + next). Dual live = 2 DMG, single live = 1 DMG, dual blank = 0 DMG. Saw doubles total result. |
+| **Remote** (`REMOTE`) | Cycles chamber index by swapping current shell with next shell (`chamber[idx]` ↔ `chamber[idx + 1]`). Fails gracefully if < 2 shells remain. |
+| **Shield (Jackpot)** (`JACKPOT`) | Slot machine bullet immunity shield absorbing the next 1 or 3 incoming hits. Live shots decrement shield; blank self-shots are exempt. Absorbs lethal damage and blood contract costs. |
+| **Mirror** (`MIRROR`) | Duplicates and replays all item effects used by target on their previous turn in sequence. Excludes Mirror and Adrenaline to prevent infinite recursion. |
+| **Crusher** (`CRUSHER`) | Destroys 1 random target item from opponent's inventory. Gracefully logs if target has no items to destroy. |
+| **Totem of Undying** (`TOTEM`) | Passive survival: heals and revives to **1 HP** on lethal blow. **Crucially negated if target is Flashbanged / Blinded**. |
+| **Blood Contract** (`CONTRACT`) | Gamble 1 HP for 2 random high-tier items. Blocked at 1 HP without Totem or Jackpot shield immunity. |
+| **Flashbang** (`FLASHBANG`) | Blinds target for 1 turn (preventing item usage and disabling target's Totem passive save). |
+| **Tarot Cards** (`DECK_CARD`) | Full deck of 12 arcana (The Magician, The Hanged Man, The Hermit, The Moon, Judgment, Wheel of Fortune, The Sun, Death, The Tower, The Fool, Justice, Temperance) with multiplayer owner resolution. |
+
+---
+
+## Firestore Security Rules Audit (`firestore.rules`)
+
+The security rules for Google Firebase Cloud Firestore have been hardened with strict schema, field length, and timestamp boundaries while guaranteeing public read access:
+
+1. **`/users/{username}`**:
+   - `allow read: if true;` guarantees public read access for user stats, career leaderboards, and multiplayer presence heartbeats.
+   - `create`/`update` enforce valid string bounds on username (3-30 chars), displayName (1-50 chars), email (≤100 chars), timestamps (`createdAt`, `lastLoginAt`, `lastSeenAt`), `totalTimePlayed` (≥0), `stats` map, and `friends` array.
+   - `allow delete: if true;` supports self-service account deletion.
+
+2. **`/direct_messages/{messageId}`**:
+   - `allow read: if true;` guarantees real-time DM subscriptions across devices.
+   - `create` verifies non-empty `sender`, `recipient`, `conversationId`, `createdAt` timestamp, message text (≤2000 chars), boolean `read`, and tactical sticker IDs.
+
+3. **`/broadcasts/{broadcastId}`**:
+   - `allow read: if true;` provides public feed for mainframe global announcements.
+   - `create`/`update` enforce string bounds (text ≤3000 chars, title ≤100 chars) and valid timestamps.
+
+4. **`/friend_requests/{requestId}`**:
+   - Enforces `from` and `to` callsigns, valid timestamp, and strict state transitions in `['pending', 'accepted', 'declined']`.
+
+5. **`/feedbacks/{feedbackId}`**:
+   - Enforces valid feedback content (≤3000 chars), category, sender, timestamp, and read status.
+

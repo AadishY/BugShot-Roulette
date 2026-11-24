@@ -724,7 +724,17 @@ export const createMirror = (): THREE.Group => {
     return group;
 };
 
+// Tarot Card & Jackpot Texture Caches
+const _cardTextureCache = new Map<string, THREE.CanvasTexture>();
+let _cachedJackpotSignTex: THREE.CanvasTexture | null = null;
+let _cachedJackpotReelsTex: THREE.CanvasTexture | null = null;
+export const JACKPOT_POOL = ['🍎', '💎', '🍒', '🔔', '🍋', '⭐', '🍀', '7️⃣'];
+
 export const createCardTexture = (name: string, isBack: boolean): THREE.CanvasTexture => {
+    const cacheKey = `${name}_${isBack ? 'back' : 'front'}`;
+    if (_cardTextureCache.has(cacheKey)) {
+        return _cardTextureCache.get(cacheKey)!;
+    }
     const canvas = document.createElement('canvas');
     canvas.width = 256;
     canvas.height = 384;
@@ -1089,6 +1099,11 @@ export const createCardTexture = (name: string, isBack: boolean): THREE.CanvasTe
     }
 
     const texture = new THREE.CanvasTexture(canvas);
+    texture.minFilter = THREE.LinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    texture.generateMipmaps = false;
+    texture.userData = { isCachedAsset: true };
+    _cardTextureCache.set(cacheKey, texture);
     return texture;
 };
 
@@ -1222,27 +1237,36 @@ export const createJackpotMachine = (): THREE.Group => {
     group.add(marquee);
 
     // Sign plate
-    const signCanvas = document.createElement('canvas');
-    signCanvas.width = 256;
-    signCanvas.height = 64;
-    const sCtx = signCanvas.getContext('2d');
-    if (sCtx) {
-        sCtx.fillStyle = '#0f0f0f';
-        sCtx.fillRect(0, 0, 256, 64);
-        sCtx.strokeStyle = '#d4af37';
-        sCtx.lineWidth = 4;
-        sCtx.strokeRect(2, 2, 252, 60);
-        
-        sCtx.fillStyle = '#fff';
-        sCtx.font = 'bold 24px monospace';
-        sCtx.textAlign = 'center';
-        sCtx.textBaseline = 'middle';
-        sCtx.shadowColor = '#d4af37';
-        sCtx.shadowBlur = 8;
-        sCtx.fillText('★ JACKPOT ★', 128, 32);
-    }
-    const signTex = new THREE.CanvasTexture(signCanvas);
-    const signMat = new THREE.MeshBasicMaterial({ map: signTex });
+    const getJackpotSignTex = (): THREE.CanvasTexture => {
+        if (_cachedJackpotSignTex) return _cachedJackpotSignTex;
+        const signCanvas = document.createElement('canvas');
+        signCanvas.width = 256;
+        signCanvas.height = 64;
+        const sCtx = signCanvas.getContext('2d');
+        if (sCtx) {
+            sCtx.fillStyle = '#0f0f0f';
+            sCtx.fillRect(0, 0, 256, 64);
+            sCtx.strokeStyle = '#d4af37';
+            sCtx.lineWidth = 4;
+            sCtx.strokeRect(2, 2, 252, 60);
+            
+            sCtx.fillStyle = '#fff';
+            sCtx.font = 'bold 24px monospace';
+            sCtx.textAlign = 'center';
+            sCtx.textBaseline = 'middle';
+            sCtx.shadowColor = '#d4af37';
+            sCtx.shadowBlur = 8;
+            sCtx.fillText('★ JACKPOT ★', 128, 32);
+        }
+        const tex = new THREE.CanvasTexture(signCanvas);
+        tex.minFilter = THREE.LinearFilter;
+        tex.magFilter = THREE.LinearFilter;
+        tex.generateMipmaps = false;
+        tex.userData = { isCachedAsset: true };
+        _cachedJackpotSignTex = tex;
+        return tex;
+    };
+    const signMat = new THREE.MeshBasicMaterial({ map: getJackpotSignTex() });
     const signMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.36, 0.08), signMat);
     signMesh.position.set(0, 0.29, 0.161);
     group.add(signMesh);
@@ -1271,78 +1295,88 @@ export const createJackpotMachine = (): THREE.Group => {
     group.add(div2);
 
     // 2. High resolution canvas texture (horizontal strip) for mechanical reels
-    const canvas = document.createElement('canvas');
-    canvas.width = 2048; // 256 * 8 symbols
-    canvas.height = 256;
-    const ctx = canvas.getContext('2d');
-    const pool = ['🍎', '💎', '🍒', '🔔', '🍋', '⭐', '🍀', '7️⃣'];
-    if (ctx) {
-        pool.forEach((symbol, idx) => {
-            const xCenter = idx * 256 + 128;
-            const yCenter = 128;
-            
-            // Fill slot background: light retro off-white paper color
-            ctx.fillStyle = '#f5f5f3';
-            ctx.fillRect(idx * 256, 0, 256, 256);
-            
-            // Draw gold vertical borders
+    const getJackpotReelsTex = (): THREE.CanvasTexture => {
+        if (_cachedJackpotReelsTex) return _cachedJackpotReelsTex;
+        const canvas = document.createElement('canvas');
+        canvas.width = 2048; // 256 * 8 symbols
+        canvas.height = 256;
+        const ctx = canvas.getContext('2d');
+        const pool = JACKPOT_POOL;
+        if (ctx) {
+            pool.forEach((symbol, idx) => {
+                const xCenter = idx * 256 + 128;
+                const yCenter = 128;
+                
+                // Fill slot background: light retro off-white paper color
+                ctx.fillStyle = '#f5f5f3';
+                ctx.fillRect(idx * 256, 0, 256, 256);
+                
+                // Draw gold vertical borders
+                ctx.strokeStyle = '#d4af37';
+                ctx.lineWidth = 8;
+                ctx.beginPath();
+                ctx.moveTo(idx * 256, 0);
+                ctx.lineTo(idx * 256, 256);
+                ctx.stroke();
+
+                // Draw gold horizontal borders
+                ctx.beginPath();
+                ctx.moveTo(idx * 256, 4);
+                ctx.lineTo((idx + 1) * 256, 4);
+                ctx.moveTo(idx * 256, 252);
+                ctx.lineTo((idx + 1) * 256, 252);
+                ctx.stroke();
+
+                const grad = ctx.createLinearGradient(idx * 256, 0, (idx + 1) * 256, 0);
+                grad.addColorStop(0, 'rgba(0,0,0,0.15)');
+                grad.addColorStop(0.18, 'rgba(0,0,0,0)');
+                grad.addColorStop(0.82, 'rgba(0,0,0,0)');
+                grad.addColorStop(1, 'rgba(0,0,0,0.15)');
+                ctx.fillStyle = grad;
+                ctx.fillRect(idx * 256, 0, 256, 256);
+
+                // Rotate emoji by Math.PI / 2 (counter-clockwise) so that when cylinder lies horizontally (rotated clockwise by -Math.PI / 2), it is upright and unmirrored!
+                ctx.save();
+                ctx.translate(xCenter, yCenter);
+                ctx.rotate(Math.PI / 2);
+
+                // Apply shadow to separate emoji from background
+                ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
+                ctx.shadowBlur = 6;
+                ctx.shadowOffsetX = 3;
+                ctx.shadowOffsetY = 3;
+
+                // Apply a canvas filter to make the emoji itself much darker and higher contrast
+                ctx.filter = 'brightness(0.45) contrast(1.3)';
+
+                ctx.fillStyle = '#000000';
+                // Specify robust system fallbacks for emoji fonts to ensure correct cross-platform emoji rendering
+                ctx.font = '160px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(symbol, 0, 0);
+                ctx.restore();
+            });
+
+            // Close border line
             ctx.strokeStyle = '#d4af37';
             ctx.lineWidth = 8;
             ctx.beginPath();
-            ctx.moveTo(idx * 256, 0);
-            ctx.lineTo(idx * 256, 256);
+            ctx.moveTo(2048, 0);
+            ctx.lineTo(2048, 256);
             ctx.stroke();
-
-            // Draw gold horizontal borders
-            ctx.beginPath();
-            ctx.moveTo(idx * 256, 4);
-            ctx.lineTo((idx + 1) * 256, 4);
-            ctx.moveTo(idx * 256, 252);
-            ctx.lineTo((idx + 1) * 256, 252);
-            ctx.stroke();
-
-            const grad = ctx.createLinearGradient(idx * 256, 0, (idx + 1) * 256, 0);
-            grad.addColorStop(0, 'rgba(0,0,0,0.15)');
-            grad.addColorStop(0.18, 'rgba(0,0,0,0)');
-            grad.addColorStop(0.82, 'rgba(0,0,0,0)');
-            grad.addColorStop(1, 'rgba(0,0,0,0.15)');
-            ctx.fillStyle = grad;
-            ctx.fillRect(idx * 256, 0, 256, 256);
-
-            // Rotate emoji by Math.PI / 2 (counter-clockwise) so that when cylinder lies horizontally (rotated clockwise by -Math.PI / 2), it is upright and unmirrored!
-            ctx.save();
-            ctx.translate(xCenter, yCenter);
-            ctx.rotate(Math.PI / 2);
-
-            // Apply shadow to separate emoji from background
-            ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
-            ctx.shadowBlur = 6;
-            ctx.shadowOffsetX = 3;
-            ctx.shadowOffsetY = 3;
-
-            // Apply a canvas filter to make the emoji itself much darker and higher contrast
-            ctx.filter = 'brightness(0.45) contrast(1.3)';
-
-            ctx.fillStyle = '#000000';
-            // Specify robust system fallbacks for emoji fonts to ensure correct cross-platform emoji rendering
-            ctx.font = '160px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(symbol, 0, 0);
-            ctx.restore();
-        });
-
-        // Close border line
-        ctx.strokeStyle = '#d4af37';
-        ctx.lineWidth = 8;
-        ctx.beginPath();
-        ctx.moveTo(2048, 0);
-        ctx.lineTo(2048, 256);
-        ctx.stroke();
-    }
-    const reelTex = new THREE.CanvasTexture(canvas);
-    reelTex.wrapS = THREE.RepeatWrapping;
-    reelTex.wrapT = THREE.RepeatWrapping;
+        }
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.wrapS = THREE.RepeatWrapping;
+        tex.wrapT = THREE.RepeatWrapping;
+        tex.minFilter = THREE.LinearFilter;
+        tex.magFilter = THREE.LinearFilter;
+        tex.generateMipmaps = false;
+        tex.userData = { isCachedAsset: true };
+        _cachedJackpotReelsTex = tex;
+        return tex;
+    };
+    const reelTex = getJackpotReelsTex();
 
     // Use MeshStandardMaterial to correctly handle WebGL tone mapping and exposure, preventing emojis from washing out.
     // The diffuse color is set to a light grey to prevent overexposure highlights while keeping the background paper look light.
@@ -1410,7 +1444,7 @@ export const createJackpotMachine = (): THREE.Group => {
     group.add(armGroup);
 
     group.name = 'ITEM_JACKPOT';
-    group.userData = { reel1: reel1Spin, reel2: reel2Spin, reel3: reel3Spin, arm: armGroup, pool };
+    group.userData = { reel1: reel1Spin, reel2: reel2Spin, reel3: reel3Spin, arm: armGroup, pool: JACKPOT_POOL };
 
     // Increase model overall scale to 4.2x so it is much bigger, better, and visible
     group.scale.setScalar(4.2);

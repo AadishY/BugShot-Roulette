@@ -6,14 +6,16 @@ import os from 'os';
 import compression from 'compression';
 import dotenv from 'dotenv';
 
+dotenv.config();
 dotenv.config({ path: new URL('.env', import.meta.url) });
+dotenv.config({ path: new URL('../.env', import.meta.url) });
 
 const app = express();
 
 // Enable GZIP compression to reduce packet sizes across web hosting infrastructure
 app.use(compression());
 
-// Strip /server prefix if present (e.g. when proxied by Discord URL mapping or Cloudflare without stripping)
+// Strip /server prefix if present (e.g. when proxied by Cloudflare without stripping)
 app.use((req, res, next) => {
     if (req.url.startsWith('/server/')) {
         req.url = req.url.substring(7);
@@ -29,129 +31,87 @@ app.use((req, res, next) => {
 app.set('trust proxy', true);
 
 const allowedOriginsEnv = process.env.ALLOWED_ORIGINS;
-const allowedOrigins = allowedOriginsEnv ? allowedOriginsEnv.split(',') : [];
+const allowedOrigins = allowedOriginsEnv ? allowedOriginsEnv.split(',').map(s => s.trim()) : [];
+
+// Robust cross-origin validation supporting Hugging Face, Vercel, Cloudflare, Google AI Studio, Localhost, and LAN IPs
+const isOriginAllowed = (origin) => {
+    // Allow non-browser agents, server-to-server, curl, mobile native webviews
+    if (!origin) return true;
+    if (allowedOriginsEnv === "*") return true;
+    if (allowedOrigins.includes(origin)) return true;
+
+    try {
+        const parsed = new URL(origin);
+        const host = parsed.hostname.toLowerCase();
+
+        // Hugging Face Spaces (*.hf.space, hf.space)
+        if (host === 'hf.space' || host.endsWith('.hf.space')) return true;
+
+        // Vercel Deployments (*.vercel.app, vercel.app)
+        if (host === 'vercel.app' || host.endsWith('.vercel.app')) return true;
+
+        // Cloudflare Pages (*.pages.dev, pages.dev)
+        if (host === 'pages.dev' || host.endsWith('.pages.dev')) return true;
+
+        // Google AI Studio & Google ecosystems (aistudio.google.com, *.google.com, *.googleusercontent.com)
+        if (
+            host === 'aistudio.google.com' ||
+            host === 'google.com' || host.endsWith('.google.com') ||
+            host === 'googleusercontent.com' || host.endsWith('.googleusercontent.com')
+        ) return true;
+
+        // Localhost & Loopback
+        if (host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]') return true;
+
+        // LAN IP ranges: 192.168.0.0/16, 10.0.0.0/8, 172.16.0.0/12
+        if (
+            host.startsWith('192.168.') ||
+            host.startsWith('10.') ||
+            /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(host)
+        ) return true;
+
+    } catch (e) {
+        // Fallback pattern checks for partial or malformed origin strings
+        const lower = origin.toLowerCase();
+        if (
+            lower.includes('.hf.space') ||
+            lower.includes('hf.space') ||
+            lower.includes('.vercel.app') ||
+            lower.includes('vercel.app') ||
+            lower.includes('.pages.dev') ||
+            lower.includes('pages.dev') ||
+            lower.includes('aistudio.google.com') ||
+            lower.includes('.google.com') ||
+            lower.includes('google.com') ||
+            lower.includes('.googleusercontent.com') ||
+            lower.includes('localhost') ||
+            lower.includes('127.0.0.1') ||
+            lower.includes('192.168.') ||
+            lower.includes('10.') ||
+            lower.includes('172.')
+        ) {
+            return true;
+        }
+    }
+
+    return false;
+};
 
 const corsOptions = {
     origin: (origin, callback) => {
-        // Broad capture to allow local servers, matching environment origins, Hugging Face iframe deployments, or Discord Activity client
-        if (!origin || allowedOrigins.includes(origin) || allowedOriginsEnv === "*" || origin.includes('.hf.space') || origin.includes('localhost:') || origin.includes('127.0.0.1:') || origin.includes('.discordsays.com') || origin.includes('.pages.dev')) {
+        if (isOriginAllowed(origin)) {
             callback(null, true);
         } else {
-            callback(new Error('Blocked by Security Framework: Unauthorized Origin Connection'));
+            console.warn(`[CORS SECURITY] Blocked unauthorized origin: ${origin}`);
+            callback(null, false);
         }
     },
-    methods: ["GET", "POST"],
+    methods: ["GET", "POST", "HEAD", "OPTIONS"],
     credentials: true
 };
 
 app.use(cors(corsOptions));
 app.use(express.json());
-
-// --- SECURE UPSTASH REDIS TUNNEL PROXY ---
-const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
-const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
-
-if (!REDIS_URL || !REDIS_TOKEN) {
-    console.warn("[WARN] UPSTASH_REDIS_REST_URL or UPSTASH_REDIS_REST_TOKEN environment variables are missing. Redis-backed features will be unavailable until they are configured.");
-}
-
-// --- SHARED REDIS PROXY HANDLERS ---
-const handleRedisProxy = async (req, res) => {
-    if (!REDIS_URL || !REDIS_TOKEN) {
-        return res.status(503).json({ error: 'Maybe Aadish Forget to do something? idk message him.' });
-    }
-
-    try {
-        const response = await fetch(REDIS_URL, {
-            method: 'POST',
-            headers: {
-                Authorization: `Bearer ${REDIS_TOKEN}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(req.body)
-        });
-        const data = await response.json();
-        res.status(response.status).json(data);
-    } catch (err) {
-        console.error("Redis proxy error:", err);
-        res.status(500).json({ error: err.message });
-    }
-};
-
-const handleRedisPipelineProxy = async (req, res) => {
-    if (!REDIS_URL || !REDIS_TOKEN) {
-        return res.status(503).json({ error: 'Maybe Aadish Forget to do something? idk message him.' });
-    }
-
-    try {
-        const response = await fetch(`${REDIS_URL}/pipeline`, {
-            method: 'POST',
-            headers: {
-                Authorization: `Bearer ${REDIS_TOKEN}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(req.body)
-        });
-        const data = await response.json();
-        res.status(response.status).json(data);
-    } catch (err) {
-        console.error("Redis pipeline proxy error:", err);
-        res.status(500).json({ error: err.message });
-    }
-};
-
-app.post('/redis', handleRedisProxy);
-app.post('/redis/pipeline', handleRedisPipelineProxy);
-
-// Aliased routes for Discord Activity proxy (client calls /api/redis when in Discord)
-app.post('/api/redis', handleRedisProxy);
-app.post('/api/redis/pipeline', handleRedisPipelineProxy);
-
-// --- DISCORD EMBEDDED ACTIVITY OAUTH TOKEN EXCHANGE ---
-app.post('/api/token', async (req, res) => {
-    try {
-        const { code } = req.body;
-        if (!code) {
-            return res.status(400).json({ error: 'Authorization code is required' });
-        }
-
-        const clientId = process.env.DISCORD_CLIENT_ID;
-
-        if (!clientId) {
-            console.error("DISCORD_CLIENT_ID environment variable is missing!");
-            return res.status(500).json({ error: 'Server configuration error: client ID missing' });
-        }
-        const clientSecret = process.env.DISCORD_CLIENT_SECRET;
-
-        if (!clientSecret) {
-            console.error("DISCORD_CLIENT_SECRET environment variable is missing!");
-            return res.status(500).json({ error: 'Server configuration error: client secret missing' });
-        }
-
-        const response = await fetch('https://discord.com/api/oauth2/token', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded'
-            },
-            body: new URLSearchParams({
-                client_id: clientId,
-                client_secret: clientSecret,
-                grant_type: 'authorization_code',
-                code: code
-            }).toString()
-        });
-
-        const data = await response.json();
-        if (!response.ok) {
-            return res.status(response.status).json(data);
-        }
-
-        res.json({ access_token: data.access_token });
-    } catch (err) {
-        console.error("Discord token exchange error:", err);
-        res.status(500).json({ error: err.message });
-    }
-});
 
 // Analytics Metric Storage Vitals
 const serverStartTime = Date.now();
@@ -162,6 +122,259 @@ let activeConnectionsCount = 0;
 // Central State Repository Memory Pool
 // Room Context Map: roomId -> { id, hostId, players: [...], settings: {...}, gameState: {...}, lastActivity: timestamp }
 const rooms = new Map();
+
+// Timer and Resource Cleanup Utilities to prevent memory leaks and dangling timeouts
+const cleanupPlayerTimers = (player) => {
+    if (!player) return;
+    if (player.disconnectTimer) {
+        clearTimeout(player.disconnectTimer);
+        delete player.disconnectTimer;
+    }
+};
+
+const cleanupRoomTimers = (room) => {
+    if (!room) return;
+    if (room.deletionTimer) {
+        clearTimeout(room.deletionTimer);
+        delete room.deletionTimer;
+    }
+    if (Array.isArray(room.players)) {
+        room.players.forEach(p => cleanupPlayerTimers(p));
+    }
+};
+
+const deleteRoomSafely = (roomId) => {
+    const room = rooms.get(roomId);
+    if (!room) return;
+    cleanupRoomTimers(room);
+    rooms.delete(roomId);
+};
+
+const scheduleRoomDeletion = (room, roomId, delayMs = 20000) => {
+    if (!room) return;
+    if (room.deletionTimer) {
+        clearTimeout(room.deletionTimer);
+    }
+    room.deletionTimer = setTimeout(() => {
+        const current = rooms.get(roomId);
+        if (current) {
+            const connectedCount = current.players.filter(p => !p.disconnected).length;
+            if (connectedCount === 0 || current.players.length === 0) {
+                deleteRoomSafely(roomId);
+            }
+        }
+    }, delayMs);
+};
+
+// --- REAL-TIME LIVE PRESENCE REPOSITORY ---
+// socket.id -> { socketId, username, playerId, displayName, avatarUrl, avatarStyle, status, roomId, matchInfo, connectedAt, lastSeen, isDeveloper }
+const presenceMap = new Map();
+// username.toLowerCase() -> Set<socket.id>
+const userSocketsMap = new Map();
+// username.toLowerCase() -> timestamp (Persists real-time last seen across connections)
+const userLastSeenMap = new Map();
+// Active developer usernames (lowercase) for O(1) privilege lookup
+const developerUsernames = new Set();
+
+const MAX_LAST_SEEN_ENTRIES = 2000;
+const setTrackedLastSeen = (usernameLower, timestamp) => {
+    if (!usernameLower) return;
+    userLastSeenMap.set(usernameLower, timestamp);
+    if (userLastSeenMap.size > MAX_LAST_SEEN_ENTRIES) {
+        const oldestKey = userLastSeenMap.keys().next().value;
+        if (oldestKey) userLastSeenMap.delete(oldestKey);
+    }
+};
+
+// Filter presence details based on viewer privileges
+const formatPresenceForClient = (presence, viewerUsername, viewerIsFriend = false) => {
+    const isDev = Boolean(viewerUsername && developerUsernames.has(viewerUsername.toLowerCase()));
+    const isSelf = Boolean(viewerUsername && viewerUsername.toLowerCase() === presence.username.toLowerCase());
+    const effectiveLastSeen = presence.lastSeen || userLastSeenMap.get(presence.username.toLowerCase()) || Date.now();
+
+    return {
+        username: presence.username,
+        playerId: presence.playerId,
+        displayName: presence.displayName,
+        avatarUrl: presence.avatarUrl,
+        avatarStyle: presence.avatarStyle,
+        status: presence.status,
+        roomId: presence.roomId,
+        matchInfo: presence.matchInfo,
+        connectedAt: presence.connectedAt,
+        lastSeen: effectiveLastSeen,
+        isDeveloper: presence.isDeveloper
+    };
+};
+
+const broadcastPresence = (presenceObj) => {
+    if (!io) return;
+    const formatted = formatPresenceForClient(presenceObj);
+    io.emit('presence:user_updated', formatted);
+};
+
+const updateSocketPresence = (socketId, updates) => {
+    const p = presenceMap.get(socketId);
+    if (!p) return;
+    Object.assign(p, updates);
+    p.lastSeen = Date.now();
+    setTrackedLastSeen(p.username.toLowerCase(), p.lastSeen);
+    broadcastPresence(p);
+};
+
+// Muted users & sockets management
+const mutedUsers = new Map(); // username.toLowerCase() -> unmuteTimestamp (ms)
+const mutedSockets = new Map(); // socket.id -> unmuteTimestamp (ms)
+
+const isUserOrSocketMuted = (socket, username) => {
+    const now = Date.now();
+    if (socket && mutedSockets.has(socket.id)) {
+        const expiry = mutedSockets.get(socket.id);
+        if (now < expiry) return true;
+        mutedSockets.delete(socket.id);
+    }
+    const cleanUser = (username || socket?.username || '').trim().toLowerCase();
+    if (cleanUser && mutedUsers.has(cleanUser)) {
+        const expiry = mutedUsers.get(cleanUser);
+        if (now < expiry) return true;
+        mutedUsers.delete(cleanUser);
+    }
+    return false;
+};
+
+const getAdminOverview = () => {
+    const activeUsersList = [];
+    for (const [sId, p] of presenceMap.entries()) {
+        activeUsersList.push({
+            socketId: sId,
+            username: p.username,
+            playerId: p.playerId,
+            displayName: p.displayName,
+            avatarUrl: p.avatarUrl,
+            status: p.status,
+            roomId: p.roomId,
+            matchInfo: p.matchInfo,
+            connectedAt: p.connectedAt,
+            lastSeen: p.lastSeen,
+            isDeveloper: p.isDeveloper
+        });
+    }
+
+    const roomSummaries = [];
+    for (const [rId, room] of rooms.entries()) {
+        roomSummaries.push({
+            id: rId,
+            name: room.name,
+            hostId: room.hostId,
+            settings: room.settings,
+            lastActivity: room.lastActivity,
+            playerCount: room.players.length,
+            players: room.players.map(p => ({
+                id: p.id,
+                name: p.name,
+                color: p.color,
+                hp: p.hp,
+                maxHp: p.maxHp,
+                ready: p.ready,
+                items: p.items || [],
+                isHandcuffed: p.isHandcuffed,
+                isSawedActive: p.isSawedActive,
+                disconnected: p.disconnected,
+                authId: p.authId,
+                model: p.model
+            })),
+            gameState: room.gameState ? {
+                round: room.gameState.round,
+                turn: room.gameState.turn,
+                totalShells: room.gameState.chamber ? room.gameState.chamber.length : 0,
+                liveShells: room.gameState.liveShells,
+                blankShells: room.gameState.blankShells,
+                isSawActive: room.gameState.isSawActive,
+                dealerHandcuffed: room.gameState.dealerHandcuffed,
+                playerHandcuffed: room.gameState.playerHandcuffed
+            } : null
+        });
+    }
+
+    // Include real-time Singleplayer Combat Chambers in Admin Overview
+    for (const [sId, p] of presenceMap.entries()) {
+        if (p.status === 'in_match' && (!p.roomId || !rooms.has(p.roomId)) && p.matchInfo) {
+            const mi = p.matchInfo;
+            const spRoomId = `SP-${p.username.toUpperCase()}`;
+            const opponentName = mi.opponent || (mi.gameMode === 'HARD_MODE' ? 'THE REAPER' : 'DEALER');
+            
+            roomSummaries.push({
+                id: spRoomId,
+                name: `SINGLEPLAYER: ${p.displayName || p.username} VS ${opponentName}`,
+                hostId: sId,
+                isSingleplayer: true,
+                settings: {
+                    mode: mi.gameMode || 'SINGLEPLAYER',
+                    hp: mi.totalHealth || 4
+                },
+                lastActivity: p.lastSeen || Date.now(),
+                playerCount: 2,
+                players: [
+                    {
+                        id: sId,
+                        name: p.displayName || p.username,
+                        color: '#06b6d4',
+                        hp: mi.currentHealth ?? 4,
+                        maxHp: mi.totalHealth ?? 4,
+                        ready: true,
+                        items: mi.playerItems || [],
+                        isHandcuffed: Boolean(mi.isPlayerHandcuffed),
+                        isSawedActive: Boolean(mi.isSawActive && mi.turnOwner === 'PLAYER'),
+                        disconnected: false,
+                        authId: p.playerId
+                    },
+                    {
+                        id: 'AI_DEALER',
+                        name: opponentName,
+                        color: mi.gameMode === 'HARD_MODE' ? '#991b1b' : '#dc2626',
+                        hp: mi.dealerHealth ?? 4,
+                        maxHp: mi.dealerTotalHealth ?? 4,
+                        ready: true,
+                        items: mi.dealerItems || [],
+                        isHandcuffed: Boolean(mi.isDealerHandcuffed),
+                        isSawedActive: Boolean(mi.isSawActive && mi.turnOwner === 'DEALER'),
+                        disconnected: false,
+                        authId: '@dealer#0000'
+                    }
+                ],
+                gameState: {
+                    round: mi.round || 1,
+                    turn: mi.turnOwner === 'DEALER' ? 'AI_DEALER' : sId,
+                    totalShells: (mi.liveShells || 0) + (mi.blankShells || 0),
+                    liveShells: mi.liveShells ?? 0,
+                    blankShells: mi.blankShells ?? 0,
+                    isSawActive: Boolean(mi.isSawActive),
+                    dealerHandcuffed: Boolean(mi.isDealerHandcuffed),
+                    playerHandcuffed: Boolean(mi.isPlayerHandcuffed)
+                }
+            });
+        }
+    }
+
+    const lastSeenObj = {};
+    for (const [uname, t] of userLastSeenMap.entries()) {
+        lastSeenObj[uname] = t;
+    }
+
+    return {
+        vitals: {
+            uptimeMS: Date.now() - serverStartTime,
+            activeConnectionsCount,
+            memoryMB: (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2),
+            globalMatchesPlayed,
+            unauthorizedInterventionsBlocked
+        },
+        activeUsers: activeUsersList,
+        rooms: roomSummaries,
+        lastSeenMap: lastSeenObj,
+        mutedUsers: Array.from(mutedUsers.keys())
+    };
+};
 
 const PLAYER_COLORS = [
     '#06b6d4', // Cyan
@@ -178,7 +391,7 @@ const httpServer = createServer(app);
 const io = new Server(httpServer, {
     cors: {
         origin: allowedOriginsEnv === "*" ? true : (origin, callback) => {
-            if (!origin || allowedOrigins.includes(origin) || origin.includes('.hf.space') || origin.includes('localhost:') || origin.includes('.discordsays.com') || origin.includes('.pages.dev')) {
+            if (isOriginAllowed(origin)) {
                 callback(null, true);
             } else {
                 callback(null, false);
@@ -187,29 +400,30 @@ const io = new Server(httpServer, {
         methods: ["GET", "POST"],
         credentials: true
     },
-    pingTimeout: 10000,        // Speed up the disconnection of dead/stale sockets
-    pingInterval: 4000,        // High-frequency heartbeats maintain strict game tunnel synchronization
-    connectTimeout: 10000,
+    pingTimeout: 20000,        // Allow 20s for mobile/high-latency networks to avoid spurious drops
+    pingInterval: 10000,       // 10s heartbeats provide optimal synchronization without bandwidth thrashing
+    connectTimeout: 20000,
     cookie: false,             // Avoid parsing session cookies to preserve packet header bandwidth
-    transports: ['websocket', 'polling'], // Prefer native ultra-speed WebSockets
+    transports: ['websocket', 'polling'], // Native WebSockets with polling fallback
     allowEIO3: true,           // Backwards compatibility layer support fallback
     maxHttpBufferSize: 1e6,    // Hard ceiling packet capacity threshold at 1MB to protect against buffer exploits
     perMessageDeflate: { threshold: 512 } // Compress large sync payloads without taxing small action packets
 });
 
-const RECONNECT_GRACE_MS = 15000;
+const RECONNECT_GRACE_MS = 25000;
+const LOBBY_RECONNECT_GRACE_MS = 20000;
 const MAX_ROOM_ID_ATTEMPTS = 1000;
 const MAX_PLAYER_NAME_LENGTH = 18;
 const ROOM_ID_PATTERN = /^[0-9]{4}$/;
 const THROTTLE_EXEMPT_ACTIONS = new Set([
-    'SHOOT', 'USE_ITEM', 'SELECT_CARD', 'PICKUP_GUN', 'STEAL_ITEM',
+    'SHOOT', 'USE_ITEM', 'SELECT_CARD', 'PICKUP_GUN', 'STEAL_ITEM', 'CANCEL_STEAL',
     'SYNC_STATE', 'SYNC_THREE_PLAYER_STATE', 'SYNC_ROUND', 'SYNC_THREE_PLAYER_ROUND',
     'SYNC_MP_GAME_OVER',
     'DEBUG_SYNC_PLAYER', 'DEBUG_SYNC_DEALER', 'DEBUG_SYNC_GAMESTATE',
     'DEBUG_SYNC_THREE_PLAYER', 'DEBUG_SYNC_PLAYER_MODEL', 'DEBUG_SET_PLAYER_MODEL'
 ]);
 const VALID_GAME_ACTIONS = new Set([
-    'SHOOT', 'USE_ITEM', 'SELECT_CARD', 'PICKUP_GUN', 'STEAL_ITEM', 'HOVER_TARGET',
+    'SHOOT', 'USE_ITEM', 'SELECT_CARD', 'PICKUP_GUN', 'STEAL_ITEM', 'CANCEL_STEAL', 'HOVER_TARGET',
     'SYNC_STATE', 'SYNC_THREE_PLAYER_STATE', 'SYNC_ROUND', 'SYNC_THREE_PLAYER_ROUND',
     'SYNC_MP_GAME_OVER',
     'DEBUG_SYNC_PLAYER', 'DEBUG_SYNC_DEALER', 'DEBUG_SYNC_GAMESTATE',
@@ -230,9 +444,75 @@ const sanitizeRoomId = (roomId) => {
     return ROOM_ID_PATTERN.test(trimmed) ? trimmed : null;
 };
 
+// Room status inspection endpoint for invite previews
+app.get(['/api/room/:roomId', '/room-status/:roomId'], (req, res) => {
+    const safeRoomId = sanitizeRoomId(req.params.roomId);
+    if (!safeRoomId) return res.json({ exists: false, status: 'closed' });
+    const room = rooms.get(safeRoomId);
+    if (!room) return res.json({ exists: false, status: 'closed' });
+    const activePlayers = room.players.filter(p => !p.disconnected);
+    if (room.gameState) {
+        return res.json({
+            exists: true,
+            status: 'in_match',
+            playerCount: activePlayers.length,
+            maxPlayers: 4,
+            hostName: room.hostName || 'Host'
+        });
+    }
+    if (activePlayers.length >= 4) {
+        return res.json({
+            exists: true,
+            status: 'full',
+            playerCount: activePlayers.length,
+            maxPlayers: 4,
+            hostName: room.hostName || 'Host'
+        });
+    }
+    return res.json({
+        exists: true,
+        status: 'open',
+        playerCount: activePlayers.length,
+        maxPlayers: 4,
+        hostName: room.hostName || 'Host'
+    });
+});
+
+// Deployment Health Assessment Vector
+const getHealthStatus = () => {
+    const uptimeSeconds = Math.floor((Date.now() - serverStartTime) / 1000);
+    return {
+        status: 'OK',
+        healthy: true,
+        uptime: uptimeSeconds,
+        uptimeFormatted: `${Math.floor(uptimeSeconds / 86400)}d ${Math.floor((uptimeSeconds % 86400) / 3600)}h ${Math.floor((uptimeSeconds % 3600) / 60)}m ${uptimeSeconds % 60}s`,
+        timestamp: Date.now(),
+        roomCount: rooms.size,
+        activeConnections: activeConnectionsCount,
+        memoryUsageMB: (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2),
+        version: '1.0.0'
+    };
+};
+
+// Explicit HEAD / handler returning 200 OK with status & uptime headers for Hugging Face Spaces health pings
+app.head('/', (req, res) => {
+    const uptimeSeconds = Math.floor((Date.now() - serverStartTime) / 1000);
+    res.status(200)
+       .set({
+           'Content-Type': 'application/json',
+           'X-Server-Status': 'OK',
+           'X-Server-Uptime': uptimeSeconds.toString()
+       })
+       .end();
+});
+
 // --- ENGINE RADAR TERMINAL PAGE ---
-// Accessing the root server URL parses a high-contrast industrial diagnostic dark dashboard
+// Accessing the root server URL parses a high-contrast industrial diagnostic dark dashboard (or JSON if requested)
 app.get('/', (req, res) => {
+    if (req.headers.accept && req.headers.accept.includes('application/json') && !req.headers.accept.includes('text/html')) {
+        return res.status(200).json(getHealthStatus());
+    }
+
     const uptimeMS = Date.now() - serverStartTime;
     const days = Math.floor(uptimeMS / (24 * 60 * 60 * 1000));
     const hours = Math.floor((uptimeMS % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
@@ -352,9 +632,20 @@ app.get('/', (req, res) => {
     res.status(200).send(htmlContent);
 });
 
-// Deployment Health Vector mapping check
-app.get('/health', (req, res) => {
-    res.status(200).json({ status: 'HEALTHY', timestamp: Date.now(), roomCount: rooms.size });
+// Deployment Health Vector mapping check (Hugging Face Spaces, Kubernetes, uptime monitors)
+app.get(['/health', '/healthz'], (req, res) => {
+    res.status(200).json(getHealthStatus());
+});
+
+app.head(['/health', '/healthz'], (req, res) => {
+    const uptimeSeconds = Math.floor((Date.now() - serverStartTime) / 1000);
+    res.status(200)
+       .set({
+           'Content-Type': 'application/json',
+           'X-Server-Status': 'OK',
+           'X-Server-Uptime': uptimeSeconds.toString()
+       })
+       .end();
 });
 
 // Active rooms query vector
@@ -452,25 +743,46 @@ app.get('/api/link-preview', async (req, res) => {
     }
 });
 
+// Developer-Only Telemetry Overview REST API
+app.get('/api/admin/overview', (req, res) => {
+    const auth = (req.query.auth || req.headers['x-admin-key'] || '').toLowerCase();
+    let isDev = false;
+    if (auth) {
+        for (const p of presenceMap.values()) {
+            if (p.username.toLowerCase() === auth && p.isDeveloper) {
+                isDev = true;
+                break;
+            }
+        }
+    }
+    if (!isDev) {
+        return res.status(403).json({ error: 'Access Denied: Developer authentication required' });
+    }
+    res.json(getAdminOverview());
+});
 
 // Periodic Automatic Stale Registry Memory Garbage Collector
-setInterval(() => {
+const roomGcInterval = setInterval(() => {
     const now = Date.now();
     for (const [roomId, room] of rooms.entries()) {
-        if (room.players.length === 0 || (room.lastActivity && now - room.lastActivity > 7200000)) {
-            // Eject and notify any lingering players in the room
+        const allDisconnected = room.players.length === 0 || room.players.every(p => p.disconnected);
+        const isAbandoned = allDisconnected && (room.lastActivity && now - room.lastActivity > 30000);
+        const isStale = (room.lastActivity && now - room.lastActivity > 3600000);
+        if (room.players.length === 0 || isAbandoned || isStale) {
+            // Eject and notify any lingering players in the room, clearing disconnect timers
             room.players.forEach(p => {
+                cleanupPlayerTimers(p);
                 const s = io.sockets.sockets.get(p.id);
                 if (s) {
                     s.emit('error', 'Lobby closed due to inactivity.');
                     s.leave(roomId);
                 }
             });
-            rooms.delete(roomId);
-            console.log(`[GARBAGE COLLECTION] Pruned inactive room data stack: ${roomId}`);
+            deleteRoomSafely(roomId);
         }
     }
-}, 180000); // 3-minute check interval
+}, 60000); // 1-minute check interval
+if (roomGcInterval.unref) roomGcInterval.unref();
 
 // --- REAL-TIME SERVER TRANSACTION HANDLERS ---
 const parseHpSetting = (val) => {
@@ -500,6 +812,7 @@ const createRoomObject = (roomId, hostId, hostName, settings) => {
         id: roomId,
         name: `${hostName}'s Bunker`,
         hostId,
+        hostName,
         players: [],
         settings: finalSettings,
         gameState: null,
@@ -518,6 +831,7 @@ const serializeRoomForClient = (room) => {
         id: room.id,
         name: room.name,
         hostId: room.hostId,
+        hostName: room.hostName || (room.players.find(p => p.id === room.hostId)?.name) || 'Host',
         players: Array.isArray(room.players) ? room.players.map((player) => ({
             id: player.id,
             name: player.name,
@@ -529,7 +843,11 @@ const serializeRoomForClient = (room) => {
             isHandcuffed: !!player.isHandcuffed,
             isSawedActive: !!player.isSawedActive,
             disconnected: !!player.disconnected,
-            model: player.model
+            authId: player.authId,
+            model: player.model,
+            avatarUrl: player.avatarUrl,
+            avatarStyle: player.avatarStyle,
+            avatarSeed: player.avatarSeed
         })) : [],
         settings: room.settings,
         gameState: safeGameState,
@@ -545,15 +863,35 @@ const emitRoomUpdated = (roomId, room) => {
 
 const finalizeMidGameAbort = (room, roomId, disconnectedName) => {
     room.gameState = null;
-    room.players.forEach(p => {
-        if (p.disconnectTimer) clearTimeout(p.disconnectTimer);
-        p.ready = false;
-        p.items = [];
-        p.isHandcuffed = false;
-        p.isSawedActive = false;
-        p.disconnected = false;
-        delete p.disconnectTimer;
-    });
+    cleanupRoomTimers(room);
+    
+    // Prune any players who are still marked disconnected
+    for (let i = room.players.length - 1; i >= 0; i--) {
+        if (room.players[i].disconnected) {
+            cleanupPlayerTimers(room.players[i]);
+            room.players.splice(i, 1);
+        } else {
+            room.players[i].ready = false;
+            room.players[i].items = [];
+            room.players[i].isHandcuffed = false;
+            room.players[i].isSawedActive = false;
+        }
+    }
+
+    if (room.players.length === 0) {
+        deleteRoomSafely(roomId);
+        return;
+    }
+
+    // Ensure host is assigned to an active remaining player if previous host was purged
+    if (!room.players.some(p => p.id === room.hostId && !p.disconnected)) {
+        const nextHost = room.players.find(p => !p.disconnected);
+        if (nextHost) {
+            room.hostId = nextHost.id;
+            room.hostName = nextHost.name;
+        }
+    }
+
     io.to(roomId).emit('matchAborted', { abortedBy: disconnectedName });
     emitRoomUpdated(roomId, room);
 };
@@ -566,10 +904,24 @@ const getActionSize = (action) => {
     }
 };
 
+const sanitizeObjectKeys = (obj) => {
+    if (!obj || typeof obj !== 'object') return;
+    delete obj.__proto__;
+    delete obj.constructor;
+    delete obj.prototype;
+    for (const key of Object.keys(obj)) {
+        if (typeof obj[key] === 'object' && obj[key] !== null) {
+            sanitizeObjectKeys(obj[key]);
+        }
+    }
+};
+
 const normalizeGameAction = (action, room) => {
     if (!action || typeof action !== 'object' || Array.isArray(action)) return null;
     if (typeof action.type !== 'string' || !VALID_GAME_ACTIONS.has(action.type)) return null;
     if (getActionSize(action) > MAX_ACTION_BYTES) return null;
+
+    sanitizeObjectKeys(action);
 
     const normalized = { ...action };
     const roomPlayerIds = new Set(room.players.map(p => p.id));
@@ -585,6 +937,45 @@ const normalizeGameAction = (action, room) => {
     }
     if (normalized.playerId && !roomPlayerIds.has(normalized.playerId)) {
         delete normalized.playerId;
+    }
+
+    // Protect against out-of-range action indices and malformed payloads
+    if (normalized.index !== undefined) {
+        if (typeof normalized.index !== 'number' || !Number.isInteger(normalized.index) || normalized.index < 0 || normalized.index > 32) {
+            delete normalized.index;
+        }
+    }
+    if (normalized.crushIndex !== undefined) {
+        if (typeof normalized.crushIndex !== 'number' || !Number.isInteger(normalized.crushIndex) || normalized.crushIndex < 0 || normalized.crushIndex > 32) {
+            delete normalized.crushIndex;
+        }
+    }
+    if (normalized.phoneFutureIndex !== undefined) {
+        if (typeof normalized.phoneFutureIndex !== 'number' || !Number.isInteger(normalized.phoneFutureIndex) || normalized.phoneFutureIndex < 0 || normalized.phoneFutureIndex > 32) {
+            delete normalized.phoneFutureIndex;
+        }
+    }
+    if (normalized.playerIndex !== undefined) {
+        if (typeof normalized.playerIndex !== 'number' || !Number.isInteger(normalized.playerIndex) || normalized.playerIndex < 0 || normalized.playerIndex >= room.players.length) {
+            delete normalized.playerIndex;
+        }
+    }
+
+    // String field limits
+    if (normalized.item !== undefined) {
+        if (typeof normalized.item !== 'string' || normalized.item.length > 64) {
+            delete normalized.item;
+        }
+    }
+    if (normalized.target !== undefined) {
+        if (typeof normalized.target !== 'string' || normalized.target.length > 64) {
+            delete normalized.target;
+        }
+    }
+    if (normalized.jackpotOutcome !== undefined) {
+        if (typeof normalized.jackpotOutcome !== 'string' || normalized.jackpotOutcome.length > 32) {
+            delete normalized.jackpotOutcome;
+        }
     }
 
     if (normalized.gameState && typeof normalized.gameState === 'object') {
@@ -611,48 +1002,80 @@ const normalizeGameAction = (action, room) => {
     return normalized;
 };
 
-const joinSocketToRoom = (socket, room, playerName, authId) => {
+const joinSocketToRoom = (socket, room, playerName, authId, avatarUrl, avatarStyle, avatarSeed) => {
     const newPlayerName = playerName ? playerName.trim().substring(0, 14) : `Player ${room.players.length + 1}`;
     const cleanAuthId = authId ? authId.trim().toLowerCase() : null;
 
-    // Mid-game reconnect for players within grace window (both logged in and guest players)
-    if (room.gameState) {
-        const pendingIndex = room.players.findIndex(p => p.disconnected && (
-            cleanAuthId ? p.authId === cleanAuthId : p.name.toLowerCase() === newPlayerName.toLowerCase()
-        ));
-        if (pendingIndex !== -1) {
-            const returning = room.players[pendingIndex];
-            const wasHost = room.hostId === returning.id;
+    const presence = presenceMap.get(socket.id);
+    const effAvatarUrl = avatarUrl || presence?.avatarUrl || null;
+    const effAvatarStyle = avatarStyle || presence?.avatarStyle || null;
+    const effAvatarSeed = avatarSeed || (presence && presence.avatarSeed) || null;
 
-            if (returning.disconnectTimer) clearTimeout(returning.disconnectTimer);
-            returning.id = socket.id;
-            returning.disconnected = false;
-            returning.name = newPlayerName;
-            delete returning.disconnectTimer;
-            
-            if (wasHost) {
-                room.hostId = socket.id;
-            }
-
-            room.lastActivity = Date.now();
-            socket.join(room.id);
-
-            const reconnectMessage = {
-                sender: 'SYSTEM',
-                color: '#737373',
-                text: `${returning.name} reconnected to the match.`,
-                timestamp: Date.now()
-            };
-            room.messages.push(reconnectMessage);
-            if (room.messages.length > 50) room.messages.shift();
-
-            emitRoomUpdated(room.id, room);
-            socket.emit('joinedRoom', { room: serializeRoomForClient(room), playerId: socket.id, reconnected: true });
-            io.to(room.id).emit('chatMessageReceived', reconnectMessage);
-            io.to(room.id).emit('requestFullSync', { forPlayerId: socket.id });
-            console.log(`[MID-GAME RECONNECT] ${returning.name} restored in room ${room.id}`);
-            return;
+    // Check if player is reconnecting or switching networks (both logged-in and guest players)
+    const existingPlayerIndex = room.players.findIndex(p => {
+        if (cleanAuthId && p.authId) {
+            return p.authId === cleanAuthId;
         }
+        return p.name.toLowerCase() === newPlayerName.toLowerCase();
+    });
+
+    if (existingPlayerIndex !== -1) {
+        const returning = room.players[existingPlayerIndex];
+        const wasHost = room.hostId === returning.id;
+        const oldSocketId = returning.id;
+
+        cleanupPlayerTimers(returning);
+        if (room.deletionTimer) {
+            clearTimeout(room.deletionTimer);
+            delete room.deletionTimer;
+        }
+
+        // Drop previous ghost socket if connection switch occurred (e.g. mobile 4G <-> Wi-Fi handover)
+        if (oldSocketId !== socket.id) {
+            const oldSocket = io.sockets.sockets.get(oldSocketId);
+            if (oldSocket) {
+                oldSocket.leave(room.id);
+                try {
+                    oldSocket.disconnect(true);
+                } catch (e) {}
+            }
+        }
+
+        returning.id = socket.id;
+        returning.disconnected = false;
+        returning.name = newPlayerName;
+        if (effAvatarUrl) returning.avatarUrl = effAvatarUrl;
+        if (effAvatarStyle) returning.avatarStyle = effAvatarStyle;
+        if (effAvatarSeed) returning.avatarSeed = effAvatarSeed;
+        
+        if (wasHost || !room.players.some(p => p.id === room.hostId && !p.disconnected)) {
+            room.hostId = socket.id;
+            room.hostName = returning.name;
+        }
+
+        room.lastActivity = Date.now();
+        socket.join(room.id);
+
+        const reconnectMessage = {
+            sender: 'SYSTEM',
+            color: '#737373',
+            text: `${returning.name} reconnected to the bunker.`,
+            timestamp: Date.now()
+        };
+        room.messages.push(reconnectMessage);
+        if (room.messages.length > 50) room.messages.shift();
+
+        emitRoomUpdated(room.id, room);
+        socket.emit('joinedRoom', { room: serializeRoomForClient(room), playerId: socket.id, reconnected: true });
+        io.to(room.id).emit('chatMessageReceived', reconnectMessage);
+        if (room.gameState) {
+            io.to(room.id).emit('requestFullSync', { forPlayerId: socket.id });
+        }
+        return;
+    }
+
+    // New player validations
+    if (room.gameState) {
         socket.emit('error', 'Match is already in progress in this room.');
         return;
     }
@@ -661,50 +1084,10 @@ const joinSocketToRoom = (socket, room, playerName, authId) => {
         socket.emit('error', 'Lobby is full (Max 4 players allowed).');
         return;
     }
-    if (room.gameState) {
-        socket.emit('error', 'Match is already in progress in this room.');
-        return;
-    }
 
-    // Reconnection: Only reconnect if both the existing and joining player share the same authId (logged-in account)
-    if (cleanAuthId) {
-        const existingPlayerIndex = room.players.findIndex(p => p.authId && p.authId === cleanAuthId && !p.disconnected);
-        if (existingPlayerIndex !== -1) {
-            const oldPlayer = room.players[existingPlayerIndex];
-            console.log(`[RECONNECT] Player ${oldPlayer.name} (authId: ${cleanAuthId}) reconnected. Updating socket ID from ${oldPlayer.id} to ${socket.id}`);
-            
-            // If the old socket is still connected (ghost connection), leave and emit warning
-            const oldSocket = io.sockets.sockets.get(oldPlayer.id);
-            if (oldSocket) {
-                oldSocket.emit('error', 'Linked connection active elsewhere. Dropping tunnel.');
-                oldSocket.leave(room.id);
-            }
-            
-            // Re-assign socket ID and reset state
-            const wasHost = room.hostId === oldPlayer.id;
-            oldPlayer.id = socket.id;
-            if (wasHost) {
-                room.hostId = socket.id;
-            }
-            oldPlayer.name = newPlayerName; // Update name in case it changed
-            oldPlayer.ready = false;
-            
-            socket.join(room.id);
-            
-            const reconnectMessage = {
-                sender: 'SYSTEM',
-                color: '#737373',
-                text: `${oldPlayer.name} reconnected to the bunker.`,
-                timestamp: Date.now()
-            };
-            room.messages.push(reconnectMessage);
-            if (room.messages.length > 50) room.messages.shift();
-            
-            emitRoomUpdated(room.id, room);
-            socket.emit('joinedRoom', { room: serializeRoomForClient(room), playerId: socket.id });
-            io.to(room.id).emit('chatMessageReceived', reconnectMessage);
-            return;
-        }
+    if (room.deletionTimer) {
+        clearTimeout(room.deletionTimer);
+        delete room.deletionTimer;
     }
 
     // Disambiguate same-name players: append suffix if name already exists in room
@@ -759,16 +1142,18 @@ const joinSocketToRoom = (socket, room, playerName, authId) => {
         items: [],
         isHandcuffed: false,
         isSawedActive: false,
+        disconnected: false,
         authId: cleanAuthId,
-        model: assignedModel
+        model: assignedModel,
+        avatarUrl: effAvatarUrl,
+        avatarStyle: effAvatarStyle,
+        avatarSeed: effAvatarSeed
     };
 
     room.players.push(newPlayer);
     room.lastActivity = Date.now();
     socket.join(room.id);
 
-    console.log(`[JOINED] ${newPlayer.name} hooked to room cluster: ${room.id}`);
-    
     const joinMessage = {
         sender: 'SYSTEM',
         color: '#737373',
@@ -785,6 +1170,9 @@ const joinSocketToRoom = (socket, room, playerName, authId) => {
 
 io.on('connection', (socket) => {
     activeConnectionsCount++;
+    socket.on('error', (err) => {
+        console.warn(`[SOCKET ERROR ${socket.id}]:`, err?.message || err);
+    });
     let requestPacketCounter = 0;
     let hoverPacketCounter = 0;
     let lastThrottleReset = Date.now();
@@ -800,14 +1188,13 @@ io.on('connection', (socket) => {
 
         const containsDebugFlags = action.type?.toUpperCase().includes('DEBUG') || action.isDebug;
         if (containsDebugFlags) {
-            const devUser = (process.env.DEV_USERNAME || '').toLowerCase();
-            if (!devUser || player.name.toLowerCase() !== devUser) {
+            if (!socket.isDeveloper) {
                 unauthorizedInterventionsBlocked++;
                 console.warn(`[SECURITY WARNING] Intercepted unauthorized debug runtime execution try by player: ${player.name} inside room: ${roomId}`);
                 socket.emit('error', 'Access Denied: Debug tools are strictly restricted to the developer account.');
                 return;
             }
-            console.log(`[DEVELOPER SYSTEM CALL] Authorized account '${devUser}' deployed debugging hook element: ${action.type}`);
+            console.log(`[DEVELOPER SYSTEM CALL] Authorized account deployed debugging hook element: ${action.type}`);
         }
 
         if (action.type === 'DEBUG_SET_PLAYER_MODEL' || action.type === 'DEBUG_SYNC_PLAYER_MODEL') {
@@ -867,7 +1254,8 @@ io.on('connection', (socket) => {
         return requestPacketCounter > 60;
     };
 
-    socket.on('createRoom', ({ playerName, settings, authId }) => {
+    socket.on('createRoom', (data = {}) => {
+        const { playerName, settings, authId, avatarUrl, avatarStyle, avatarSeed } = data || {};
         if (shouldThrottle({ type: 'LOBBY' })) return;
         if (!authId) {
             socket.emit('error', 'Authentication required. Please sign in to access multiplayer.');
@@ -890,10 +1278,14 @@ io.on('connection', (socket) => {
         const room = createRoomObject(roomId, socket.id, hostName, settings);
         rooms.set(roomId, room);
 
-        joinSocketToRoom(socket, room, playerName, authId);
+        joinSocketToRoom(socket, room, playerName, authId, avatarUrl, avatarStyle, avatarSeed);
+        if (room.players.length === 0) {
+            deleteRoomSafely(roomId);
+        }
     });
 
-    socket.on('joinRoom', ({ roomId, playerName, authId }) => {
+    socket.on('joinRoom', (data = {}) => {
+        const { roomId, playerName, authId, avatarUrl, avatarStyle, avatarSeed } = data || {};
         if (shouldThrottle({ type: 'LOBBY' })) return;
         if (!authId) {
             socket.emit('error', 'Authentication required. Please sign in to access multiplayer.');
@@ -911,10 +1303,11 @@ io.on('connection', (socket) => {
             return;
         }
 
-        joinSocketToRoom(socket, room, playerName, authId);
+        joinSocketToRoom(socket, room, playerName, authId, avatarUrl, avatarStyle, avatarSeed);
     });
 
-    socket.on('quickJoin', ({ playerName, settings, authId }) => {
+    socket.on('quickJoin', (data = {}) => {
+        const { playerName, settings, authId, avatarUrl, avatarStyle, avatarSeed } = data || {};
         if (shouldThrottle({ type: 'LOBBY' })) return;
         if (!authId) {
             socket.emit('error', 'Authentication required. Please sign in to access multiplayer.');
@@ -930,7 +1323,7 @@ io.on('connection', (socket) => {
         }
 
         if (availableRoom) {
-            joinSocketToRoom(socket, availableRoom, playerName, authId);
+            joinSocketToRoom(socket, availableRoom, playerName, authId, avatarUrl, avatarStyle, avatarSeed);
         } else {
             let roomId;
             let attempts = 0;
@@ -943,14 +1336,18 @@ io.on('connection', (socket) => {
             const room = createRoomObject(roomId, socket.id, hostName, { ...settings, isPrivate: false });
             rooms.set(roomId, room);
 
-            joinSocketToRoom(socket, room, playerName, authId);
+            joinSocketToRoom(socket, room, playerName, authId, avatarUrl, avatarStyle, avatarSeed);
+            if (room.players.length === 0) {
+                deleteRoomSafely(roomId);
+            }
         }
     });
 
-    socket.on('updateSettings', ({ roomId, settings }) => {
+    socket.on('updateSettings', (data = {}) => {
+        const { roomId, settings } = data || {};
         if (shouldThrottle({ type: 'LOBBY' })) return;
         const safeRoomId = sanitizeRoomId(roomId);
-        if (!safeRoomId) return;
+        if (!safeRoomId || !settings) return;
         const room = rooms.get(safeRoomId);
         if (room && room.hostId === socket.id && !room.gameState) {
             room.settings = {
@@ -966,7 +1363,8 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('readyUp', ({ roomId, ready }) => {
+    socket.on('readyUp', (data = {}) => {
+        const { roomId, ready } = data || {};
         if (shouldThrottle({ type: 'LOBBY' })) return;
         const safeRoomId = sanitizeRoomId(roomId);
         if (!safeRoomId) return;
@@ -981,10 +1379,40 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('startGame', ({ roomId, gameData }) => {
+    socket.on('updatePlayerAvatar', (data = {}) => {
+        const { roomId, avatarUrl, avatarStyle, avatarSeed } = data || {};
         if (shouldThrottle({ type: 'LOBBY' })) return;
         const safeRoomId = sanitizeRoomId(roomId);
-        if (!safeRoomId) return;
+        if (safeRoomId) {
+            const room = rooms.get(safeRoomId);
+            if (room) {
+                const player = room.players.find(p => p.id === socket.id);
+                if (player) {
+                    if (avatarUrl !== undefined) player.avatarUrl = avatarUrl;
+                    if (avatarStyle !== undefined) player.avatarStyle = avatarStyle;
+                    if (avatarSeed !== undefined) player.avatarSeed = avatarSeed;
+                    room.lastActivity = Date.now();
+                    emitRoomUpdated(safeRoomId, room);
+                }
+            }
+        }
+        updateSocketPresence(socket.id, {
+            avatarUrl,
+            avatarStyle,
+            avatarSeed
+        });
+    });
+
+    socket.on('startGame', (data = {}) => {
+        const { roomId, gameData } = data || {};
+        if (shouldThrottle({ type: 'LOBBY' })) return;
+        const safeRoomId = sanitizeRoomId(roomId);
+        if (!safeRoomId || !gameData || typeof gameData !== 'object') return;
+        if (getActionSize(gameData) > MAX_ACTION_BYTES) {
+            socket.emit('error', 'Payload exceeds maximum size.');
+            return;
+        }
+        sanitizeObjectKeys(gameData);
         const room = rooms.get(safeRoomId);
         if (room && room.hostId === socket.id) {
             if (room.players.filter(p => !p.disconnected).length < 2) {
@@ -1005,8 +1433,9 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('gameAction', ({ roomId, action }) => {
-        if (shouldThrottle(action)) return;
+    socket.on('gameAction', (data = {}) => {
+        const { roomId, action } = data || {};
+        if (!action || shouldThrottle(action)) return;
         const safeRoomId = sanitizeRoomId(roomId);
         if (!safeRoomId) return;
         const room = rooms.get(safeRoomId);
@@ -1016,18 +1445,19 @@ io.on('connection', (socket) => {
         const player = room.players.find(p => p.id === socket.id);
         if (!player || player.disconnected) return;
 
-        relayGameAction(roomId, action, player);
+        relayGameAction(safeRoomId, action, player);
     });
 
-    socket.on('gameActionBatch', ({ actions }) => {
+    socket.on('gameActionBatch', (data = {}) => {
+        const { actions } = data || {};
         if (!Array.isArray(actions) || actions.length === 0) return;
-        if (actions.length > 12) {
+        if (actions.length > 24) {
             socket.emit('error', 'Action batch too large.');
             return;
         }
-        const roomId = sanitizeRoomId(actions[0]?.data?.roomId || actions[0]?.roomId);
-        if (!roomId) return;
-        const room = rooms.get(roomId);
+        const safeRoomId = sanitizeRoomId(actions[0]?.data?.roomId || actions[0]?.roomId);
+        if (!safeRoomId) return;
+        const room = rooms.get(safeRoomId);
         if (!room) return;
 
         const player = room.players.find(p => p.id === socket.id);
@@ -1036,10 +1466,10 @@ io.on('connection', (socket) => {
         room.lastActivity = Date.now();
         for (const entry of actions) {
             const payload = entry?.data || entry;
-            if (payload?.roomId !== roomId) continue;
+            if (payload?.roomId !== safeRoomId) continue;
             const action = payload?.action;
             if (!action || shouldThrottle(action)) continue;
-            relayGameAction(roomId, action, player);
+            relayGameAction(safeRoomId, action, player);
         }
     });
 
@@ -1050,6 +1480,15 @@ io.on('connection', (socket) => {
         const room = rooms.get(safeRoomId);
         if (room) {
             const player = room.players.find(p => p.id === socket.id);
+            if (isUserOrSocketMuted(socket, player?.name)) {
+                socket.emit('chatMessageReceived', {
+                    sender: 'SYSTEM',
+                    color: '#ef4444',
+                    text: 'You are currently muted by an administrator.',
+                    timestamp: Date.now()
+                });
+                return;
+            }
             const safeText = typeof message === 'string' ? message.trim().substring(0, 140) : '';
             if (player && safeText.length > 0) {
                 const chatEntry = {
@@ -1071,15 +1510,16 @@ io.on('connection', (socket) => {
         const safeRoomId = sanitizeRoomId(roomId);
         if (!safeRoomId) return;
         const room = rooms.get(safeRoomId);
-        if (room && room.hostId === socket.id) {
+        if (room && room.hostId === socket.id && !room.gameState && targetPlayerId !== socket.id) {
             const playerIndex = room.players.findIndex(p => p.id === targetPlayerId);
             if (playerIndex !== -1) {
                 const kickedPlayer = room.players[playerIndex];
+                cleanupPlayerTimers(kickedPlayer);
                 room.players.splice(playerIndex, 1);
                 
                 const targetSocket = io.sockets.sockets.get(targetPlayerId);
                 if (targetSocket) {
-                    targetSocket.leave(roomId);
+                    targetSocket.leave(safeRoomId);
                     targetSocket.emit('kicked');
                 }
 
@@ -1119,23 +1559,399 @@ io.on('connection', (socket) => {
         }
     });
 
+    // --- PRESENCE & ADMIN SOCKET HANDLERS ---
+    socket.on('presence:identify', (data) => {
+        const cleanUsername = (data?.username || '').trim().toLowerCase();
+        if (!cleanUsername) return;
+
+        socket.username = cleanUsername;
+        const isRootDev = cleanUsername === 'aadish';
+        const hasValidAdminSecret = Boolean(process.env.ADMIN_SECRET && data?.adminSecret === process.env.ADMIN_SECRET);
+        socket.isDeveloper = isRootDev || hasValidAdminSecret;
+        if (socket.isDeveloper) {
+            developerUsernames.add(cleanUsername);
+        }
+        socket.playerId = data.playerId || `@${cleanUsername}#0000`;
+
+        const pObj = {
+            socketId: socket.id,
+            username: cleanUsername,
+            playerId: socket.playerId,
+            displayName: data.displayName || data.username,
+            avatarUrl: data.avatarUrl || '',
+            avatarStyle: data.avatarStyle || 'thumbs',
+            status: data.status || 'online',
+            roomId: data.roomId || null,
+            matchInfo: data.matchInfo || null,
+            connectedAt: Date.now(),
+            lastSeen: Date.now(),
+            isDeveloper: socket.isDeveloper
+        };
+        presenceMap.set(socket.id, pObj);
+        setTrackedLastSeen(cleanUsername, Date.now());
+
+        if (!userSocketsMap.has(cleanUsername)) {
+            userSocketsMap.set(cleanUsername, new Set());
+        }
+        userSocketsMap.get(cleanUsername).add(socket.id);
+
+        broadcastPresence(pObj);
+    });
+
+    socket.on('presence:status', (data) => {
+        const p = presenceMap.get(socket.id);
+        if (p && data) {
+            if (data.status) p.status = data.status;
+            if (data.matchInfo !== undefined) p.matchInfo = data.matchInfo;
+            if (data.roomId !== undefined) p.roomId = data.roomId;
+            p.lastSeen = Date.now();
+            setTrackedLastSeen(p.username.toLowerCase(), p.lastSeen);
+            broadcastPresence(p);
+        }
+    });
+
+    socket.on('presence:request_all', () => {
+        const viewerUsername = socket.username;
+        const list = [];
+        const userPresenceAgg = new Map();
+        for (const p of presenceMap.values()) {
+            const clean = p.username.toLowerCase();
+            const existing = userPresenceAgg.get(clean);
+            if (!existing || (existing.status === 'online' && p.status !== 'online')) {
+                userPresenceAgg.set(clean, p);
+            }
+        }
+        for (const p of userPresenceAgg.values()) {
+            list.push(formatPresenceForClient(p, viewerUsername, false));
+        }
+        // Include recorded offline users
+        for (const [uname, lastSeen] of userLastSeenMap.entries()) {
+            if (!userPresenceAgg.has(uname)) {
+                list.push({
+                    username: uname,
+                    status: 'offline',
+                    lastSeen
+                });
+            }
+        }
+        socket.emit('presence:sync', list);
+    });
+
+    socket.on('checkRoomStatus', ({ roomId }, ack) => {
+        if (!ack || typeof ack !== 'function') return;
+        const safeRoomId = sanitizeRoomId(roomId);
+        if (!safeRoomId) return ack({ exists: false, status: 'closed' });
+        const room = rooms.get(safeRoomId);
+        if (!room) return ack({ exists: false, status: 'closed' });
+        const activePlayers = room.players.filter(p => !p.disconnected);
+        if (room.gameState) {
+            return ack({
+                exists: true,
+                status: 'in_match',
+                playerCount: activePlayers.length,
+                maxPlayers: 4,
+                hostName: room.hostName || 'Host'
+            });
+        }
+        if (activePlayers.length >= 4) {
+            return ack({
+                exists: true,
+                status: 'full',
+                playerCount: activePlayers.length,
+                maxPlayers: 4,
+                hostName: room.hostName || 'Host'
+            });
+        }
+        return ack({
+            exists: true,
+            status: 'open',
+            playerCount: activePlayers.length,
+            maxPlayers: 4,
+            hostName: room.hostName || 'Host'
+        });
+    });
+
+    socket.on('leaveRoom', ({ roomId }) => {
+        const safeRoomId = sanitizeRoomId(roomId);
+        if (!safeRoomId) return;
+        const room = rooms.get(safeRoomId);
+        if (room) {
+            const pIdx = room.players.findIndex(p => p.id === socket.id);
+            if (pIdx !== -1) {
+                const leavingPlayer = room.players[pIdx];
+                cleanupPlayerTimers(leavingPlayer);
+                room.players.splice(pIdx, 1);
+                socket.leave(safeRoomId);
+                
+                const leaveMsg = {
+                    sender: 'SYSTEM',
+                    color: '#737373',
+                    text: `${leavingPlayer.name} has left the bunker.`,
+                    timestamp: Date.now()
+                };
+                room.messages.push(leaveMsg);
+                if (room.messages.length > 50) room.messages.shift();
+                io.to(safeRoomId).emit('chatMessageReceived', leaveMsg);
+                
+                if (room.players.length === 0) {
+                    deleteRoomSafely(safeRoomId);
+                } else {
+                    if (room.hostId === socket.id) {
+                        const nextHost = room.players.find(p => !p.disconnected);
+                        if (nextHost) room.hostId = nextHost.id;
+                    }
+                    emitRoomUpdated(safeRoomId, room);
+                }
+            }
+        }
+        updateSocketPresence(socket.id, {
+            status: 'online',
+            roomId: null,
+            matchInfo: null
+        });
+    });
+
+    // Developer Admin Overview
+    socket.on('admin:get_overview', (ack) => {
+        if (!socket.isDeveloper) {
+            if (typeof ack === 'function') ack({ error: 'Access Denied: Developer account required.' });
+            return;
+        }
+        if (typeof ack === 'function') ack({ success: true, data: getAdminOverview() });
+    });
+
+    // Developer Admin Broadcast Message (Sent from BUGSHOT system)
+    socket.on('admin:broadcast_message', (data = {}, ack) => {
+        const { title, text } = data || {};
+        if (!socket.isDeveloper) {
+            if (typeof ack === 'function') ack({ error: 'Access Denied: Developer account required.' });
+            return;
+        }
+        if (!text || !text.trim()) {
+            if (typeof ack === 'function') ack({ error: 'Message cannot be empty.' });
+            return;
+        }
+        const payload = {
+            id: Date.now().toString(),
+            sender: 'BUGSHOT',
+            title: (title || 'SYSTEM BROADCAST').trim(),
+            text: text.trim(),
+            timestamp: Date.now()
+        };
+        io.emit('system:broadcast', payload);
+        console.log(`[BUGSHOT BROADCAST DISPATCHED] Title: "${payload.title}" Message: "${payload.text}"`);
+        if (typeof ack === 'function') ack({ success: true });
+    });
+
+    // Developer Admin Clear Broadcast (Dismiss for all active players)
+    socket.on('admin:clear_broadcast', (ack) => {
+        if (!socket.isDeveloper) {
+            if (typeof ack === 'function') ack({ error: 'Access Denied: Developer account required.' });
+            return;
+        }
+        io.emit('system:broadcast_clear');
+        console.log(`[BUGSHOT BROADCAST DISMISSED GLOBALLY BY ADMIN]`);
+        if (typeof ack === 'function') ack({ success: true });
+    });
+
+    // Developer Admin DM to any Player (Sent from BUGSHOT system)
+    socket.on('admin:send_dm', (data = {}, ack) => {
+        const { targetUsername, text } = data || {};
+        if (!socket.isDeveloper) {
+            if (typeof ack === 'function') ack({ error: 'Access Denied: Developer account required.' });
+            return;
+        }
+        const cleanTarget = (targetUsername || '').trim().toLowerCase();
+        if (!cleanTarget || !text || !text.trim()) {
+            if (typeof ack === 'function') ack({ error: 'Target player and message required.' });
+            return;
+        }
+        const targetSockets = userSocketsMap.get(cleanTarget);
+        const count = targetSockets ? targetSockets.size : 0;
+        const dmPayload = {
+            id: Date.now().toString(),
+            sender: 'BUGSHOT',
+            fromUsername: 'BUGSHOT',
+            text: text.trim(),
+            timestamp: Date.now()
+        };
+        if (targetSockets && targetSockets.size > 0) {
+            for (const sId of targetSockets) {
+                io.to(sId).emit('system:direct_message', dmPayload);
+            }
+        }
+        console.log(`[BUGSHOT DM DISPATCHED] To: "${cleanTarget}" Message: "${dmPayload.text}" (online sockets: ${count})`);
+        if (typeof ack === 'function') ack({ success: true, count, isOnline: count > 0 });
+    });
+
+    // Developer Admin Kick Player from any room
+    socket.on('admin:kick_player', (data = {}, ack) => {
+        if (!socket.isDeveloper && socket.username?.toLowerCase() !== 'aadish') {
+            if (typeof ack === 'function') ack({ error: 'Access Denied: Developer account required.' });
+            return;
+        }
+        const { roomId, targetPlayerId, targetUsername } = data || {};
+        const safeRoomId = sanitizeRoomId(roomId);
+        if (!safeRoomId) {
+            if (typeof ack === 'function') ack({ error: 'Valid room ID required.' });
+            return;
+        }
+        const room = rooms.get(safeRoomId);
+        if (!room) {
+            if (typeof ack === 'function') ack({ error: 'Room not found.' });
+            return;
+        }
+
+        const playerIndex = room.players.findIndex(p => 
+            p.id === targetPlayerId || 
+            (targetUsername && p.name.toLowerCase() === targetUsername.toLowerCase())
+        );
+
+        if (playerIndex === -1) {
+            if (typeof ack === 'function') ack({ error: 'Target player not found in room.' });
+            return;
+        }
+
+        const kickedPlayer = room.players[playerIndex];
+        cleanupPlayerTimers(kickedPlayer);
+        room.players.splice(playerIndex, 1);
+
+        const targetSocket = io.sockets.sockets.get(kickedPlayer.id);
+        if (targetSocket) {
+            targetSocket.leave(safeRoomId);
+            targetSocket.emit('kicked', { reason: 'Expelled from room by administrator.' });
+        }
+
+        const kickMessage = {
+            sender: 'SYSTEM',
+            color: '#ef4444',
+            text: `${kickedPlayer.name} was expelled by an administrator.`,
+            timestamp: Date.now()
+        };
+        room.messages.push(kickMessage);
+        if (room.messages.length > 50) room.messages.shift();
+        io.to(safeRoomId).emit('chatMessageReceived', kickMessage);
+
+        if (room.gameState) {
+            const activeRemaining = room.players.filter(p => !p.disconnected);
+            if (activeRemaining.length <= 1) {
+                finalizeMidGameAbort(room, safeRoomId, kickedPlayer.name);
+            }
+        }
+
+        emitRoomUpdated(safeRoomId, room);
+        console.log(`[ADMIN KICK] Developer kicked ${kickedPlayer.name} (${kickedPlayer.id}) from room ${safeRoomId}`);
+        if (typeof ack === 'function') ack({ success: true });
+    });
+
+    // Developer Admin Mute Player
+    socket.on('admin:mute_player', (data = {}, ack) => {
+        if (!socket.isDeveloper && socket.username?.toLowerCase() !== 'aadish') {
+            if (typeof ack === 'function') ack({ error: 'Access Denied: Developer account required.' });
+            return;
+        }
+        const { targetUsername, durationMs = 30 * 60 * 1000 } = data || {};
+        const cleanUser = (targetUsername || '').trim().toLowerCase();
+        if (!cleanUser) {
+            if (typeof ack === 'function') ack({ error: 'Target username required.' });
+            return;
+        }
+
+        const expiry = Date.now() + Math.max(durationMs, 60000);
+        mutedUsers.set(cleanUser, expiry);
+
+        const targetSockets = userSocketsMap.get(cleanUser);
+        if (targetSockets) {
+            for (const sId of targetSockets) {
+                mutedSockets.set(sId, expiry);
+                const s = io.sockets.sockets.get(sId);
+                if (s) {
+                    s.emit('chatMessageReceived', {
+                        sender: 'SYSTEM',
+                        color: '#ef4444',
+                        text: 'You have been muted by an administrator.',
+                        timestamp: Date.now()
+                    });
+                }
+            }
+        }
+
+        console.log(`[ADMIN MUTE] Developer muted ${cleanUser} for ${durationMs}ms`);
+        if (typeof ack === 'function') ack({ success: true, muted: true, expiry });
+    });
+
+    // Developer Admin Unmute Player
+    socket.on('admin:unmute_player', (data = {}, ack) => {
+        if (!socket.isDeveloper && socket.username?.toLowerCase() !== 'aadish') {
+            if (typeof ack === 'function') ack({ error: 'Access Denied: Developer account required.' });
+            return;
+        }
+        const { targetUsername } = data || {};
+        const cleanUser = (targetUsername || '').trim().toLowerCase();
+        if (!cleanUser) {
+            if (typeof ack === 'function') ack({ error: 'Target username required.' });
+            return;
+        }
+
+        mutedUsers.delete(cleanUser);
+        const targetSockets = userSocketsMap.get(cleanUser);
+        if (targetSockets) {
+            for (const sId of targetSockets) {
+                mutedSockets.delete(sId);
+                const s = io.sockets.sockets.get(sId);
+                if (s) {
+                    s.emit('chatMessageReceived', {
+                        sender: 'SYSTEM',
+                        color: '#10b981',
+                        text: 'Your voice transmission privilege has been restored.',
+                        timestamp: Date.now()
+                    });
+                }
+            }
+        }
+
+        console.log(`[ADMIN UNMUTE] Developer unmuted ${cleanUser}`);
+        if (typeof ack === 'function') ack({ success: true, muted: false });
+    });
+
     socket.on('disconnect', () => {
         activeConnectionsCount--;
+        mutedSockets.delete(socket.id);
+        
+        // Clean up from Presence Repository
+        const pObj = presenceMap.get(socket.id);
+        if (pObj) {
+            presenceMap.delete(socket.id);
+            const userSockets = userSocketsMap.get(pObj.username);
+            if (userSockets) {
+                userSockets.delete(socket.id);
+                if (userSockets.size === 0) {
+                    userSocketsMap.delete(pObj.username);
+                    developerUsernames.delete(pObj.username);
+                    const now = Date.now();
+                    setTrackedLastSeen(pObj.username.toLowerCase(), now);
+                    io.emit('presence:user_offline', {
+                        username: pObj.username,
+                        playerId: pObj.playerId,
+                        lastSeen: now
+                    });
+                }
+            }
+        }
         
         rooms.forEach((room, roomId) => {
             const playerIndex = room.players.findIndex(p => p.id === socket.id);
             if (playerIndex === -1) return;
 
             const disconnectedPlayer = room.players[playerIndex];
-            console.log(`[DISCONNECT LOOP] User ${disconnectedPlayer.name} abandoned pipeline link lane: ${roomId}`);
+            disconnectedPlayer.disconnected = true;
+            cleanupPlayerTimers(disconnectedPlayer);
 
             if (room.gameState) {
-                disconnectedPlayer.disconnected = true;
-
                 const disconnectMsg = {
                     sender: 'SYSTEM',
                     color: '#737373',
-                    text: `${disconnectedPlayer.name} disconnected. Reconnecting... (15s grace)`,
+                    text: `${disconnectedPlayer.name} disconnected. Reconnecting... (25s grace)`,
                     timestamp: Date.now()
                 };
                 room.messages.push(disconnectMsg);
@@ -1148,16 +1964,13 @@ io.on('connection', (socket) => {
                     const roomAfterTimeout = rooms.get(roomId);
                     if (roomAfterTimeout) {
                         const pIdx = roomAfterTimeout.players.findIndex(p => p.id === disconnectedPlayer.id);
-                        if (pIdx !== -1) {
-                            if (roomAfterTimeout.players[pIdx].disconnected) {
-                                roomAfterTimeout.players.splice(pIdx, 1);
-                                if (roomAfterTimeout.players.length === 0) {
-                                    rooms.delete(roomId);
-                                    console.log(`[GARBAGE COLLECTION] Purged empty room ${roomId} after disconnect timeout.`);
-                                } else {
-                                    console.log(`[DISCONNECT TIMEOUT] User ${disconnectedPlayer.name} failed to reconnect within grace window in room ${roomId}. Aborting match.`);
-                                    finalizeMidGameAbort(roomAfterTimeout, roomId, disconnectedPlayer.name);
-                                }
+                        if (pIdx !== -1 && roomAfterTimeout.players[pIdx].disconnected) {
+                            cleanupPlayerTimers(roomAfterTimeout.players[pIdx]);
+                            roomAfterTimeout.players.splice(pIdx, 1);
+                            if (roomAfterTimeout.players.length === 0) {
+                                deleteRoomSafely(roomId);
+                            } else {
+                                finalizeMidGameAbort(roomAfterTimeout, roomId, disconnectedPlayer.name);
                             }
                         }
                     }
@@ -1165,42 +1978,137 @@ io.on('connection', (socket) => {
                 return;
             }
 
-            const leaveMessage = {
+            // Lobby stage disconnect with grace period for mobile network switches
+            const disconnectMsg = {
                 sender: 'SYSTEM',
                 color: '#737373',
-                text: `${disconnectedPlayer.name} has left the bunker.`,
+                text: `${disconnectedPlayer.name} disconnected. (Holding slot for 20s)`,
                 timestamp: Date.now()
             };
-            room.messages.push(leaveMessage);
+            room.messages.push(disconnectMsg);
             if (room.messages.length > 50) room.messages.shift();
-            io.to(roomId).emit('chatMessageReceived', leaveMessage);
+            io.to(roomId).emit('chatMessageReceived', disconnectMsg);
 
-            room.players.splice(playerIndex, 1);
+            emitRoomUpdated(roomId, room);
 
-            if (room.players.length === 0) {
-                rooms.delete(roomId);
-                console.log(`[GARBAGE COLLECTION] Purged zero-node inactive room cache memory tree: ${roomId}`);
-            } else {
-                if (room.gameState) {
-                    console.log(`[STATE SAFEGUARD INTERVENTION] Thread client disconnected mid-match within room ${roomId}. Dropping active game instance safely.`);
-                    finalizeMidGameAbort(room, roomId, disconnectedPlayer.name);
-                }
+            // If all players in room are disconnected, schedule room deletion after grace period
+            const activeConnected = room.players.filter(p => !p.disconnected).length;
+            if (activeConnected === 0) {
+                scheduleRoomDeletion(room, roomId, LOBBY_RECONNECT_GRACE_MS);
+            }
 
-                if (room.hostId === socket.id) {
-                    const activeHost = room.players.find(p => !p.disconnected);
-                    if (activeHost) {
-                        room.hostId = activeHost.id;
-                        console.log(`[AUTHORITY ESCALATION SUCCESS] Allocated room context token to node ${activeHost.name} for lane ${roomId}`);
+            disconnectedPlayer.disconnectTimer = setTimeout(() => {
+                const roomAfterTimeout = rooms.get(roomId);
+                if (roomAfterTimeout) {
+                    const pIdx = roomAfterTimeout.players.findIndex(p => p.id === disconnectedPlayer.id);
+                    if (pIdx !== -1 && roomAfterTimeout.players[pIdx].disconnected) {
+                        cleanupPlayerTimers(roomAfterTimeout.players[pIdx]);
+                        roomAfterTimeout.players.splice(pIdx, 1);
+
+                        if (roomAfterTimeout.players.length === 0) {
+                            deleteRoomSafely(roomId);
+                        } else {
+                            if (roomAfterTimeout.hostId === socket.id) {
+                                const nextHost = roomAfterTimeout.players.find(p => !p.disconnected);
+                                if (nextHost) {
+                                    roomAfterTimeout.hostId = nextHost.id;
+                                    roomAfterTimeout.hostName = nextHost.name;
+                                }
+                            }
+                            emitRoomUpdated(roomId, roomAfterTimeout);
+                        }
                     }
                 }
-                emitRoomUpdated(roomId, room);
-            }
+            }, LOBBY_RECONNECT_GRACE_MS);
         });
     });
 });
 
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 7860;
 
-httpServer.listen(PORT, () => {
-    console.log(`[CORE ROUTING PROTOCOLS READY] Core engine operational. Active interface port target: ${PORT}`);
+httpServer.listen(PORT, '0.0.0.0', () => {
+    console.log(`[CORE ROUTING PROTOCOLS READY] Core engine operational. Active interface target: 0.0.0.0:${PORT} (Default/HF Spaces port: 7860)`);
+});
+
+// --- HARDENED PROCESS LIFECYCLE & GRACEFUL SHUTDOWN HANDLERS ---
+let isShuttingDown = false;
+
+const performGracefulShutdown = (signal) => {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+    console.log(`[SYSTEM SHUTDOWN] Received ${signal}. Initiating graceful shutdown...`);
+
+    // Stop recurring background garbage collection
+    if (roomGcInterval) {
+        clearInterval(roomGcInterval);
+    }
+
+    // Broadcast server maintenance alert to all connected sockets
+    try {
+        io.emit('system:broadcast', {
+            id: Date.now().toString(),
+            sender: 'BUGSHOT',
+            title: 'SERVER RESTART',
+            text: 'Server is restarting or shutting down for maintenance. Active links will reconnect.',
+            timestamp: Date.now()
+        });
+    } catch (err) {
+        console.error('[SYSTEM SHUTDOWN] Failed to broadcast shutdown alert:', err.message);
+    }
+
+    // Clear all player and room disconnect timers to release event loop
+    for (const [roomId, room] of rooms.entries()) {
+        cleanupRoomTimers(room);
+    }
+    rooms.clear();
+    presenceMap.clear();
+    userSocketsMap.clear();
+    userLastSeenMap.clear();
+    developerUsernames.clear();
+
+    // Disconnect active socket clients cleanly
+    try {
+        io.disconnectSockets(true);
+        io.close(() => {
+            console.log('[SYSTEM SHUTDOWN] Socket.io network engine closed cleanly.');
+        });
+    } catch (err) {
+        console.error('[SYSTEM SHUTDOWN] Error closing Socket.io:', err.message);
+    }
+
+    // Stop accepting HTTP requests and finish active transactions
+    httpServer.close((err) => {
+        if (err) {
+            console.error('[SYSTEM SHUTDOWN] Error during HTTP server termination:', err);
+            process.exit(1);
+        }
+        console.log('[SYSTEM SHUTDOWN] HTTP server closed gracefully. Core termination complete.');
+        process.exit(0);
+    });
+
+    // Forced exit timeout fallback (5000ms threshold)
+    const forceExitTimer = setTimeout(() => {
+        console.error('[SYSTEM SHUTDOWN] Forced shutdown invoked after 5000ms timeout threshold.');
+        process.exit(1);
+    }, 5000);
+    if (forceExitTimer.unref) forceExitTimer.unref();
+};
+
+process.on('SIGTERM', () => performGracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => performGracefulShutdown('SIGINT'));
+
+// Guard against unhandled rejections and uncaught exceptions with structured logging
+process.on('uncaughtException', (err, origin) => {
+    console.error(`[CRITICAL ERROR - UNCAUGHT EXCEPTION] [${new Date().toISOString()}] Origin: ${origin}`, {
+        name: err?.name,
+        message: err?.message,
+        stack: err?.stack
+    });
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error(`[CRITICAL ERROR - UNHANDLED REJECTION] [${new Date().toISOString()}]`, {
+        reason: reason instanceof Error ? { name: reason.name, message: reason.message, stack: reason.stack } : reason,
+        promise
+    });
 });

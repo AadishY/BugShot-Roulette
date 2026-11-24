@@ -5,50 +5,67 @@
   <!-- Primary Meta Tags -->
   <meta charset="UTF-8" />
   <meta name="viewport"
-    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content" />
   <meta name="theme-color" content="#0a0a0a" />
   <meta name="color-scheme" content="dark" />
 
   <!-- Mobile App Experience -->
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Bugshot Roulette" />
+  <meta name="application-name" content="Bugshot Roulette" />
+  <meta name="msapplication-TileColor" content="#0a0a0a" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="format-detection" content="telephone=no" />
 
-  <!-- Android Performance Hints -->
-  <meta name="HandheldFriendly" content="true" />
-  <meta name="MobileOptimized" content="320" />
-
-  <!-- SEO Meta Tags -->
+  <!-- SEO & Search Engine Optimization Tags -->
   <meta name="google-site-verification" content="N7O8EGuGDUAEqQqObvnz7n2-hRTg2GrBd0UONXDjscI" />
-  <title>Bugshot Roulette - The Ultimate Game of Chance</title>
+  <title>Bugshot Roulette - The Ultimate 3D Shotgun Roulette Game | Aadish</title>
+  <meta name="title" content="Bugshot Roulette - The Ultimate 3D Shotgun Roulette Game | Aadish" />
   <meta name="description"
-    content="Play Bugshot Roulette - A high-stakes tabletop horror game where strategy meets luck. Inspired by Buckshot Roulette. Features 3D graphics, multiplayer, and intense item mechanics." />
+    content="Play Bugshot Roulette online by Aadish. A high-stakes tabletop horror game where strategy meets luck with 12-gauge shotguns, dynamic items, intelligent AI, and real-time multiplayer. Heavily inspired by Buckshot Roulette." />
   <meta name="keywords"
-    content="Bugshot Roulette, Buckshot Roulette, web game, 3D game, horror game, Russian roulette, multiplayer game, browser game, Three.js game, React game" />
-  <meta name="author" content="Aadish" />
-  <meta name="robots" content="index, follow" />
+    content="aadish, bugshot, roulette, bugshotrouleette, aadish roulette, aadish bugshot, buckshot roulette, aadis1h, bugshotroulette, buckshot, buckshot online, buckshot web, buckshot roulette free, buckshot roulette multiplayer, russian roulette game, 12 gauge roulette, tabletop horror game, threejs horror game, react game, aadishy, aadish y, horror browser game, webgl roulette, online bugshot, shotgun roulette" />
+  <meta name="author" content="Aadish (Aadish Y)" />
+  <meta name="creator" content="Aadish" />
+  <meta name="publisher" content="Aadish" />
+  <meta name="copyright" content="Aadish (Aadish Y)" />
+
+  <!-- Crawlers & Robots Directives -->
+  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />
+  <meta name="googlebot" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />
+  <meta name="bingbot" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />
+
+  <!-- GEO & Distribution Tags -->
+  <meta name="geo.region" content="IN" />
+  <meta name="geo.placename" content="Global" />
+  <meta name="distribution" content="Global" />
+  <meta name="coverage" content="Worldwide" />
+  <meta name="rating" content="General" />
+  <meta name="revisit-after" content="2 days" />
+  <meta name="language" content="English" />
+
   <link rel="canonical" href="https://bugshotroulette.pages.dev/" />
 
   <!-- Open Graph / Facebook -->
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://bugshotroulette.pages.dev/" />
-  <meta property="og:title" content="Bugshot Roulette - A Deadly Game of Chance" />
+  <meta property="og:title" content="Bugshot Roulette - A Deadly 3D Game of Chance by Aadish" />
   <meta property="og:description"
-    content="High-stakes tabletop horror game with 3D graphics, strategic items, and multiplayer. Play the web-based Buckshot Roulette now!" />
+    content="High-stakes tabletop horror game with 3D graphics, strategic items, and multiplayer. Play Bugshot Roulette (inspired by Buckshot Roulette) free in your browser!" />
   <meta property="og:image" content="/image/banner.webp" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
-  <meta property="og:image:alt" content="Bugshot Roulette - 3D Horror Game Preview" />
+  <meta property="og:image:alt" content="Bugshot Roulette - 3D Horror Tabletop Game Preview by Aadish" />
   <meta property="og:site_name" content="Bugshot Roulette" />
   <meta property="og:locale" content="en_US" />
 
-  <!-- Twitter -->
+  <!-- Twitter / X -->
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:url" content="https://bugshotroulette.pages.dev/" />
-  <meta name="twitter:title" content="Bugshot Roulette - A Deadly Game of Chance" />
+  <meta name="twitter:title" content="Bugshot Roulette - 3D Horror Game of Chance by Aadish" />
   <meta name="twitter:description"
-    content="High-stakes tabletop horror game with 3D graphics, strategic items, and multiplayer. Play now!" />
+    content="High-stakes tabletop horror game with 3D graphics, strategic items, and real-time multiplayer. Play Bugshot Roulette now!" />
   <meta name="twitter:image" content="/image/banner.webp" />
   <meta name="twitter:creator" content="@yo_akatsuki" />
 
@@ -60,12 +77,62 @@
   <link rel="manifest" href="/manifest.json">
   <script>
     window.deferredPWAPrompt = null;
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      window.deferredPWAPrompt = e;
+      window.dispatchEvent(new CustomEvent('pwa-prompt-available', { detail: e }));
+    });
+    window.addEventListener('appinstalled', () => {
+      window.deferredPWAPrompt = null;
+      window.dispatchEvent(new Event('pwa-appinstalled'));
+    });
 
+    // PWA & Service Worker Lifecycle Manager
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('/sw.js')
-          .then(reg => { })
-          .catch(err => { });
+          .then((registration) => {
+            window.swRegistration = registration;
+
+            // Check if there is already a waiting worker
+            if (registration.waiting && navigator.serviceWorker.controller) {
+              window.dispatchEvent(new CustomEvent('sw-update-available', { detail: registration }));
+            }
+
+            // Detect if a new worker is currently installing
+            registration.addEventListener('updatefound', () => {
+              const newWorker = registration.installing;
+              if (newWorker) {
+                newWorker.addEventListener('statechange', () => {
+                  if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                    window.dispatchEvent(new CustomEvent('sw-update-available', { detail: registration }));
+                  }
+                });
+              }
+            });
+
+            // Periodic background check for updates every 15 minutes when online
+            setInterval(() => {
+              if (navigator.onLine && window.swRegistration) {
+                window.swRegistration.update().catch(() => {});
+              }
+            }, 15 * 60 * 1000);
+          })
+          .catch((err) => {
+            console.warn('[PWA] Service Worker registration failed:', err);
+          });
+      });
+
+      // Check for updates when tab regains visibility/focus
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && navigator.onLine && window.swRegistration) {
+          window.swRegistration.update().catch(() => {});
+        }
+      });
+
+      // Handle controller change (when new SW activates & claims clients)
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        window.dispatchEvent(new CustomEvent('sw-controller-changed'));
       });
     }
   </script>
@@ -74,8 +141,6 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 
 
-  <!-- DNS Prefetch -->
-  <link rel="dns-prefetch" href="https://aistudiocdn.com" />
 
   <!-- Preload critical resources -->
   <link rel="preload" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&display=swap"
@@ -83,18 +148,33 @@
 
 
 
-  <!-- Structured Data for SEO -->
+  <!-- Structured Data for SEO (Schema.org) -->
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
     "@type": "VideoGame",
     "name": "Bugshot Roulette",
-    "description": "A high-stakes tabletop horror game where you play Russian Roulette with a 12-gauge pump-action shotgun. Features item mechanics, dynamic 3D visuals, and smart AI.",
-    "genre": ["Horror", "Strategy", "Card Game"],
-    "gamePlatform": ["Web Browser"],
+    "alternateName": [
+      "Aadish Roulette",
+      "BugshotRouleette",
+      "Bugshot",
+      "Aadish Bugshot",
+      "Buckshot Roulette Web",
+      "Buckshot Online"
+    ],
+    "description": "A high-stakes tabletop horror game where you play Russian Roulette with a 12-gauge pump-action shotgun. Created by Aadish. Features 17+ tactical items, dynamic 3D visuals, smart AI, and real-time multiplayer.",
+    "genre": ["Horror", "Strategy", "Tabletop", "Action"],
+    "gamePlatform": ["Web Browser", "Desktop", "Mobile"],
     "applicationCategory": "Game",
-    "operatingSystem": "Any",
+    "operatingSystem": "All modern browsers (Chrome, Edge, Firefox, Safari)",
+    "playMode": ["SinglePlayer", "MultiPlayer"],
     "author": {
+      "@type": "Person",
+      "name": "Aadish",
+      "alternateName": "Aadish Y",
+      "url": "https://github.com/AadishY"
+    },
+    "creator": {
       "@type": "Person",
       "name": "Aadish",
       "url": "https://github.com/AadishY"
@@ -102,9 +182,11 @@
     "offers": {
       "@type": "Offer",
       "price": "0",
-      "priceCurrency": "USD"
+      "priceCurrency": "USD",
+      "availability": "https://schema.org/InStock"
     },
-    "image": "/image/banner.webp",
+    "keywords": "aadish, bugshot, roulette, bugshotrouleette, aadish roulette, aadish bugshot, buckshot roulette, buckshot online, 12 gauge roulette, threejs horror game",
+    "image": "https://bugshotroulette.pages.dev/image/banner.webp",
     "url": "https://bugshotroulette.pages.dev/"
   }
   </script>
@@ -537,6 +619,7 @@
 
     /* Orientation Warning */
     #rotate-warning {
+      display: none;
       position: fixed;
       top: 0;
       left: 0;
@@ -551,6 +634,10 @@
       text-align: center;
       padding: 2rem;
       backdrop-filter: blur(20px);
+    }
+
+    #rotate-warning.active {
+      display: flex;
     }
 
     #rotate-warning .warning-card {
@@ -704,17 +791,11 @@
       }
     }
 
-    /* Safe area padding for notched devices */
+    /* Safe area padding for notched devices - handled responsively by UI layers */
     @supports (padding: max(0px)) {
-      body {
-        padding-left: max(0px, env(safe-area-inset-left));
-        padding-right: max(0px, env(safe-area-inset-right));
-        padding-bottom: max(0px, env(safe-area-inset-bottom));
-      }
-
-      /* Android and iOS bottom safe area */
       #root {
-        padding-bottom: env(safe-area-inset-bottom, 0);
+        max-width: 100vw;
+        overflow-x: hidden;
       }
     }
 
@@ -780,19 +861,7 @@
     }
   </style>
 
-  <script type="importmap">
-{
-  "imports": {
-    "react": "https://aistudiocdn.com/react@^19.2.1",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
-    "react/": "https://aistudiocdn.com/react@^19.2.1/",
-    "three": "https://aistudiocdn.com/three@^0.181.2",
-    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.556.0",
-    "vite": "https://aistudiocdn.com/vite@^7.2.7",
-    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.2"
-  }
-}
-</script>
+
 </head>
 
 <body>

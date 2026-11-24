@@ -78,7 +78,7 @@ const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, 
             {/* Player Side */}
             <div className="flex flex-col items-start min-w-[80px] md:w-1/3 animate-in slide-in-from-left duration-700">
                 <div className="flex flex-col mb-4">
-                    <span className="text-[10px] md:text-sm font-black tracking-[0.2em] md:tracking-[0.4em] text-stone-500 mb-1 uppercase truncate max-w-[80px] md:max-w-full flex items-center gap-1">
+                    <span className="text-[10px] md:text-sm font-black tracking-[0.2em] md:tracking-[0.4em] text-stone-300 mb-1 uppercase truncate max-w-[105px] xs:max-w-[135px] md:max-w-full flex items-center gap-1">
                         {playerName || 'OPERATOR'}
                         {player.isFlashbanged && <span className="text-red-500 animate-pulse text-[8px] md:text-xs font-black">⚡ BLINDED</span>}
                     </span>
@@ -124,18 +124,18 @@ const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, 
 
                 {gameState.isHardMode && gameState.hardModeState && (
                     <div className="flex items-center gap-1 md:gap-2 bg-red-950/20 px-2 md:px-3 py-1 rounded-full border border-red-900/30">
-                        <span className="text-[8px] md:text-xs font-black text-red-700 tracking-[0.2em] uppercase">PH</span>
+                        <span className="text-[8px] md:text-xs font-black text-red-400 tracking-[0.2em] uppercase">PH</span>
                         <span className="text-xs md:text-lg text-red-500 font-black tracking-widest leading-none">
-                            {gameState.hardModeState.round}<span className="text-[10px] text-red-900 mx-1">/</span>3
+                            {gameState.hardModeState.round}<span className="text-[10px] text-red-800 mx-1">/</span>3
                         </span>
                     </div>
                 )}
 
                 {!gameState.isMultiplayer && !gameState.isHardMode && gameState.normalModeState && (
                     <div className="flex items-center gap-1 md:gap-2 bg-stone-900/40 px-2 md:px-3 py-1 rounded-full border border-stone-800/40">
-                        <span className="text-[8px] md:text-xs font-black text-stone-500 tracking-[0.2em] uppercase">RD</span>
-                        <span className="text-xs md:text-lg text-stone-350 font-black tracking-widest leading-none">
-                            {gameState.normalModeState.round}<span className="text-[10px] text-stone-750 mx-1">/</span>2
+                        <span className="text-[8px] md:text-xs font-black text-stone-400 tracking-[0.2em] uppercase">RD</span>
+                        <span className="text-xs md:text-lg text-stone-200 font-black tracking-widest leading-none">
+                            {gameState.normalModeState.round}<span className="text-[10px] text-stone-600 mx-1">/</span>2
                         </span>
                     </div>
                 )}
@@ -152,7 +152,7 @@ const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, 
                             }`} />
                     )}
 
-                    <div className={`text-[9px] md:text-3xl font-black tracking-[0.1em] md:tracking-[0.4em] transition-all duration-500 whitespace-nowrap uppercase italic ${gameState.turnOwner === 'PLAYER'
+                    <div className={`text-[10px] xs:text-xs md:text-3xl font-black tracking-[0.1em] md:tracking-[0.4em] transition-all duration-500 whitespace-nowrap uppercase italic ${gameState.turnOwner === 'PLAYER'
                         ? `text-green-500 ${isBalanced ? '' : 'drop-shadow-[0_0_15px_rgba(34,197,94,0.5)]'}`
                         : `text-red-600 ${isBalanced ? '' : 'drop-shadow-[0_0_15px_rgba(220,38,38,0.5)]'}`
                         } ${gameState.isHardMode && gameState.turnOwner === 'DEALER' && !isPotato ? 'animate-[chromatic_0.2s_infinite]' : ''}`}>
@@ -178,7 +178,7 @@ const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, 
                 {/* Opponent 1 (Dealer / Front) */}
                 <div className="flex flex-col items-end">
                     <div className="flex flex-col items-end">
-                        <span className="text-[10px] md:text-sm font-black tracking-[0.2em] md:tracking-[0.4em] text-stone-500 mb-1 uppercase flex items-center gap-1">
+                        <span className="text-[10px] md:text-sm font-black tracking-[0.2em] md:tracking-[0.4em] text-stone-300 mb-1 uppercase flex items-center gap-1">
                             {gameState.isMultiplayer ? (gameState.opponentName || 'OPPONENT') : 'DEALER'}
                             {dealer.isFlashbanged && <span className="text-red-500 animate-pulse text-[8px] md:text-xs font-black">⚡ BLINDED</span>}
                         </span>
@@ -218,7 +218,7 @@ const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, 
                 {(gameState.isThreePlayer || gameState.isFourPlayer) && player3 && (
                     <div className="flex flex-col items-end border-t border-stone-800/40 pt-3 md:pt-4 w-full">
                         <div className="flex flex-col items-end">
-                            <span className="text-[10px] md:text-sm font-black tracking-[0.2em] md:tracking-[0.4em] text-stone-500 mb-1 uppercase flex items-center gap-1">
+                            <span className="text-[10px] md:text-sm font-black tracking-[0.2em] md:tracking-[0.4em] text-stone-300 mb-1 uppercase flex items-center gap-1">
                                 {getPlayer3Name()}
                                 {player3.isFlashbanged && <span className="text-red-500 animate-pulse text-[8px] md:text-xs font-black">⚡ BLINDED</span>}
                             </span>
@@ -259,7 +259,7 @@ const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, 
                 {gameState.isFourPlayer && player4 && (
                     <div className="flex flex-col items-end border-t border-stone-800/40 pt-3 md:pt-4 w-full">
                         <div className="flex flex-col items-end">
-                            <span className="text-[10px] md:text-sm font-black tracking-[0.2em] md:tracking-[0.4em] text-stone-500 mb-1 uppercase flex items-center gap-1">
+                            <span className="text-[10px] md:text-sm font-black tracking-[0.2em] md:tracking-[0.4em] text-stone-300 mb-1 uppercase flex items-center gap-1">
                                 {getPlayer4Name()}
                                 {player4.isFlashbanged && <span className="text-red-500 animate-pulse text-[8px] md:text-xs font-black">⚡ BLINDED</span>}
                             </span>

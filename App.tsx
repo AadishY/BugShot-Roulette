@@ -6,13 +6,14 @@ import { useGameLogic } from './hooks/useGameLogic';
 import { useDealerAI } from './hooks/useDealerAI';
 import { SettingsMenu } from './components/SettingsMenu';
 import { GameSettings } from './types';
-import { DEFAULT_SETTINGS } from './constants';
+import { DEFAULT_SETTINGS, ACTIVE_ITEMS } from './constants';
 import { DiscordSDK } from '@discord/embedded-app-sdk';
 
 import { LoadingScreen } from './components/LoadingScreen';
 import { DebugOverlay } from './components/ui/DebugOverlay';
 import { TutorialGuide } from './components/TutorialGuide';
 import { Scoreboard } from './components/ui/Scoreboard';
+import { UpdateNotification } from './components/ui/UpdateNotification';
 import { audioManager } from './utils/audioManager';
 import { preloadAllModels, getGLBLoadingProgress } from './utils/three/glbPreloader';
 import { useMultiplayer } from './hooks/useMultiplayer';
@@ -52,6 +53,16 @@ export default function App() {
   const lastTotalWins = useRef(0);
   const lastHoverRef = useRef<{ target: AimTarget; targetId?: string; time: number }>({ target: 'OPPONENT', time: 0 });
   const lastSyncBroadcastRef = useRef(0);
+  const gameStartTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (gameStartTimeoutRef.current) {
+        clearTimeout(gameStartTimeoutRef.current);
+        gameStartTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   // Ping the server to wake it up in case it's asleep on Hugging Face
   useEffect(() => {
@@ -236,15 +247,19 @@ export default function App() {
 
     const initTimeout = setTimeout(checkOrientation, 100);
 
+    const mql = typeof window !== 'undefined' && window.matchMedia ? window.matchMedia("(orientation: portrait)") : null;
+    const handleMqlChange = () => checkOrientation();
     window.addEventListener('resize', checkOrientation);
-    if (window.matchMedia) {
-      window.matchMedia("(orientation: portrait)").addEventListener("change", checkOrientation);
+    if (mql) {
+      if (mql.addEventListener) mql.addEventListener("change", handleMqlChange);
+      else if ((mql as any).addListener) (mql as any).addListener(handleMqlChange);
     }
 
     return () => {
       window.removeEventListener('resize', checkOrientation);
-      if (window.matchMedia) {
-        window.matchMedia("(orientation: portrait)").removeEventListener("change", checkOrientation);
+      if (mql) {
+        if (mql.removeEventListener) mql.removeEventListener("change", handleMqlChange);
+        else if ((mql as any).removeListener) (mql as any).removeListener(handleMqlChange);
       }
       clearTimeout(timeoutId);
       clearTimeout(initTimeout);
@@ -305,16 +320,17 @@ export default function App() {
 
   const [isHardModeSelected, setIsHardModeSelected] = useState(false);
 
-  // Global dynamic stickers list preloaded on multiplayer selection entry
+  // Global dynamic stickers list preloaded on multiplayer selection entry (memoized to run only once)
   const [stickersList, setStickersList] = useState<string[]>([]);
   useEffect(() => {
-    if (appState !== 'LOADING_MP') return;
+    if (appState !== 'LOADING_MP' || stickersList.length > 0) return;
+    let isMounted = true;
 
     const preloadStickers = async () => {
       const found: string[] = [];
       let i = 1;
       let consecutiveFails = 0;
-      while (consecutiveFails < 3 && i < 100) {
+      while (consecutiveFails < 3 && i < 100 && isMounted) {
         const webpName = `sticker${i}.webp`;
         const gifName = `sticker${i}.gif`;
         try {
@@ -344,10 +360,16 @@ export default function App() {
         }
         i++;
       }
-      console.log('Preloaded stickers:', found);
-      setStickersList(found);
+      if (isMounted) {
+        console.log('Preloaded stickers:', found);
+        setStickersList(found);
+      }
     };
     preloadStickers();
+
+    return () => {
+      isMounted = false;
+    };
   }, [appState]);
 
   // Dealer AI only for singleplayer
@@ -559,13 +581,7 @@ export default function App() {
 
       if (chosenCard) {
         if (chosenCard.name === 'The Magician') {
-          const ITEMS: import('./types').ItemType[] = [
-            'BEER', 'CIGS', 'SAW', 'GLASS', 'CUFFS', 'PHONE', 'INVERTER', 'ADRENALINE',
-            'CHOKE', 'REMOTE', 'BIG_INVERTER', 'CONTRACT', 'LUCKYCHARM', 'FLASHBANG',
-            'CRUSHER', 'TOTEM', 'MIRROR', 'DECK_CARD', 'JACKPOT'
-          ];
-          const playerCount = mp.room?.players?.length || 2;
-          const filteredItems = playerCount <= 2 ? ITEMS.filter(item => item !== 'REMOTE') : ITEMS;
+          const filteredItems = ACTIVE_ITEMS;
           cardRandoms.magicianItem = filteredItems[Math.floor(Math.random() * filteredItems.length)];
         } else if (chosenCard.name === 'Judgment') {
           cardRandoms.judgmentSuccess = Math.random() < 0.5;
@@ -1102,7 +1118,9 @@ export default function App() {
 
           setAppState('LOADING_GAME');
 
-          setTimeout(() => {
+          if (gameStartTimeoutRef.current) clearTimeout(gameStartTimeoutRef.current);
+          gameStartTimeoutRef.current = setTimeout(() => {
+            gameStartTimeoutRef.current = null;
             spGame.setPlayer3({ hp: gameData.hpOverride, maxHp: gameData.hpOverride, items: leftItems, isHandcuffed: false, isSawedActive: false });
             if (playerCount >= 4) {
               spGame.setPlayer4({ hp: gameData.hpOverride, maxHp: gameData.hpOverride, items: rightItems, isHandcuffed: false, isSawedActive: false });
@@ -1150,7 +1168,9 @@ export default function App() {
 
         setAppState('LOADING_GAME');
 
-        setTimeout(() => {
+        if (gameStartTimeoutRef.current) clearTimeout(gameStartTimeoutRef.current);
+        gameStartTimeoutRef.current = setTimeout(() => {
+          gameStartTimeoutRef.current = null;
           spGame.startGame(
             spGame.playerName,
             false, // hardMode
@@ -1191,6 +1211,10 @@ export default function App() {
       });
 
       return () => {
+        if (gameStartTimeoutRef.current) {
+          clearTimeout(gameStartTimeoutRef.current);
+          gameStartTimeoutRef.current = null;
+        }
         mp.socket?.off('gameStarted');
         mp.socket?.off('matchReset');
         mp.socket?.off('kicked');
@@ -1817,6 +1841,9 @@ export default function App() {
         <div className="absolute inset-0 z-[60] pointer-events-none bg-red-900/[0.02] mix-blend-color-burn animate-pulse" />
       )}
 
+      {/* PWA Update & Seamless Refresh HUD */}
+      <UpdateNotification isGameActive={appState === 'GAME'} />
+
       <div id="rotate-warning" className={`fixed inset-0 z-[99999] flex flex-col items-center justify-center transition-opacity duration-500 ${showRotateWarning ? 'opacity-100 pointer-events-auto flex' : 'opacity-0 pointer-events-none'}`}>
         <div className="warning-card">
           <div className="relative">
@@ -2026,7 +2053,7 @@ export default function App() {
             onBack={handleBackToMenu}
             error={appState === 'LOADING_MP' ? mp.error : null}
             onRetry={() => {
-              if (appState === 'LOADING_MP') mp.connect();
+              if (appState === 'LOADING_MP') mp.connect(spGame.playerName || 'Operator');
             }}
             showClose={appState === 'LOADING_MP'}
             progress={(appState === 'LOADING_GAME' || appState === 'LOADING_SP') ? Math.round((audioManager.getAudioLoadingProgress() + getGLBLoadingProgress()) / 2) : undefined}

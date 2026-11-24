@@ -67,23 +67,31 @@ export const LootOverlay: React.FC<LootOverlayProps> = ({ receivedItems }) => {
     }, [receivedItems]);
 
     return (
-        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/85 backdrop-blur-2xl p-4 animate-in fade-in duration-1000">
+        <div 
+            className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/85 backdrop-blur-2xl p-4 animate-in fade-in duration-1000 overflow-y-auto custom-scrollbar"
+            style={{
+                paddingTop: 'max(env(safe-area-inset-top, 0px), 16px)',
+                paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 16px)',
+                paddingLeft: 'max(env(safe-area-inset-left, 0px), 16px)',
+                paddingRight: 'max(env(safe-area-inset-right, 0px), 16px)'
+            }}
+        >
             {/* Background Grid/Scanlines */}
             <div className="absolute inset-0 z-0 opacity-20 pointer-events-none">
                 <div className="absolute inset-0 bg-[linear-gradient(transparent_0%,rgba(255,255,255,0.05)_50%,transparent_100%)] bg-[length:100%_4px] animate-[scanline_8s_linear_infinite]" />
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(50,50,50,0.5)_0%,transparent_100%)]" />
             </div>
 
-            <div className="relative z-10 w-full max-w-6xl flex flex-col items-center">
+            <div className="relative z-10 w-full max-w-6xl flex flex-col items-center my-auto">
                 {/* Header Section */}
-                <div className="mb-14 text-center animate-in slide-in-from-top-10 duration-1000">
-                    <div className="flex items-center gap-4 mb-2">
-                        <div className="h-[1px] w-20 lg:w-40 bg-gradient-to-r from-transparent to-red-600" />
-                        <span className="text-red-600 font-black tracking-[0.5em] text-[10px] lg:text-sm uppercase animate-pulse">Incoming Shipment Verified</span>
-                        <div className="h-[1px] w-20 lg:w-40 bg-gradient-to-l from-transparent to-red-600" />
+                <div className="mb-8 sm:mb-14 text-center animate-in slide-in-from-top-10 duration-1000">
+                    <div className="flex items-center gap-4 mb-2 justify-center">
+                        <div className="h-[1px] w-12 sm:w-20 lg:w-40 bg-gradient-to-r from-transparent to-red-600" />
+                        <span className="text-red-500 font-black tracking-[0.3em] sm:tracking-[0.5em] text-[10px] lg:text-sm uppercase animate-pulse">Incoming Shipment Verified</span>
+                        <div className="h-[1px] w-12 sm:w-20 lg:w-40 bg-gradient-to-l from-transparent to-red-600" />
                     </div>
-                    <h2 className="text-5xl lg:text-8xl font-black italic tracking-tighter text-white drop-shadow-[0_0_40px_rgba(255,255,255,0.3)]">
-                        RESOURCE <span className="text-stone-500">PACK</span>
+                    <h2 className="text-3xl sm:text-5xl lg:text-8xl font-black italic tracking-tighter text-white drop-shadow-[0_0_40px_rgba(255,255,255,0.3)]">
+                        RESOURCE <span className="text-stone-400">PACK</span>
                     </h2>
                 </div>
 

@@ -64,13 +64,14 @@ export const handleContract = async (
             if (setOverlayText) setOverlayText(null);
         } else {
             const newHp = player.hp - 1;
-            const hasTotem = player.items.includes('TOTEM');
+            const hasTotem = (player.items || []).includes('TOTEM') && !player.isFlashbanged;
 
             if (newHp <= 0) {
                 if (hasTotem) {
                     setPlayer(p => {
-                        const idx = p.items.indexOf('TOTEM');
-                        const newItems = [...p.items];
+                        const items = p.items || [];
+                        const idx = items.indexOf('TOTEM');
+                        const newItems = [...items];
                         if (idx !== -1) newItems.splice(idx, 1);
                         return { ...p, hp: 1, items: newItems };
                     });
@@ -115,13 +116,14 @@ export const handleContract = async (
         }
     } else {
             const newHp = dealer.hp - 1;
-            const hasTotem = dealer.items.includes('TOTEM');
+            const hasTotem = (dealer.items || []).includes('TOTEM') && !dealer.isFlashbanged;
 
             if (newHp <= 0) {
                 if (hasTotem) {
                     setDealer(d => {
-                        const idx = d.items.indexOf('TOTEM');
-                        const newItems = [...d.items];
+                        const items = d.items || [];
+                        const idx = items.indexOf('TOTEM');
+                        const newItems = [...items];
                         if (idx !== -1) newItems.splice(idx, 1);
                         return { ...d, hp: 1, items: newItems };
                     });
@@ -234,11 +236,12 @@ export const handleBeer = async (
 
     setGameState(prev => {
         const next = prev.currentShellIndex + 1;
+        const remaining = prev.chamber.slice(next);
         return {
             ...prev,
             currentShellIndex: next,
-            liveCount: isLive ? prev.liveCount - 1 : prev.liveCount,
-            blankCount: !isLive ? prev.blankCount - 1 : prev.blankCount
+            liveCount: remaining.filter(s => s === 'LIVE').length,
+            blankCount: remaining.filter(s => s === 'BLANK').length
         };
     });
 
@@ -353,11 +356,11 @@ export const handlePhone = async (
 
     // Logic: Reveal a random shell from future rounds.
     const available = [];
-    for (let i = current + 2; i < checkLimit; i++) {
+    for (let i = current + 1; i < checkLimit; i++) {
         available.push(i);
     }
 
-    if (available.length === 0 || gameState.chamber.length === 3) {
+    if (available.length === 0) {
         if (user === 'PLAYER') {
             const msg = "YOU ARE ON YOUR OWN BUD";
             addLog("📞 NO INTEL AVAILABLE", 'neutral');
@@ -378,7 +381,8 @@ export const handlePhone = async (
         const displayedShell = isLying ? (actualShell === 'LIVE' ? 'BLANK' : 'LIVE') : actualShell;
 
         let positionText = "";
-        if (offset === 2) positionText = "3RD SHELL";
+        if (offset === 1) positionText = "2ND SHELL";
+        else if (offset === 2) positionText = "3RD SHELL";
         else if (offset === 3) positionText = "4TH SHELL";
         else if (offset === 4) positionText = "5TH SHELL";
         else positionText = `${offset + 1}TH SHELL`;
@@ -417,13 +421,12 @@ export const handleInverter = async (
         const newChamber = [...prev.chamber];
         newChamber[prev.currentShellIndex] = newType;
 
-        // Update counts
-        const isLiveNow = newType === 'LIVE';
+        const remaining = newChamber.slice(prev.currentShellIndex);
         return {
             ...prev,
             chamber: newChamber,
-            liveCount: isLiveNow ? prev.liveCount + 1 : prev.liveCount - 1,
-            blankCount: !isLiveNow ? prev.blankCount + 1 : prev.blankCount - 1
+            liveCount: remaining.filter(s => s === 'LIVE').length,
+            blankCount: remaining.filter(s => s === 'BLANK').length
         };
     });
 

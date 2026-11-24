@@ -5,7 +5,6 @@ import { audioManager } from '../utils/audioManager';
 import { StatusDisplay } from './ui/StatusDisplay';
 import { Inventory } from './ui/Inventory';
 import { Controls } from './ui/Controls';
-import { LogsDisplay } from './ui/LogsDisplay';
 import { BootScreen } from './ui/BootScreen';
 import { IntroScreen } from './ui/IntroScreen';
 import ShellBackground from './ui/ShellBackground';
@@ -679,9 +678,9 @@ export const GameUI: React.FC<GameUIProps> = ({
                     >
                         
                         {gameState.phase === 'CARD_SELECT' && (
-                            <div className="absolute top-[20%] left-1/2 transform -translate-x-1/2 z-30 flex flex-col items-center animate-in fade-in zoom-in duration-500 pointer-events-none">
-                                <div className={`px-6 py-2 ${isLowGraphics ? 'bg-stone-900/95' : 'bg-black/85 backdrop-blur-md'} border border-purple-500/35 rounded-full shadow-[0_0_30px_rgba(168,85,247,0.2)]`}>
-                                    <span className="text-xs md:text-xl font-black tracking-[0.3em] uppercase text-purple-400 animate-pulse">
+                            <div className="absolute top-[20%] left-1/2 transform -translate-x-1/2 z-30 flex flex-col items-center animate-in fade-in zoom-in duration-500 pointer-events-none px-2 w-max max-w-[92vw]">
+                                <div className={`px-4 sm:px-6 py-2 ${isLowGraphics ? 'bg-stone-900/95' : 'bg-black/85 backdrop-blur-md'} border border-purple-500/35 rounded-full shadow-[0_0_30px_rgba(168,85,247,0.2)] text-center`}>
+                                    <span className="text-[10px] sm:text-xs md:text-xl font-black tracking-[0.2em] sm:tracking-[0.3em] uppercase text-purple-400 animate-pulse">
                                         {gameState.turnOwner === 'PLAYER' ? '🔮 SELECT A TAROT CARD 🔮' : `🔮 ${gameState.opponentName?.toUpperCase() || 'DEALER'} CHOOSING CARD... 🔮`}
                                     </span>
                                 </div>
@@ -689,24 +688,21 @@ export const GameUI: React.FC<GameUIProps> = ({
                         )}
 
                         {/* Top Bar */}
-                        <div className="flex justify-between items-start gap-1 sm:gap-2 w-full max-w-full">
+                        <div className="flex justify-between items-start gap-2 w-full">
                             <StatusDisplay player={player} dealer={dealer} player3={player3} player4={player4} playerName={playerName} gameState={gameState} settings={settings} />
-                            <div className="flex items-center gap-1.5 shrink-0 pointer-events-auto">
-                                <LogsDisplay logs={logs} />
-                                {!showExternalSettingsButton && (
-                                    <button
-                                        onClick={() => {
-                                            audioManager.playSound('click');
-                                            onOpenSettings();
-                                        }}
-                                        className="pointer-events-auto w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center p-2 text-stone-400 hover:text-white transition-colors shrink-0 rounded-full hover:bg-white/5 active:scale-95"
-                                        title="Settings"
-                                        aria-label="Settings"
-                                    >
-                                        <SettingsIcon size={20} className="md:w-5 md:h-5" />
-                                    </button>
-                                )}
-                            </div>
+                            {!showExternalSettingsButton && (
+                                <button
+                                    onClick={() => {
+                                        audioManager.playSound('click');
+                                        onOpenSettings();
+                                    }}
+                                    className="pointer-events-auto w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center p-2 text-stone-400 hover:text-white bg-black/40 hover:bg-black/60 rounded-xl border border-white/5 transition-colors shrink-0 touch-manipulation"
+                                    title="Settings"
+                                    aria-label="Settings"
+                                >
+                                    <SettingsIcon size={18} className="md:w-5 md:h-5 text-stone-300" />
+                                </button>
+                            )}
                         </div>
 
                         {/* Bottom UI Area - Vertically stacked Controls & Inventory */}
@@ -822,7 +818,7 @@ export const GameUI: React.FC<GameUIProps> = ({
                                             <button
                                                 type="button"
                                                 onClick={() => onStealItem && onStealItem(-1)}
-                                                className="mt-6 px-6 py-2.5 bg-red-950/80 hover:bg-red-900 border border-red-700/60 text-red-200 font-bold uppercase text-xs tracking-widest rounded-xl transition-all active:scale-95 cursor-pointer shadow-lg"
+                                                className="mt-6 px-6 py-3 min-h-[44px] bg-red-950/80 hover:bg-red-900 border border-red-700/60 text-red-200 font-bold uppercase text-xs tracking-widest rounded-xl transition-all active:scale-95 cursor-pointer shadow-lg flex items-center justify-center touch-manipulation"
                                             >
                                                 Return To Match
                                             </button>
@@ -931,7 +927,7 @@ export const GameUI: React.FC<GameUIProps> = ({
                             <button
                                 type="button"
                                 onClick={() => onStealItem && onStealItem(-1)}
-                                className="px-6 py-2.5 bg-stone-900/80 hover:bg-red-950/60 border border-stone-750 hover:border-red-700/50 text-stone-300 hover:text-red-200 font-bold uppercase text-xs tracking-widest rounded-xl transition-all active:scale-95 cursor-pointer shadow-md"
+                                className="px-6 py-3 min-h-[44px] bg-stone-900/80 hover:bg-red-950/60 border border-stone-750 hover:border-red-700/50 text-stone-300 hover:text-red-200 font-bold uppercase text-xs tracking-widest rounded-xl transition-all active:scale-95 cursor-pointer shadow-md flex items-center justify-center touch-manipulation"
                             >
                                 Cancel Extraction
                             </button>
@@ -1319,7 +1315,7 @@ export const GameUI: React.FC<GameUIProps> = ({
                                 audioManager.playSound('click');
                                 setPendingItemIndex(null);
                             }}
-                            className="mt-6 text-xs font-black tracking-widest text-stone-400 hover:text-white uppercase transition-colors"
+                            className="mt-6 px-4 py-2.5 min-h-[44px] flex items-center justify-center text-xs font-black tracking-widest text-stone-300 hover:text-white uppercase transition-colors touch-manipulation cursor-pointer"
                         >
                             [ CANCEL ]
                         </button>

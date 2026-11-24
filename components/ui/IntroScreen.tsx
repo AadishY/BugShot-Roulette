@@ -4,7 +4,7 @@ import { Scoreboard } from './Scoreboard';
 import { ChangelogModal } from './ChangelogModal';
 import { AnnouncementModal } from './AnnouncementModal';
 import { LeaderboardModal } from '../LeaderboardModal';
-import { Settings as SettingsIcon, HelpCircle, Trophy, ShieldAlert, Lock, User, Mail, Terminal, BookOpen, Crown, Shield, Skull, X, Crosshair, Swords, Activity, Award, Bell, LogOut, RotateCw, Flame, AlertTriangle, Check, Key, Eye, EyeOff, Radio, MessageSquare, Download, ChevronDown, ChevronUp, Users, Volume2, VolumeX, Heart } from 'lucide-react';
+import { Settings as SettingsIcon, HelpCircle, Trophy, ShieldAlert, Lock, User, Mail, Terminal, BookOpen, Crown, Shield, Skull, X, Crosshair, Swords, Activity, Award, Bell, LogOut, RotateCw, Flame, AlertTriangle, Check, Key, Eye, EyeOff, Radio, MessageSquare, Download, ChevronDown, ChevronUp, Users, Heart } from 'lucide-react';
 import { audioManager } from '../../utils/audioManager';
 import {
     UserProfile,
@@ -94,6 +94,8 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
     const [scale, setScale] = React.useState(1);
     const [showHardModeWarning, setShowHardModeWarning] = React.useState(false);
     const [hasBoundSoul, setHasBoundSoul] = React.useState(false);
+    const [isBindingSoul, setIsBindingSoul] = React.useState(false);
+    const [isTouchDevice, setIsTouchDevice] = React.useState(false);
 
     // Dialog & UI state
     const [showChangelog, setShowChangelog] = React.useState(false);
@@ -138,25 +140,6 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
     const [showMessagesModal, setShowMessagesModal] = React.useState(false);
     const [messagesTargetUser, setMessagesTargetUser] = React.useState<string | null>(null);
     const [showAdminModal, setShowAdminModal] = React.useState(false);
-    const [isMuted, setIsMuted] = React.useState(() => {
-        return audioManager.musicVolume === 0 && audioManager.sfxVolume === 0;
-    });
-
-    const handleToggleAudio = () => {
-        if (isMuted) {
-            audioManager.musicVolume = 0.5;
-            audioManager.sfxVolume = 0.7;
-            audioManager.updateVolumes({ musicVolume: 0.5, sfxVolume: 0.7 } as any);
-            setIsMuted(false);
-            audioManager.playSound('click');
-        } else {
-            audioManager.playSound('click');
-            audioManager.musicVolume = 0;
-            audioManager.sfxVolume = 0;
-            audioManager.updateVolumes({ musicVolume: 0, sfxVolume: 0 } as any);
-            setIsMuted(true);
-        }
-    };
     const [notificationCounts, setNotificationCounts] = React.useState<NotificationCounts>({
         unreadDMs: 0,
         pendingRequests: 0,
@@ -193,12 +176,14 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
     const { getUserPresence, broadcastMsg, clearBroadcast, dmMsg, clearDM, adminAPI } = usePresence(currentUser);
     const isDeveloper = Boolean(currentUser?.isDeveloper || currentUser?.role === 'developer' || currentUser?.username?.toLowerCase() === 'aadish');
 
-    const onlineFriends = (currentUser && friends.length)
-        ? friends.filter(f => {
+    // Memoize online friends list to prevent expensive per-render array allocations
+    const onlineFriends = React.useMemo(() => {
+        if (!currentUser || !friends.length) return [];
+        return friends.filter(f => {
             const p = getUserPresence(f.username);
             return p && p.status && p.status !== 'offline';
-        })
-        : [];
+        });
+    }, [currentUser, friends, getUserPresence]);
 
     const handleSendForgotPassword = async () => {
         const clean = forgotPasswordInput.trim().toLowerCase();
@@ -374,6 +359,8 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
         checkStandalone();
 
         const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        const hasTouch = isMobileUA || ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+        setIsTouchDevice(Boolean(hasTouch));
 
         // Detect Mobile & iOS
         const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
@@ -387,28 +374,23 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
         }
 
         const handleResize = () => {
-            const hScale = Math.min(1, (window.innerHeight - 10) / 650);
-            const wScale = Math.min(1, (window.innerWidth - 10) / 450);
-            let newScale = Math.min(hScale, wScale);
+            const h = window.innerHeight;
+            const w = window.innerWidth;
             
-            const isDesktop = window.innerWidth >= 1024;
-            
-            if (window.innerWidth < 500) {
-                const heightScale = Math.max(0.48, (window.innerHeight - 10) / 650);
-                newScale = Math.min(heightScale, Math.max(0.48, Math.min(0.95, window.innerWidth / 450)));
-            } else if (isDesktop) {
-                // Scale to a clean, balanced size (approx 1.0x - 1.20x on PC/Desktop monitors)
-                newScale = Math.max(1.0, Math.min(1.22, window.innerHeight / 900));
+            if (w < 500) {
+                // Mobile: keep scale very close to 1.0 (between 0.82 and 1.0) so touch targets and typography stay crisp and legible
+                const hScale = Math.min(1.0, Math.max(0.82, (h - 20) / 680));
+                const wScale = Math.min(1.0, Math.max(0.82, (w - 16) / 380));
+                setScale(Math.min(hScale, wScale));
+            } else if (w >= 1024) {
+                // Desktop monitors
+                const desktopScale = Math.max(1.0, Math.min(1.2, h / 860));
+                setScale(desktopScale);
             } else {
-                newScale = Math.max(newScale, 0.48);
+                // Tablet / medium screens
+                const tabletScale = Math.max(0.9, Math.min(1.05, Math.min(h / 720, w / 520)));
+                setScale(tabletScale);
             }
-            
-            if (isDesktop) {
-                if (newScale > 1.22) newScale = 1.22;
-            } else {
-                if (newScale > 1.1) newScale = 1.1;
-            }
-            setScale(newScale);
         };
 
         window.addEventListener('resize', handleResize);
@@ -636,8 +618,8 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                 setIsLoadingAuth(false);
                 return;
             }
-            if (!mail.includes('@')) {
-                setLoginError('VALID GMAIL / EMAIL REQUIRED');
+            if (!mail.endsWith('@gmail.com') && !mail.endsWith('@googlemail.com')) {
+                setLoginError('REGISTRATION REQUIRES A VALID GMAIL (@GMAIL.COM)');
                 setIsLoadingAuth(false);
                 return;
             }
@@ -654,6 +636,9 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                     await syncStatsToAccount(res.user.username, res.user.stats);
                     setCurrentUser(res.user);
                     setInputName((res.user.displayName || res.user.username).toUpperCase());
+                    try {
+                        localStorage.setItem('aadish_roulette_name', res.user.username);
+                    } catch (e) {}
                     setTimeout(() => {
                         setShowLoginModal(false);
                         setLoginPassword('');
@@ -674,15 +659,24 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
 
     const handleGoogleSignIn = async () => {
         setLoginError('');
+        setLoginSuccess('');
         setIsLoadingAuth(true);
         audioManager.playSound('click');
         try {
             const res = await signInWithGoogle();
             if (res.success && res.user) {
+                setLoginSuccess('GOOGLE IDENTITY VERIFIED');
                 await syncStatsToAccount(res.user.username, res.user.stats);
                 setCurrentUser(res.user);
                 setInputName((res.user.displayName || res.user.username).toUpperCase());
-                setShowLoginModal(false);
+                try {
+                    localStorage.setItem('aadish_roulette_name', res.user.username);
+                } catch (e) {}
+                setTimeout(() => {
+                    setShowLoginModal(false);
+                    setLoginSuccess('');
+                    setLoginError('');
+                }, 700);
             } else {
                 setLoginError(res.error || 'Google sign-in could not be completed.');
             }
@@ -728,36 +722,86 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
         }
     };
 
+    const handleBindSoul = React.useCallback(async () => {
+        if (isBindingSoul || hasBoundSoul) return;
+        setIsBindingSoul(true);
+
+        // Immediate tactile haptic feedback on touch devices
+        if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+            try {
+                navigator.vibrate([35, 55, 40]);
+            } catch {}
+        }
+
+        // Warm up and unlock audio immediately
+        try {
+            await audioManager.initialize();
+            audioManager.playSound('click');
+            audioManager.playMusic('menu');
+        } catch {}
+
+        // 150ms cinematic seal confirmation before entering main menu
+        setTimeout(() => {
+            setHasBoundSoul(true);
+        }, 150);
+    }, [isBindingSoul, hasBoundSoul]);
+
+    // Space & Enter keyboard binding for instant desktop entry
+    useEffect(() => {
+        if (hasBoundSoul) return;
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.code === 'Space' || e.code === 'Enter') {
+                e.preventDefault();
+                handleBindSoul();
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [hasBoundSoul, handleBindSoul]);
+
     if (!hasBoundSoul) {
         return (
             <div 
-                className="absolute inset-0 z-50 flex flex-col items-center justify-center overflow-hidden pointer-events-auto bg-black/45 backdrop-blur-[2px] font-mono cursor-pointer animate-in fade-in duration-1000 select-none"
-                onClick={async () => {
-                    await audioManager.initialize();
-                    audioManager.playSound('click');
-                    setHasBoundSoul(true);
-                }}
+                className="fixed inset-0 z-50 flex flex-col items-center justify-center overflow-hidden pointer-events-auto bg-black font-mono cursor-pointer animate-in fade-in duration-700 select-none"
+                onClick={handleBindSoul}
+                role="button"
+                tabIndex={0}
+                aria-label="Bind soul to enter BugShot Roulette"
             >
-                {/* Background ambient light */}
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(220,38,38,0.05)_0%,transparent_70%)] animate-pulse pointer-events-none" />
+                {/* Subtle dark ambient red glow */}
+                <div className={`absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(220,38,38,${isBindingSoul ? '0.22' : '0.07'})_0%,transparent_70%)] ${isBindingSoul ? 'animate-none' : 'animate-pulse'} transition-all duration-200 pointer-events-none`} />
 
-                <div className="text-center relative z-10 p-4">
-                    <h1 className="text-4xl sm:text-6xl md:text-8xl font-black text-stone-100 mb-6 sm:mb-8 tracking-tighter leading-none drop-shadow-[0_0_20px_rgba(255,255,255,0.2)]">
+                <div className={`text-center relative z-10 p-4 max-w-xl mx-auto flex flex-col items-center transition-transform duration-200 ${isBindingSoul ? 'scale-[1.02]' : 'scale-100'}`}>
+                    <h1 className="text-6xl sm:text-8xl md:text-9xl font-black text-stone-100 mb-8 sm:mb-10 tracking-tighter leading-none drop-shadow-[0_0_25px_rgba(255,255,255,0.2)]">
                         <span className="block animate-in slide-in-from-top duration-700">BUGSHOT</span>
-                        <span className="block text-red-700 animate-[text-pop_0.5s_ease-out] relative">
+                        <span className="block text-red-650 animate-[text-pop_0.5s_ease-out] relative">
                             ROULETTE
                             {!isMobile && (
                                 <span className="absolute -inset-1 text-red-400 opacity-20 blur-sm animate-glitch pointer-events-none">ROULETTE</span>
                             )}
                         </span>
                     </h1>
-                    <div className="text-stone-500 text-xs sm:text-sm md:text-xl tracking-[0.5em] font-bold uppercase transition-all duration-300 group hover:text-stone-100">
-                        <div className="animate-pulse mb-2">[ CLICK TO BIND SOUL ]</div>
-                        <div className="text-[9px] sm:text-[10px] text-stone-750 group-hover:text-red-900 transition-colors">By entering, you waive all rights to physical continuity</div>
+
+                    <div className="text-stone-400 text-xs sm:text-sm md:text-base tracking-[0.45em] sm:tracking-[0.55em] font-bold uppercase transition-all duration-300 group hover:text-stone-100 flex flex-col items-center gap-3">
+                        <div className={`mb-1 transition-all duration-150 ${isBindingSoul ? 'text-red-500 scale-105 font-black drop-shadow-[0_0_15px_rgba(239,68,68,0.8)]' : 'animate-pulse'}`}>
+                            {isBindingSoul
+                                ? '[ CONTRACT SEALED ]'
+                                : `[ ${isTouchDevice ? 'TAP TO BIND SOUL' : 'CLICK TO BIND SOUL'} ]`
+                            }
+                        </div>
+                        <div className="text-[8.5px] sm:text-[10px] text-stone-600 group-hover:text-red-900/80 tracking-[0.3em] font-mono transition-colors">
+                            BY ENTERING, YOU WAIVE ALL RIGHTS TO PHYSICAL CONTINUITY
+                        </div>
+                        {!isTouchDevice && !isBindingSoul && (
+                            <div className="text-[7.5px] text-stone-600 tracking-[0.25em] font-mono uppercase mt-1">
+                                PRESS SPACE OR CLICK TO INITIATE
+                            </div>
+                        )}
                     </div>
                 </div>
 
-                {/* Intro View */}
+                {/* Subtle scanline overlay */}
+                {!isMobile && <div className="scan-line !opacity-15 pointer-events-none" />}
             </div>
         );
     }
@@ -787,7 +831,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                         setMessagesTargetUser(null);
                         setShowMessagesModal(true);
                     }}
-                    className={`group/msg flex items-center gap-2.5 bg-black/25 hover:bg-black/45 border border-white/10 hover:border-cyan-500/40 py-2 px-3.5 rounded-2xl backdrop-blur-md hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer text-left shadow-lg ${
+                    className={`group/msg flex items-center gap-2.5 bg-stone-950/85 hover:bg-stone-900/95 border border-stone-800 hover:border-cyan-500/60 py-2 px-3.5 rounded-2xl backdrop-blur-xl hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer text-left shadow-[0_8px_30px_rgba(0,0,0,0.6)] ${
                         !isOnline ? 'opacity-50 grayscale' : ''
                     }`}
                     title={!isOnline ? "Offline - Internet required for comms" : "Direct Messages & Encrypted Comms"}
@@ -832,8 +876,8 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
 
                 {/* Online Friends List Directly Downward to Message Button */}
                 {currentUser && isOnline && (
-                    <div className="w-56 bg-black/25 hover:bg-black/35 border border-white/10 rounded-2xl p-2.5 backdrop-blur-md shadow-lg transition-all animate-in fade-in duration-200">
-                        <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-white/5 px-1">
+                    <div className="w-56 bg-stone-950/85 hover:bg-stone-900/90 border border-stone-800 rounded-2xl p-2.5 backdrop-blur-xl shadow-[0_8px_30px_rgba(0,0,0,0.6)] transition-all animate-in fade-in duration-200">
+                        <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-stone-850 px-1">
                             <div className="flex items-center gap-1.5">
                                 <span className={`w-2 h-2 rounded-full ${onlineFriends.length > 0 ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse' : 'bg-stone-500'}`} />
                                 <span className="text-[9px] font-mono font-bold tracking-wider text-stone-300 uppercase">
@@ -1026,7 +1070,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                     </button>
                 )}
             </div>
-            {/* Bottom Right Floating Control Buttons (Audio Toggle, Credits & Changelog) */}
+            {/* Bottom Right Floating Control Buttons (Changelog) */}
             <div 
                 className="absolute z-[60] flex items-center gap-2"
                 style={{
@@ -1034,40 +1078,13 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                     right: 'max(env(safe-area-inset-right, 0px), 16px)'
                 }}
             >
-                {/* Audio Quick Mute Toggle */}
-                <button
-                    onClick={handleToggleAudio}
-                    className={`p-3 sm:p-3.5 bg-gradient-to-br from-stone-900/90 to-stone-950/90 border rounded-full shadow-[0_10px_30px_rgba(0,0,0,0.8)] backdrop-blur-md transition-all hover:scale-110 active:scale-95 flex items-center justify-center cursor-pointer ${
-                        isMuted 
-                            ? 'border-red-600/70 text-red-400 bg-red-955/30 shadow-[0_0_20px_rgba(220,38,38,0.3)]' 
-                            : 'border-stone-700/50 text-stone-400 hover:text-white hover:border-stone-500'
-                    }`}
-                    title={isMuted ? "Audio Muted — Click to Unmute" : "Audio Active — Click to Mute"}
-                    aria-label={isMuted ? "Audio Muted — Click to Unmute" : "Audio Active — Click to Mute"}
-                >
-                    {isMuted ? <VolumeX size={18} className="text-red-400" /> : <Volume2 size={18} className="text-stone-300" />}
-                </button>
-
-                {/* Credits Modal Trigger */}
-                <button
-                    onClick={() => {
-                        audioManager.playSound('click');
-                        onOpenGuide();
-                    }}
-                    className="p-3 sm:p-3.5 bg-gradient-to-br from-stone-900/90 to-stone-950/90 border border-stone-700/50 text-stone-400 hover:text-red-400 hover:border-red-600/50 rounded-full shadow-[0_10px_30px_rgba(0,0,0,0.8)] backdrop-blur-md transition-all hover:scale-110 active:scale-95 flex items-center justify-center cursor-pointer hover:shadow-[0_0_25px_rgba(220,38,38,0.25)]"
-                    title="Acknowledgements & Game Credits"
-                    aria-label="Acknowledgements & Game Credits"
-                >
-                    <Heart size={18} className="transition-transform duration-300" />
-                </button>
-
                 {/* Changelog Modal Trigger */}
                 <button
                     onClick={() => {
                         audioManager.playSound('click');
                         setShowChangelog(true);
                     }}
-                    className="p-3 sm:p-3.5 bg-gradient-to-br from-stone-900/90 to-stone-950/90 border border-stone-700/50 text-stone-400 hover:text-amber-400 hover:border-amber-600/50 rounded-full shadow-[0_10px_30px_rgba(0,0,0,0.8)] backdrop-blur-md transition-all hover:scale-110 active:scale-95 flex items-center justify-center cursor-pointer hover:shadow-[0_0_30px_rgba(245,158,11,0.15)]"
+                    className="w-11 h-11 min-w-[44px] min-h-[44px] p-2.5 sm:p-3 bg-gradient-to-br from-stone-900/90 to-stone-950/90 border border-stone-700/50 text-stone-300 hover:text-amber-400 hover:border-amber-600/50 rounded-full shadow-[0_10px_30px_rgba(0,0,0,0.8)] backdrop-blur-md transition-all hover:scale-110 active:scale-95 flex items-center justify-center cursor-pointer hover:shadow-[0_0_30px_rgba(245,158,11,0.15)] touch-manipulation"
                     title="System Changelog & Version History"
                     aria-label="System Changelog & Version History"
                 >
@@ -1480,6 +1497,32 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                             }
                                         </span>
                                     </button>
+
+                                    {/* Google / Gmail 1-Click Fast Sign-In */}
+                                    <div className="relative flex py-1 items-center">
+                                        <div className="flex-grow border-t border-stone-800" />
+                                        <span className="flex-shrink mx-3 text-[8.5px] font-mono font-bold tracking-[0.2em] text-stone-500 uppercase">
+                                            OR GMAIL 1-CLICK AUTH
+                                        </span>
+                                        <div className="flex-grow border-t border-stone-800" />
+                                    </div>
+
+                                    <button
+                                        type="button"
+                                        onClick={handleGoogleSignIn}
+                                        disabled={isLoadingAuth}
+                                        className="w-full min-h-[46px] py-2.5 px-4 bg-stone-900/90 hover:bg-stone-850 active:bg-stone-800 border-2 border-stone-700/80 hover:border-red-500/80 text-stone-200 hover:text-white font-mono font-black text-xs tracking-[0.16em] transition-all rounded-xl cursor-pointer flex items-center justify-center gap-3 shadow-[0_0_20px_rgba(0,0,0,0.6)] hover:shadow-[0_0_25px_rgba(220,38,38,0.25)] touch-manipulation active:scale-[0.98] disabled:opacity-50"
+                                        title="Instant Sign-In with Google / Gmail"
+                                        aria-label="Instant Sign-In with Google / Gmail"
+                                    >
+                                        <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                                            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                                            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                                            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                                            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                                        </svg>
+                                        <span className="uppercase tracking-wider">CONTINUE WITH GOOGLE / GMAIL</span>
+                                    </button>
                                     
                                     <button
                                         type="button"
@@ -1621,55 +1664,61 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                 </div>
             )}
 
-            <ChangelogModal
-                isOpen={showChangelog}
-                onClose={() => setShowChangelog(false)}
-            />
+            {showChangelog && (
+                <ChangelogModal
+                    isOpen={showChangelog}
+                    onClose={() => setShowChangelog(false)}
+                />
+            )}
 
-            <AnnouncementModal
-                isOpen={showAnnouncement}
-                onClose={() => {
-                    setShowAnnouncement(false);
-                    if (pendingChangelog) {
-                        setShowChangelog(true);
-                        setPendingChangelog(false);
-                    }
-                }}
-            />
+            {showAnnouncement && (
+                <AnnouncementModal
+                    isOpen={showAnnouncement}
+                    onClose={() => {
+                        setShowAnnouncement(false);
+                        if (pendingChangelog) {
+                            setShowChangelog(true);
+                            setPendingChangelog(false);
+                        }
+                    }}
+                />
+            )}
 
             {/* Polished Global Leaderboard Modal Component */}
-            <LeaderboardModal
-                isOpen={showLeaderboard}
-                onClose={() => setShowLeaderboard(false)}
-                leaderboard={leaderboard}
-                isLoading={isLoadingLeaderboard}
-                onRefresh={loadLeaderboardData}
-                currentUser={currentUser}
-                getUserPresence={getUserPresence}
-                onSelectProfile={(entry) => {
-                    openedProfileFromLeaderboardRef.current = true;
-                    setShowLeaderboard(false);
-                    setSelectedPublicProfile(entry);
-                }}
-            />
+            {showLeaderboard && (
+                <LeaderboardModal
+                    isOpen={showLeaderboard}
+                    onClose={() => setShowLeaderboard(false)}
+                    leaderboard={leaderboard}
+                    isLoading={isLoadingLeaderboard}
+                    onRefresh={loadLeaderboardData}
+                    currentUser={currentUser}
+                    getUserPresence={getUserPresence}
+                    onSelectProfile={(entry) => {
+                        openedProfileFromLeaderboardRef.current = true;
+                        setShowLeaderboard(false);
+                        setSelectedPublicProfile(entry);
+                    }}
+                />
+            )}
 
             {/* Menu Center Frame Area */}
             <div
-                className="relative z-10 text-center max-w-xl w-full p-3 sm:p-5 flex flex-col justify-center origin-center transition-all duration-300 my-auto animate-in fade-in-50"
+                className="relative z-10 text-center max-w-md w-full p-3 sm:p-5 flex flex-col justify-center origin-center transition-all duration-300 my-auto animate-in fade-in-50"
                 style={{ transform: `scale(${scale})` }}
             >
                 <div className="mb-2 sm:mb-3 relative select-none">
-                    <h1 className="text-3xl sm:text-5xl md:text-6xl font-black mb-0 text-white tracking-tighter leading-[0.85] drop-shadow-[0_0_40px_rgba(255,255,255,0.22)]">
+                    <h1 className="text-4xl sm:text-5xl md:text-6xl font-black mb-0 text-white tracking-tighter leading-[0.88] drop-shadow-[0_0_35px_rgba(255,255,255,0.2)]">
                         BUGSHOT<br />
-                        <span className="text-red-650 tracking-[-0.05em] relative inline-block">
+                        <span className="text-red-650 tracking-[-0.04em] relative inline-block">
                             ROULETTE
-                            <span className="absolute -inset-2 blur-3xl bg-red-600/30 -z-10" />
+                            <span className="absolute -inset-2 blur-3xl bg-red-600/35 -z-10" />
                         </span>
                     </h1>
                 </div>
 
                 {/* Mobile-only User Profile & Messages Badge Row */}
-                <div className="sm:hidden mb-3.5 flex justify-center items-center gap-2 shrink-0">
+                <div className="sm:hidden mb-3 flex justify-center items-center gap-2 shrink-0 flex-wrap">
                     <button
                         onClick={() => {
                             audioManager.playSound('click');
@@ -1684,7 +1733,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                             setMessagesTargetUser(null);
                             setShowMessagesModal(true);
                         }}
-                        className={`flex items-center gap-2.5 bg-stone-950 border min-h-[44px] py-1.5 px-3 rounded-2xl shadow-md cursor-pointer transition-all text-left ${
+                        className={`flex items-center gap-2 bg-stone-950/90 border min-h-[44px] py-1.5 px-3 rounded-xl shadow-md cursor-pointer transition-all text-left touch-manipulation active:scale-95 ${
                             !isOnline
                                 ? 'border-stone-850 opacity-50 grayscale'
                                 : notificationCounts.total > 0
@@ -1694,7 +1743,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                         title={!isOnline ? "Offline - Internet required for comms" : "Direct Messages & Encrypted Comms"}
                     >
                         <div className="relative">
-                            <div className={`w-7 h-7 rounded-full flex items-center justify-center ${
+                            <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
                                 notificationCounts.total > 0
                                     ? 'bg-red-955/60 ring-1 ring-red-500'
                                     : 'bg-cyan-955/40 ring-1 ring-cyan-700/50'
@@ -1726,7 +1775,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                 }
                                 setShowProfileModal(true);
                             }}
-                            className="flex items-center gap-2.5 bg-stone-950 border border-stone-800 min-h-[44px] p-1.5 pl-2 pr-3.5 rounded-2xl shadow-md cursor-pointer hover:border-stone-700 transition-all text-left"
+                            className="flex items-center gap-2 bg-stone-950/90 border border-stone-800 min-h-[44px] p-1.5 pl-2 pr-3 rounded-xl shadow-md cursor-pointer hover:border-stone-700 transition-all text-left touch-manipulation active:scale-95"
                         >
                             <div className="relative">
                                 <img
@@ -1734,7 +1783,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                         ? 'https://avatars.githubusercontent.com/u/101470733'
                                         : (currentUser.avatarUrl || getDicebearUrl(currentUser.avatarStyle || 'thumbs', currentUser.username))}
                                     alt={currentUser.username}
-                                    className="w-7 h-7 rounded-full bg-stone-900 border border-stone-750 object-cover shrink-0"
+                                    className="w-6 h-6 rounded-full bg-stone-900 border border-stone-750 object-cover shrink-0"
                                 />
                                 <span className={`absolute bottom-0 right-0 w-2 h-2 rounded-full border border-stone-950 ${
                                     isLegacyUpstashUser(currentUser) ? 'bg-amber-400' : 'bg-emerald-500'
@@ -1742,7 +1791,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                             </div>
                             <div className="flex flex-col text-left">
                                 <div className="flex items-center gap-1">
-                                    <span className="text-[10px] text-stone-200 font-mono font-bold uppercase tracking-wider leading-none">
+                                    <span className="text-[10px] text-stone-200 font-mono font-bold uppercase tracking-wider leading-none truncate max-w-[90px]">
                                         {currentUser.displayName || currentUser.username}
                                     </span>
                                     {isLegacyUpstashUser(currentUser) ? (
@@ -1762,7 +1811,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                 audioManager.playSound('click');
                                 setShowLoginModal(true);
                             }}
-                            className="group/signin px-4 py-2 min-h-[44px] bg-gradient-to-r from-red-955/60 to-stone-950/80 border border-red-700/50 text-red-400 hover:text-white font-mono font-black text-[9px] tracking-[0.2em] rounded-xl backdrop-blur-md transition-all shadow-[0_0_25px_rgba(220,38,38,0.15)] hover:shadow-[0_0_40px_rgba(220,38,38,0.3)] hover:scale-105 active:scale-95 uppercase flex items-center gap-2 cursor-pointer small-btn"
+                            className="group/signin px-3.5 py-2 min-h-[44px] bg-gradient-to-r from-red-955/70 to-stone-950 border border-red-700/60 text-red-400 hover:text-white font-mono font-black text-[9px] tracking-[0.2em] rounded-xl backdrop-blur-md transition-all shadow-[0_0_20px_rgba(220,38,38,0.2)] hover:shadow-[0_0_35px_rgba(220,38,38,0.35)] hover:scale-105 active:scale-95 uppercase flex items-center gap-2 cursor-pointer touch-manipulation"
                         >
                             <span className="relative flex h-1.5 w-1.5">
                                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75"></span>
@@ -1778,7 +1827,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                 audioManager.playSound('click');
                                 setShowAdminModal(true);
                             }}
-                            className="flex items-center gap-1.5 bg-gradient-to-r from-red-955 via-stone-900 to-red-955 border border-red-600/80 hover:border-red-400 py-1.5 px-3 rounded-2xl shadow-[0_0_16px_rgba(220,38,38,0.4)] cursor-pointer text-left active:scale-95 transition-all"
+                            className="flex items-center gap-1.5 bg-gradient-to-r from-red-955 via-stone-900 to-red-955 border border-red-600/80 hover:border-red-400 min-h-[44px] py-1.5 px-3 rounded-xl shadow-[0_0_16px_rgba(220,38,38,0.4)] cursor-pointer text-left active:scale-95 transition-all touch-manipulation"
                             title="Admin Console"
                         >
                             <ShieldAlert size={14} className="text-red-400 shrink-0" />
@@ -1789,39 +1838,43 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                     )}
                 </div>
 
-                <div className="flex flex-col gap-1.5 sm:gap-2 max-w-sm mx-auto w-full">
+                <div className="flex flex-col gap-2 sm:gap-2.5 max-w-sm mx-auto w-full">
                     {/* Offline Status Protocol Banner */}
                     {!isOnline && (
-                        <div className="mb-1.5 px-3 py-1.5 bg-red-955/50 border border-red-800/80 rounded-xl flex items-center justify-between text-[8px] sm:text-[9px] font-mono tracking-widest text-red-300 uppercase shadow-[0_0_20px_rgba(220,38,38,0.25)] animate-pulse">
+                        <div className="mb-1 px-3 py-1.5 bg-red-955/60 border border-red-700/80 rounded-xl flex items-center justify-between text-[8px] sm:text-[9px] font-mono tracking-widest text-red-300 uppercase shadow-[0_0_20px_rgba(220,38,38,0.3)] animate-pulse">
                             <div className="flex items-center gap-1.5 sm:gap-2">
                                 <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping shrink-0" />
                                 <span className="font-black text-red-200">OFFLINE MODE ENGAGED</span>
                             </div>
-                            <span className="text-[7px] sm:text-[8px] text-stone-400 font-bold">SOLO & HARD MODE READY</span>
+                            <span className="text-[7.5px] sm:text-[8px] text-stone-300 font-bold">SOLO & HARD MODE READY</span>
                         </div>
                     )}
 
                     {/* Identity Section */}
                     <div className="text-center mb-0.5">
-                        <p className="text-[10px] sm:text-[11px] text-stone-300 font-black tracking-[0.35em] uppercase mb-1 animate-pulse flex items-center justify-center gap-1.5">
-                            <span className="w-1.5 h-1.5 bg-stone-400 rounded-full animate-ping shrink-0" />
+                        <p className="text-[10px] sm:text-[11px] text-stone-300 font-black tracking-[0.35em] uppercase mb-1.5 flex items-center justify-center gap-2">
+                            <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-ping shrink-0" />
                             <span>A Web Game By Aadish</span>
                         </p>
-                        <div className="relative group max-w-[260px] mx-auto w-full">
-                            <input
-                                ref={nameInputRef}
-                                type="text"
-                                value={inputName}
-                                onChange={(e) => setInputName(e.target.value)}
-                                placeholder="IDENTITY"
-                                maxLength={12}
-                                className="w-full bg-stone-950/65 border-2 border-stone-850 py-2 px-3 sm:py-2.5 text-xs sm:text-sm font-black text-white outline-none focus:border-red-650/45 focus:bg-stone-900/10 transition-all duration-500 tracking-[0.25em] uppercase text-center placeholder-stone-855/60 backdrop-blur-xl rounded-xl"
-                            />
-                            <div className="absolute inset-x-0 -bottom-1 h-[2px] bg-gradient-to-r from-transparent via-red-600/50 to-transparent scale-x-0 group-focus-within:scale-x-100 transition-transform duration-700" />
+                        <div className="relative group max-w-[280px] mx-auto w-full">
+                            <div className="relative flex items-center">
+                                <span className="absolute left-3 text-stone-600 group-focus-within:text-red-500 transition-colors font-bold text-sm pointer-events-none">[</span>
+                                <input
+                                    ref={nameInputRef}
+                                    type="text"
+                                    value={inputName}
+                                    onChange={(e) => setInputName(e.target.value)}
+                                    placeholder="IDENTITY"
+                                    maxLength={12}
+                                    className="w-full bg-stone-950/85 border-2 border-stone-800 hover:border-stone-700 focus:border-red-600/70 focus:bg-stone-900/40 py-2.5 px-6 sm:py-3 text-base sm:text-sm font-black text-white outline-none transition-all duration-300 tracking-[0.2em] sm:tracking-[0.25em] uppercase text-center placeholder-stone-700 backdrop-blur-xl rounded-xl shadow-inner touch-manipulation"
+                                />
+                                <span className="absolute right-3 text-stone-600 group-focus-within:text-red-500 transition-colors font-bold text-sm pointer-events-none">]</span>
+                            </div>
+                            <div className="absolute inset-x-4 -bottom-0.5 h-[2px] bg-gradient-to-r from-transparent via-red-500/60 to-transparent scale-x-0 group-focus-within:scale-x-100 transition-transform duration-500" />
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-12 gap-2">
+                    <div className="grid grid-cols-12 gap-2 sm:gap-2.5">
                         {/* Start Game Button (Singleplayer — Fully functional offline) */}
                         <button 
                             onClick={() => {
@@ -1834,11 +1887,11 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                 onStartGame(false);
                             }} 
                             disabled={!inputName.trim()} 
-                            className="col-span-6 px-3 py-2.5 sm:py-3 bg-white hover:bg-stone-100 text-black font-black text-[10px] sm:text-xs active:scale-[0.97] transition-all duration-200 disabled:opacity-20 disabled:grayscale tracking-[0.2em] rounded-xl shadow-[0_10px_35px_rgba(255,255,255,0.08)] hover:shadow-[0_0_30px_rgba(255,255,255,0.3)] hover:scale-[1.02] relative overflow-hidden group/btn uppercase leading-none cursor-pointer border-2 border-white touch-manipulation"
+                            className="col-span-6 min-h-[46px] px-3 py-2.5 sm:py-3.5 bg-gradient-to-b from-white to-stone-200 hover:from-white hover:to-white text-stone-950 font-black text-xs sm:text-sm active:scale-[0.97] transition-all duration-200 disabled:opacity-25 disabled:grayscale tracking-[0.2em] rounded-xl shadow-[0_4px_25px_rgba(255,255,255,0.15)] hover:shadow-[0_0_30px_rgba(255,255,255,0.35)] hover:scale-[1.02] relative overflow-hidden group/btn uppercase leading-none cursor-pointer border-2 border-white/90 touch-manipulation flex items-center justify-center"
                         >
-                            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-black/10 to-transparent -translate-x-full group-hover/btn:translate-x-full transition-transform duration-1000" />
-                            <span className="flex items-center justify-center gap-1.5">
-                                <Crosshair size={13} className="text-black group-hover/btn:rotate-90 transition-transform duration-300" />
+                            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-black/10 to-transparent -translate-x-full group-hover/btn:translate-x-full transition-transform duration-700" />
+                            <span className="flex items-center justify-center gap-1.5 relative z-10">
+                                <Crosshair size={14} className="text-stone-950 group-hover/btn:rotate-90 transition-transform duration-300 shrink-0" />
                                 <span>START GAME</span>
                             </span>
                         </button>
@@ -1865,19 +1918,19 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                 onStartMultiplayer(inputName.trim());
                             }} 
                             disabled={!inputName.trim() || !isOnline} 
-                            className={`col-span-6 px-3 py-2.5 sm:py-3 border-2 font-black text-[10px] sm:text-xs flex items-center justify-center gap-1.5 group rounded-xl uppercase tracking-[0.2em] leading-none cursor-pointer relative transition-all duration-200 touch-manipulation ${
+                            className={`col-span-6 min-h-[46px] px-3 py-2.5 sm:py-3.5 border-2 font-black text-xs sm:text-sm flex items-center justify-center gap-1.5 group rounded-xl uppercase tracking-[0.2em] leading-none cursor-pointer relative transition-all duration-200 touch-manipulation ${
                                 !isOnline
                                     ? 'bg-stone-950/40 border-stone-850 text-stone-600 opacity-40 cursor-not-allowed shadow-none'
-                                    : 'bg-stone-950/80 border-cyan-500/60 text-cyan-400 hover:text-white hover:border-cyan-400 hover:bg-cyan-950/30 hover:shadow-[0_0_30px_rgba(6,182,212,0.4)] hover:scale-[1.02] active:scale-[0.97] disabled:opacity-20 shadow-[0_10px_30px_rgba(0,0,0,0.3)]'
+                                    : 'bg-stone-950/90 border-cyan-500/70 text-cyan-400 hover:text-white hover:border-cyan-400 hover:bg-cyan-950/40 hover:shadow-[0_0_30px_rgba(6,182,212,0.45)] hover:scale-[1.02] active:scale-[0.97] disabled:opacity-25 shadow-[0_4px_25px_rgba(6,182,212,0.15)]'
                             }`}
                             title={!isOnline ? 'Offline Protocol: Network connection required' : 'Enter Multiplayer Bunker'}
                         >
-                            <Swords size={13} className={!isOnline ? 'text-stone-600' : 'text-cyan-400 group-hover:rotate-12 transition-transform duration-300 shrink-0'} />
+                            <Swords size={14} className={!isOnline ? 'text-stone-600' : 'text-cyan-400 group-hover:rotate-12 transition-transform duration-300 shrink-0'} />
                             <span>MULTIPLAYER</span>
                             {!isOnline ? (
-                                <span className="text-[6.5px] bg-red-955/80 text-red-400 px-1 py-0.2 rounded border border-red-900/60 font-black tracking-widest uppercase ml-1">OFFLINE</span>
+                                <span className="text-[6.5px] bg-red-955/90 text-red-400 px-1 py-0.2 rounded border border-red-900 font-black tracking-widest uppercase ml-1">OFFLINE</span>
                             ) : !loggedInUser ? (
-                                <Lock size={9} className="absolute top-1.5 right-1.5 text-red-400" />
+                                <Lock size={9} className="absolute top-2 right-2 text-red-400" />
                             ) : null}
                         </button>
 
@@ -1893,22 +1946,22 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                 setShowHardModeWarning(true);
                             }} 
                             disabled={!inputName.trim()} 
-                            className="col-span-12 py-2.5 sm:py-3 bg-stone-950/80 border-2 border-red-950 hover:border-red-600 text-red-500 font-black text-[10px] sm:text-xs hover:text-white hover:bg-red-950/30 hover:shadow-[0_0_35px_rgba(220,38,38,0.45)] hover:scale-[1.015] active:scale-[0.97] transition-all duration-200 disabled:opacity-20 flex items-center justify-center gap-2 group rounded-xl shadow-[0_10px_30px_rgba(220,38,38,0.1)] uppercase tracking-[0.25em] leading-none cursor-pointer touch-manipulation"
+                            className="col-span-12 min-h-[46px] py-3 sm:py-3.5 bg-gradient-to-r from-stone-950 via-red-955/60 to-stone-950 border-2 border-red-900 hover:border-red-500 text-red-400 font-black text-xs sm:text-sm hover:text-white hover:bg-red-955/80 hover:shadow-[0_0_35px_rgba(220,38,38,0.5)] hover:scale-[1.015] active:scale-[0.97] transition-all duration-200 disabled:opacity-25 flex items-center justify-center gap-2 group rounded-xl shadow-[0_4px_25px_rgba(220,38,38,0.2)] uppercase tracking-[0.25em] leading-none cursor-pointer touch-manipulation"
                         >
-                            <Skull size={13} className="text-red-700 group-hover:text-red-400 group-hover:scale-110 transition-all duration-300 animate-pulse shrink-0" />
+                            <Skull size={14} className="text-red-500 group-hover:text-red-300 group-hover:scale-110 transition-all duration-300 animate-pulse shrink-0" />
                             <span>HARD MODE PROTOCOL</span>
-                            <Skull size={13} className="text-red-700 group-hover:text-red-400 group-hover:scale-110 transition-all duration-300 animate-pulse shrink-0" />
+                            <Skull size={14} className="text-red-500 group-hover:text-red-300 group-hover:scale-110 transition-all duration-300 animate-pulse shrink-0" />
                         </button>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-2 mt-0.5">
+                    <div className="grid grid-cols-3 gap-2 mt-1">
                         {/* Guide Button */}
                         <button 
                             onClick={() => {
                                 audioManager.playSound('click');
                                 onOpenGuide();
                             }} 
-                            className="px-2 py-2 sm:py-2.5 min-h-[44px] bg-stone-900/40 border border-stone-800 text-stone-400 hover:text-cyan-300 hover:border-cyan-500/50 hover:bg-cyan-950/20 active:scale-95 hover:scale-105 transition-all duration-200 uppercase rounded-xl cursor-pointer flex flex-col items-center justify-center gap-1 font-mono font-bold text-[9px] tracking-[0.2em] touch-manipulation"
+                            className="px-2 py-2.5 min-h-[46px] bg-stone-900/50 hover:bg-stone-850/80 border border-stone-800 hover:border-cyan-500/60 text-stone-400 hover:text-cyan-300 active:scale-95 hover:scale-[1.02] transition-all duration-200 uppercase rounded-xl cursor-pointer flex flex-col items-center justify-center gap-1 font-mono font-bold text-[9px] sm:text-[10px] tracking-[0.2em] touch-manipulation shadow-md group"
                         >
                             <HelpCircle size={15} className="text-stone-500 group-hover:text-cyan-400 transition-colors" />
                             <span>Guide</span>
@@ -1933,14 +1986,14 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                 onOpenScoreboard();
                             }} 
                             disabled={!isOnline}
-                            className={`px-2 py-2 sm:py-2.5 min-h-[44px] border uppercase rounded-xl transition-all duration-200 relative flex flex-col items-center justify-center gap-1 font-mono font-bold text-[9px] tracking-[0.2em] touch-manipulation ${
+                            className={`px-2 py-2.5 min-h-[46px] border uppercase rounded-xl transition-all duration-200 relative flex flex-col items-center justify-center gap-1 font-mono font-bold text-[9px] sm:text-[10px] tracking-[0.2em] touch-manipulation shadow-md group ${
                                 !isOnline
                                     ? 'bg-stone-950/40 border-stone-850 text-stone-600 opacity-40 cursor-not-allowed'
-                                    : 'bg-stone-900/40 border-stone-800 text-stone-400 hover:text-amber-300 hover:border-amber-500/50 hover:bg-amber-950/20 active:scale-95 hover:scale-105 cursor-pointer'
+                                    : 'bg-stone-900/50 hover:bg-stone-850/80 border-stone-800 hover:border-amber-500/60 text-stone-400 hover:text-amber-300 active:scale-95 hover:scale-[1.02] cursor-pointer'
                             }`}
                             title={!isOnline ? 'Offline Protocol: Network connection required' : 'Operative Stats'}
                         >
-                            <Trophy size={15} className={!isOnline ? 'text-stone-600' : 'text-stone-500'} />
+                            <Trophy size={15} className={!isOnline ? 'text-stone-600' : 'text-stone-500 group-hover:text-amber-400 transition-colors'} />
                             <span>Stats</span>
                             {!isOnline ? (
                                 <span className="absolute top-1 right-1 text-[6px] text-stone-500 font-bold">OFF</span>
@@ -1954,14 +2007,14 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                 audioManager.playSound('click');
                                 onOpenSettings();
                             }} 
-                            className="px-2 py-2 sm:py-2.5 min-h-[44px] bg-stone-900/40 border border-stone-800 text-stone-400 hover:text-white hover:border-stone-600 hover:bg-stone-800/40 active:scale-95 hover:scale-105 transition-all duration-200 uppercase rounded-xl cursor-pointer flex flex-col items-center justify-center gap-1 font-mono font-bold text-[9px] tracking-[0.2em] touch-manipulation"
+                            className="px-2 py-2.5 min-h-[46px] bg-stone-900/50 hover:bg-stone-850/80 border border-stone-800 hover:border-stone-600 text-stone-400 hover:text-white active:scale-95 hover:scale-[1.02] transition-all duration-200 uppercase rounded-xl cursor-pointer flex flex-col items-center justify-center gap-1 font-mono font-bold text-[9px] sm:text-[10px] tracking-[0.2em] touch-manipulation shadow-md group"
                         >
-                            <SettingsIcon size={15} className="text-stone-500" />
+                            <SettingsIcon size={15} className="text-stone-500 group-hover:text-stone-300 transition-colors" />
                             <span>Config</span>
                         </button>
                     </div>
 
-                    <div className="mt-1.5">
+                    <div className="mt-1">
                         {/* Leaderboard Trigger Button — Disabled Offline, Requires Online Cloud */}
                         <button
                             onClick={() => {
@@ -1974,10 +2027,10 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                 setShowLeaderboard(true);
                             }}
                             disabled={!isOnline}
-                            className={`w-full py-2.5 sm:py-3 border font-mono font-bold text-[11px] sm:text-xs flex items-center justify-center gap-2.5 tracking-[0.25em] rounded-xl transition-all duration-200 uppercase touch-manipulation ${
+                            className={`w-full min-h-[46px] py-2.5 sm:py-3.5 border-2 font-mono font-bold text-xs sm:text-sm flex items-center justify-center gap-2.5 tracking-[0.25em] rounded-xl transition-all duration-200 uppercase touch-manipulation ${
                                 !isOnline
                                     ? 'bg-black/50 border-stone-850 text-stone-600 opacity-40 cursor-not-allowed'
-                                    : 'bg-stone-950/90 hover:bg-stone-900 border-amber-900/60 hover:border-amber-600/80 text-amber-500 hover:text-amber-300 cursor-pointer shadow-lg hover:shadow-[0_0_20px_rgba(245,158,11,0.2)] hover:scale-[1.01] active:scale-[0.99]'
+                                    : 'bg-stone-950/90 hover:bg-stone-900 border-amber-800/70 hover:border-amber-500 text-amber-400 hover:text-amber-200 cursor-pointer shadow-[0_4px_25px_rgba(245,158,11,0.15)] hover:shadow-[0_0_30px_rgba(245,158,11,0.35)] hover:scale-[1.01] active:scale-[0.98]'
                             }`}
                             title={!isOnline ? 'Offline Protocol: Network connection required' : 'Global Leaderboard'}
                         >
@@ -2135,25 +2188,27 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
             </div>
 
             {/* Modals rendered outside transform:scale container to prevent stacking context traps */}
-            {/* User's Own Profile Modal */}
-            <ProfileModal
-                isOpen={showProfileModal}
-                onClose={() => setShowProfileModal(false)}
-                profile={currentUser}
-                currentUser={currentUser}
-                isOwnProfile={true}
-                getUserPresence={getUserPresence}
-                onProfileUpdated={(updated) => {
-                    setCurrentUser(updated);
-                    setInputName((updated.displayName || updated.username).toUpperCase());
-                }}
-                onLogout={handleLogout}
-                onOpenMessages={(target) => {
-                    setMessagesTargetUser(target);
-                    setShowMessagesModal(true);
-                }}
-                onRequireLogin={() => setShowLoginModal(true)}
-            />
+            {/* User's Own Profile Modal (Rendered only when open to maximize menu rendering performance) */}
+            {showProfileModal && (
+                <ProfileModal
+                    isOpen={showProfileModal}
+                    onClose={() => setShowProfileModal(false)}
+                    profile={currentUser}
+                    currentUser={currentUser}
+                    isOwnProfile={true}
+                    getUserPresence={getUserPresence}
+                    onProfileUpdated={(updated) => {
+                        setCurrentUser(updated);
+                        setInputName((updated.displayName || updated.username).toUpperCase());
+                    }}
+                    onLogout={handleLogout}
+                    onOpenMessages={(target) => {
+                        setMessagesTargetUser(target);
+                        setShowMessagesModal(true);
+                    }}
+                    onRequireLogin={() => setShowLoginModal(true)}
+                />
+            )}
 
             {/* Public Leaderboard Profile Modal */}
             {selectedPublicProfile && (
@@ -2189,26 +2244,28 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
             )}
 
             {/* Legacy Upstash User Cloud Migration Modal */}
-            <MigrationModal
-                isOpen={showMigrationModal}
-                legacyUser={legacyUserToMigrate}
-                onClose={() => {
-                    // If the current session is an unmigrated Upstash user, cancelling logs them out
-                    if (currentUser && isLegacyUpstashUser(currentUser)) {
-                        handleLogout();
-                    } else {
+            {showMigrationModal && (
+                <MigrationModal
+                    isOpen={showMigrationModal}
+                    legacyUser={legacyUserToMigrate}
+                    onClose={() => {
+                        // If the current session is an unmigrated Upstash user, cancelling logs them out
+                        if (currentUser && isLegacyUpstashUser(currentUser)) {
+                            handleLogout();
+                        } else {
+                            setShowMigrationModal(false);
+                            setLegacyUserToMigrate(null);
+                        }
+                    }}
+                    onMigrationSuccess={(migratedUser) => {
                         setShowMigrationModal(false);
                         setLegacyUserToMigrate(null);
-                    }
-                }}
-                onMigrationSuccess={(migratedUser) => {
-                    setShowMigrationModal(false);
-                    setLegacyUserToMigrate(null);
-                    setCurrentUser(migratedUser);
-                    setInputName((migratedUser.displayName || migratedUser.username).toUpperCase());
-                    audioManager.playSound('confirm');
-                }}
-            />
+                        setCurrentUser(migratedUser);
+                        setInputName((migratedUser.displayName || migratedUser.username).toUpperCase());
+                        audioManager.playSound('confirm');
+                    }}
+                />
+            )}
 
             {/* SPAM FOLDER NOTIFICATION MODAL FOR FORGOT PASSWORD */}
             {showResetSpamModal && (
@@ -2251,7 +2308,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
             )}
 
             {/* Developer-Only Live Administrative Command Center Modal */}
-            {isDeveloper && (
+            {isDeveloper && showAdminModal && (
                 <AdminDashboardModal
                     isOpen={showAdminModal}
                     onClose={() => setShowAdminModal(false)}
@@ -2261,34 +2318,34 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                 />
             )}
 
-
-
             {/* Real-Time Encrypted Messages & Comms Modal */}
-            <MessagesModal
-                isOpen={showMessagesModal}
-                onClose={() => {
-                    setShowMessagesModal(false);
-                    setMessagesTargetUser(null);
-                }}
-                currentUser={currentUser}
-                getUserPresence={getUserPresence}
-                initialTargetUsername={messagesTargetUser}
-                onOpenProfile={(targetUser) => {
-                    openedProfileFromLeaderboardRef.current = false;
-                    setShowMessagesModal(false);
-                    setSelectedPublicProfile(targetUser as any);
-                }}
-                onOpenLogin={() => {
-                    setShowMessagesModal(false);
-                    setShowLoginModal(true);
-                }}
-                onJoinRoom={(roomId) => {
-                    setShowMessagesModal(false);
-                    setMessagesTargetUser(null);
-                    const name = currentUser?.username || inputName?.trim() || 'Player';
-                    onStartMultiplayer(name, roomId);
-                }}
-            />
+            {showMessagesModal && (
+                <MessagesModal
+                    isOpen={showMessagesModal}
+                    onClose={() => {
+                        setShowMessagesModal(false);
+                        setMessagesTargetUser(null);
+                    }}
+                    currentUser={currentUser}
+                    getUserPresence={getUserPresence}
+                    initialTargetUsername={messagesTargetUser}
+                    onOpenProfile={(targetUser) => {
+                        openedProfileFromLeaderboardRef.current = false;
+                        setShowMessagesModal(false);
+                        setSelectedPublicProfile(targetUser as any);
+                    }}
+                    onOpenLogin={() => {
+                        setShowMessagesModal(false);
+                        setShowLoginModal(true);
+                    }}
+                    onJoinRoom={(roomId) => {
+                        setShowMessagesModal(false);
+                        setMessagesTargetUser(null);
+                        const name = currentUser?.username || inputName?.trim() || 'Player';
+                        onStartMultiplayer(name, roomId);
+                    }}
+                />
+            )}
         </div>
     );
 };

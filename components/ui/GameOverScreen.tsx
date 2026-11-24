@@ -161,13 +161,13 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ winner, onResetG
                         </span>
                     </div>
                 )}
-                <div className={`text-6xl md:text-9xl font-black tracking-tighter mb-4 px-2 relative inline-block ${winner === 'PLAYER' ? 'text-green-500' : 'text-red-700'}`}>
+                <div className={`text-4xl xs:text-5xl sm:text-7xl md:text-9xl font-black tracking-tighter mb-4 px-2 relative inline-block ${winner === 'PLAYER' ? 'text-green-500' : 'text-red-700'}`}>
                     <span className="relative z-10">{winner === 'PLAYER' ? 'VICTORY' : 'ELIMINATED'}</span>
                     <div className={`absolute -inset-x-8 inset-y-4 blur-3xl -z-10 opacity-30 ${winner === 'PLAYER' ? 'bg-green-500' : 'bg-red-600'}`} />
                 </div>
 
                 <div className="flex flex-col items-center gap-4">
-                    <p className="text-stone-400 font-black italic text-xs md:text-base tracking-[0.4em] uppercase max-w-xl mx-auto leading-relaxed">
+                    <p className="text-stone-400 font-black italic text-xs md:text-base tracking-[0.2em] sm:tracking-[0.4em] uppercase max-w-xl mx-auto leading-relaxed">
                         — {quote} —
                     </p>
 
@@ -193,9 +193,9 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ winner, onResetG
                 </div>
 
                 {matchData?.isHardMode && (
-                    <div className="mt-8 inline-flex items-center gap-3 bg-red-950/40 border border-red-700/50 px-8 py-3 rounded-xl animate-pulse">
+                    <div className="mt-8 inline-flex items-center gap-3 bg-red-950/40 border border-red-700/50 px-6 sm:px-8 py-3 rounded-xl animate-pulse">
                         <Skull className="text-red-600" size={24} />
-                        <span className="text-red-500 font-black tracking-[0.6em] text-sm md:text-lg uppercase">Protocols Failed</span>
+                        <span className="text-red-500 font-black tracking-[0.3em] sm:tracking-[0.6em] text-sm md:text-lg uppercase">Protocols Failed</span>
                         <Skull className="text-red-600" size={24} />
                     </div>
                 )}
@@ -432,13 +432,13 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ winner, onResetG
             )}
 
             {/* Actions */}
-            <div className="flex flex-col md:flex-row gap-6 w-full max-w-lg px-8 animate-in fade-in slide-in-from-bottom-16 duration-1000 delay-700">
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-6 w-full max-w-lg px-4 sm:px-8 animate-in fade-in slide-in-from-bottom-16 duration-1000 delay-700">
                 <button
                     onClick={() => {
                         audioManager.playSound('click');
                         onResetGame(false);
                     }}
-                    className="flex-1 h-16 bg-white text-black font-black text-lg hover:bg-stone-200 hover:scale-105 active:scale-95 transition-all tracking-[0.4em] flex items-center justify-center gap-3 rounded-2xl shadow-[0_20px_40px_rgba(255,255,255,0.1)] uppercase"
+                    className="flex-1 h-14 sm:h-16 bg-white text-black font-black text-sm sm:text-lg hover:bg-stone-200 active:scale-95 transition-all tracking-[0.2em] sm:tracking-[0.4em] flex items-center justify-center gap-3 rounded-2xl shadow-[0_20px_40px_rgba(255,255,255,0.1)] uppercase touch-manipulation cursor-pointer"
                 >
                     <RotateCcw size={20} /> {isMultiplayer ? "Play Again" : "Initiate"}
                 </button>
@@ -461,7 +461,7 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({ winner, onResetG
                             onResetGame(true);
                         }
                     }}
-                    className="flex-1 h-16 bg-stone-900/40 backdrop-blur-md border border-stone-800 text-stone-400 font-black text-lg hover:text-white hover:border-white hover:bg-white/5 hover:scale-105 active:scale-95 transition-all tracking-[0.4em] flex items-center justify-center gap-3 rounded-2xl uppercase"
+                    className="flex-1 h-14 sm:h-16 bg-stone-900/40 backdrop-blur-md border border-stone-800 text-stone-300 hover:text-white hover:border-white hover:bg-white/5 active:scale-95 transition-all tracking-[0.2em] sm:tracking-[0.4em] flex items-center justify-center gap-3 rounded-2xl uppercase touch-manipulation cursor-pointer text-sm sm:text-lg"
                 >
                     <Power size={20} /> Logout
                 </button>

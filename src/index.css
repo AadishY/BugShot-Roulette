@@ -92,11 +92,7 @@
     animation: scan-line-move 4s linear infinite;
 }
 
-/* Debug modal helper (remove after verification) */
-.debug-modal {
-    box-shadow: 0 0 0 4px rgba(255,0,255,0.55) inset, 0 0 40px rgba(255,0,255,0.08);
-    background-image: linear-gradient(90deg, rgba(255,0,128,0.02), rgba(0,255,128,0.02));
-}
+/* Removed obsolete debug modal helper */
 
 @keyframes progress-pop {
     0% { width: 0%; opacity: 0; }
@@ -152,12 +148,57 @@
     }
 }
 
-/* Virtual Keyboard overlay support */
-.keyboard-aware-bottom {
-    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + env(keyboard-inset-height, 0px)) !important;
+/* Safe Area Insets for Notch and Home Indicator */
+:root {
+    --sat: env(safe-area-inset-top, 0px);
+    --sar: env(safe-area-inset-right, 0px);
+    --sab: env(safe-area-inset-bottom, 0px);
+    --sal: env(safe-area-inset-left, 0px);
 }
 
-/* Custom horizontal flex layouts for Multiplayer Lobby */
+.safe-area-inset-top, .pt-safe {
+    padding-top: max(env(safe-area-inset-top, 0px), 0px);
+}
+.safe-area-inset-bottom, .pb-safe {
+    padding-bottom: max(env(safe-area-inset-bottom, 0px), 0px);
+}
+.safe-area-inset-left, .pl-safe {
+    padding-left: max(env(safe-area-inset-left, 0px), 0px);
+}
+.safe-area-inset-right, .pr-safe {
+    padding-right: max(env(safe-area-inset-right, 0px), 0px);
+}
+.safe-area-inset-x, .px-safe {
+    padding-left: max(env(safe-area-inset-left, 0px), 0px);
+    padding-right: max(env(safe-area-inset-right, 0px), 0px);
+}
+.safe-area-inset-y, .py-safe {
+    padding-top: max(env(safe-area-inset-top, 0px), 0px);
+    padding-bottom: max(env(safe-area-inset-bottom, 0px), 0px);
+}
+.mb-safe {
+    margin-bottom: max(env(safe-area-inset-bottom, 0px), 0px);
+}
+.mt-safe {
+    margin-top: max(env(safe-area-inset-top, 0px), 0px);
+}
+
+/* Touch Target Minimum Ergonomics: W3C / Android standard 44px / 48px */
+.touch-target-44 {
+    min-width: 44px;
+    min-height: 44px;
+}
+.touch-target-48 {
+    min-width: 48px;
+    min-height: 48px;
+}
+
+/* Virtual Keyboard overlay support */
+.keyboard-aware-bottom {
+    padding-bottom: max(calc(env(safe-area-inset-bottom, 0px) + env(keyboard-inset-height, 0px)), 12px) !important;
+}
+
+/* Multi-column Lobby scaling & Mobile Responsive Enhancements */
 .lobby-main-view {
     flex: 1;
     min-width: 0;
@@ -173,133 +214,166 @@
     flex: 0.6;
 }
 
-/* Multi-column Lobby scaling overrides for small screens */
-@media (max-width: 1024px) {
+/* Touch-friendly momentum scrolling across all custom containers & auto scroll areas */
+.custom-scrollbar,
+.scroll-container,
+[class*="overflow-y-auto"],
+[class*="overflow-x-auto"],
+[class*="overflow-auto"] {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+}
+
+/* =========================================================================
+   Mobile Touch Ergonomics & Responsiveness
+   ========================================================================= */
+
+/* Eliminate tap callouts, tap highlights and unwanted text selection across UI */
+*, *::before, *::after {
+    -webkit-tap-highlight-color: transparent;
+}
+
+html, body, #root {
+    max-width: 100vw;
+    width: 100%;
+    overflow-x: hidden;
+    overscroll-behavior-y: contain;
+    overscroll-behavior-x: none;
+    touch-action: manipulation;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+/* Allow text selection only in intentional input areas and prevent mobile auto-zoom on input focus */
+input, textarea, [contenteditable="true"] {
+    -webkit-user-select: text !important;
+    user-select: text !important;
+    touch-action: manipulation;
+}
+
+/* Stabilize mobile input focus: Android Chrome & iOS Safari auto-zoom on font-size < 16px, causing jarring viewport squishing */
+@media screen and (max-width: 768px) {
+    input:not([type="checkbox"]):not([type="radio"]),
+    textarea,
+    select {
+        font-size: 16px !important;
+    }
+}
+
+/* Enforce touch-action: manipulation globally across all buttons and interactive elements to eliminate 300ms tap delay */
+button,
+[role="button"],
+a,
+summary,
+select,
+input[type="button"],
+input[type="submit"],
+input[type="reset"],
+.interactive,
+.clickable,
+[onclick] {
+    touch-action: manipulation;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+/* Set touch-action: none on 3D canvas so swipe gestures don't trigger accidental browser scrolling or pinch-zoom during combat */
+canvas,
+.three-canvas,
+.webgl-container,
+.webgl-container canvas {
+    touch-action: none !important;
+    -webkit-touch-callout: none !important;
+    -webkit-user-select: none !important;
+    user-select: none !important;
+}
+
+/* Hardware acceleration on high-frequency HUD elements, overlays, and status displays */
+.gpu-accelerate,
+.hud-hardware-accel,
+.hud-overlay,
+.blood-overlay,
+.flash-overlay,
+.flashbang-overlay,
+.controls-enter,
+.status-display-hud,
+.announcement-overlay,
+.known-shell-hud,
+.toast-hud,
+.item-slot,
+.inventory-container,
+.cuffs-indicator {
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
+    will-change: transform;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+}
+
+/* Optimize low-end mobile performance: In 'low' and 'potato' graphics modes, replace expensive backdrop-blur with flat solid backgrounds to prevent mobile GPU thermal throttling */
+.perf-low-graphics [class*="backdrop-blur"],
+.perf-low-graphics [class*="backdrop-blur-"],
+.perf-low-graphics [style*="backdrop-filter"],
+.perf-low-graphics [style*="backdropFilter"] {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    background-color: rgba(24, 20, 18, 0.96) !important; /* bg-stone-900/96 */
+}
+
+/* Bypass GPU thermal throttling in low/potato modes: disable heavy repeating composited animations, filters, and box-shadow pulses */
+.perf-low-graphics .scan-line,
+.perf-low-graphics .shell-fall,
+.perf-low-graphics .vhs-flicker,
+.perf-low-graphics .animate-glitch,
+.perf-low-graphics .animate-intense-glitch,
+.perf-low-graphics .border-glow-red,
+.perf-low-graphics .crt-overlay,
+.perf-low-graphics .blood-overlay.blood-active {
+    animation: none !important;
+    box-shadow: none !important;
+    filter: none !important;
+}
+
+.perf-low-graphics * {
+    text-shadow: none !important;
+}
+
+/* Mobile & Touch Viewport Ergonomics */
+@media (max-width: 768px) {
     .lobby-three-cols-container {
-        padding: 2px !important;
+        padding: 0px !important;
     }
     
-    .lobby-main-view * {
-        font-size: 8px !important;
-        line-height: 1.1 !important;
-    }
-    
-    .lobby-main-view .text-2xl,
-    .lobby-main-view .text-xl,
-    .lobby-main-view .text-3xl {
-        font-size: 11px !important;
-    }
-    
-    .lobby-main-view button,
-    .lobby-main-view .interactive {
-        min-height: 20px !important;
-        min-width: 0px !important;
-        padding-left: 4px !important;
-        padding-right: 4px !important;
-        padding-top: 2px !important;
-        padding-bottom: 2px !important;
-        border-radius: 4px !important;
-    }
-
-    .lobby-main-view svg {
-        width: 8px !important;
-        height: 8px !important;
-    }
-
-    .lobby-main-view .p-2,
-    .lobby-main-view .p-3,
-    .lobby-main-view .p-4,
-    .lobby-main-view .p-6,
-    .lobby-main-view .p-2\.5,
-    .lobby-main-view .p-3\.5 {
-        padding: 3px !important;
-    }
-
-    .lobby-main-view .py-2,
-    .lobby-main-view .py-2\.5,
-    .lobby-main-view .py-4 {
-        padding-top: 2px !important;
-        padding-bottom: 2px !important;
-    }
-
-    .lobby-main-view .px-3,
-    .lobby-main-view .px-4,
-    .lobby-main-view .px-6 {
-        padding-left: 3px !important;
-        padding-right: 3px !important;
-    }
-
-    .lobby-main-view .gap-3,
-    .lobby-main-view .gap-4,
-    .lobby-main-view .gap-6,
-    .lobby-main-view .gap-1\.5,
-    .lobby-main-view .gap-2,
-    .lobby-main-view .gap-2\.5 {
-        gap: 2.5px !important;
-    }
-
-    /* Column proportions for small viewports */
     .lobby-main-view {
-        flex: 1 !important;
-        min-width: 0 !important;
+        width: 100% !important;
     }
+
     .lobby-chat-view {
-        width: 210px !important;
-        flex-shrink: 0 !important;
+        width: 100% !important;
     }
-    .lobby-chat-view button {
-        width: 26px !important;
-        height: 26px !important;
-        min-height: 26px !important;
-        min-width: 26px !important;
-        padding: 0 !important;
-        border-radius: 6px !important;
+
+    /* Enforce comfortable touch targets on touch devices */
+    button, .interactive {
+        touch-action: manipulation;
     }
-    .lobby-chat-view svg {
-        width: 12px !important;
-        height: 12px !important;
-    }
-    .lobby-chat-view input {
-        height: 26px !important;
-        font-size: 8px !important;
-        padding-left: 8px !important;
-        padding-right: 8px !important;
-        padding-top: 2px !important;
-        padding-bottom: 2px !important;
-        border-radius: 6px !important;
-    }
-    .lobby-chat-view form {
-        padding: 6px !important;
-        gap: 4px !important;
-    }
-    .lobby-settings-column {
-        flex: 1.15 !important;
-    }
+}
+
+/* Landscape Mode on Mobile (< 500px height) */
+@media (max-height: 500px) {
+    /* Compact vertical margins to maximize screen estate in landscape */
+    .lobby-settings-column,
     .lobby-players-column {
-        flex: 0.85 !important;
+        max-height: calc(100vh - 90px);
     }
 
-    .lobby-main-view .space-y-4,
-    .lobby-main-view .space-y-3\.5,
-    .lobby-main-view .space-y-2 {
-        margin-top: 0px !important;
-    }
-    .lobby-main-view .space-y-4 > * + * {
-        margin-top: 16px !important;
-    }
-    .lobby-main-view .space-y-3\.5 > * + * {
-        margin-top: 14px !important;
-    }
-    .lobby-main-view .space-y-2 > * + * {
-        margin-top: 6px !important;
+    .custom-scrollbar {
+        scrollbar-width: thin;
     }
 
-    .lobby-main-view .h-10,
-    .lobby-main-view .h-12 {
-        height: 22px !important;
-    }
-    
-    .lobby-main-view .w-44 {
-        width: 110px !important;
+    /* Ensure modals fit comfortably within short landscape heights */
+    [role="dialog"] > div {
+        max-height: 94dvh;
     }
 }

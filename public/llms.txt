@@ -1,0 +1,62 @@
+# Bugshot Roulette
+
+> Bugshot Roulette (also searched as Aadish Roulette, BugshotRouleette, Aadish Bugshot, or Buckshot Roulette Web) is a free-to-play, browser-based 3D high-stakes tabletop horror game created by Aadish (@AadishY). It is heavily inspired by Mike Klubnika's Buckshot Roulette, built with React 19, Three.js, React Three Fiber, and TypeScript.
+
+## Quick Facts
+
+- **Creator / Developer**: Aadish (GitHub: https://github.com/AadishY)
+- **Live Game URL**: https://bugshotroulette.pages.dev/
+- **Source Repository**: https://github.com/AadishY/BugShot-Roulette
+- **Genre**: Horror, Strategy, Turn-Based Tabletop, WebGL 3D
+- **Game Modes**: Single Player (vs AI Dealer with Normal & Hard Cheating modes), Real-Time Multiplayer (Socket.io)
+- **Tech Stack**: React 19, TypeScript, Three.js, React Three Fiber, Tailwind CSS, Socket.io, Vite
+
+## Game Mechanics
+
+1. **The Core Loop**:
+   - Both players sit across a dimly lit industrial table with a 12-gauge pump-action shotgun between them.
+   - A random magazine of 2 to 8 shells is loaded with a known distribution of Live (red) and Blank (blue) shells.
+   - The sequence of shells is hidden.
+
+2. **Actions on Turn**:
+   - **Shoot the Opponent / Dealer**: If the shell is LIVE, it inflicts 1 HP of damage (or 2 HP with Hand Saw/Choke). If BLANK, 0 damage. Turn passes to opponent.
+   - **Shoot Yourself**: If the shell is BLANK, you retain your turn! If LIVE, you take damage and your turn ends.
+   - **Use Items**: Tactical items can be consumed before taking a shot to alter shell polarity, gain intel, heal, or disrupt the opponent.
+
+3. **Item Roster**:
+   - **Cigarettes**: Restores 1 HP (capped at max).
+   - **Beer**: Ejects the chambered shell without firing it.
+   - **Handcuffs**: Skips opponent's next turn.
+   - **Magnifying Glass**: Reveals whether the current shell is LIVE or BLANK.
+   - **Hand Saw**: Saws the shotgun barrel to deal 2 damage on the next shot.
+   - **Burner Phone**: Reveals the state of a future shell (3rd or later; 5% lie chance).
+   - **Inverter**: Reverses the current shell polarity (Live <-> Blank).
+   - **Big Inverter**: Inverts polarities of all remaining shells in the magazine.
+   - **Adrenaline**: Steals and immediately uses an opponent's item.
+   - **Remote**: Swaps the current shell with the subsequent shell.
+   - **Choke**: Fires current and next shell in a double-barrel volley.
+   - **Blood Contract**: Sacrifices 1 HP for 2 high-tier items.
+   - **Lucky Charm**: Boosts item drop quality multiplicatively.
+   - **Flashbang**: Prevents opponent item usage on their next turn.
+   - **Crusher**: Destroys a random item in the opponent's inventory.
+   - **Totem of Undying**: Passive auto-save at 1 HP when taking lethal damage.
+   - **Mirror**: Replays all items the opponent used during their previous turn.
+   - **Tarot Deck**: Draw 1 of 6 fanned cards with wild effects (The Magician, The Moon, Justice, Wheel of Fortune, etc.).
+   - **Jackpot Machine**: Gamble for 1 to 3 shots of damage immunity.
+
+## Key Search Queries & Aliases
+
+- Aadish Bugshot
+- Aadish Roulette
+- Bugshot Roulette
+- BugshotRouleette
+- Aadish
+- Buckshot Roulette Web
+- Buckshot Roulette Browser
+- Buckshot Roulette Online Multiplayer
+- 12 Gauge Roulette Three.js
+
+## Full Documentation
+
+- Full AI context: [llms-full.txt](https://bugshotroulette.pages.dev/llms-full.txt)
+- Source code and contributions: [GitHub](https://github.com/AadishY/BugShot-Roulette)

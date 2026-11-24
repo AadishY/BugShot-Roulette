@@ -119,7 +119,7 @@ const CustomSlider: React.FC<{
 
 export const SettingsMenu: React.FC<SettingsMenuProps> = ({ settings, onUpdateSettings, onClose, onResetDefaults, onExitToMenu, showExitToMenu, isMultiplayer }) => {
     const isMobileDevice = useMemo(() => isMobileOrNarrowScreen(), []);
-    const currentGraphicsMode: 'high' | 'balanced' | 'low' | 'potato' =
+    const currentGraphicsMode: 'ultra' | 'high' | 'balanced' | 'low' | 'potato' =
         settings.graphicsMode ||
         (settings.ultraPerformance ? 'potato' : (isMobileDevice ? 'low' : 'balanced'));
 
@@ -147,7 +147,7 @@ export const SettingsMenu: React.FC<SettingsMenuProps> = ({ settings, onUpdateSe
 
     return (
         <div
-            className="fixed inset-0 z-[250] flex flex-col items-center justify-center bg-black/75 backdrop-blur-md p-2 sm:p-4 overflow-y-auto custom-scrollbar"
+            className="fixed inset-0 z-[250] flex flex-col items-center justify-center bg-black/65 backdrop-blur-xl p-2 sm:p-4 overflow-y-auto custom-scrollbar"
             role="dialog"
             aria-modal="true"
             aria-label="Game Settings"
@@ -164,7 +164,7 @@ export const SettingsMenu: React.FC<SettingsMenuProps> = ({ settings, onUpdateSe
             }}
         >
             <div
-                className="w-full max-w-[min(96vw,calc(100vw-16px))] sm:max-w-xl md:max-w-2xl lg:max-w-3xl max-h-[92dvh] sm:max-h-[90vh] bg-stone-950/80 backdrop-blur-2xl border border-stone-700/80 shadow-[0_30px_90px_rgba(0,0,0,0.95)] relative flex flex-col overflow-hidden rounded-2xl ring-1 ring-white/10 my-auto"
+                className="w-full max-w-[min(96vw,calc(100vw-16px))] sm:max-w-2xl md:max-w-3xl lg:max-w-4xl max-h-[95dvh] sm:max-h-[92vh] bg-stone-950/75 backdrop-blur-2xl border border-stone-700/60 shadow-[0_30px_90px_rgba(0,0,0,0.95)] relative flex flex-col overflow-hidden rounded-2xl ring-1 ring-white/10 my-auto overscroll-contain"
             >
                 {/* Decorative */}
                 <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-stone-500/20 to-transparent" />
@@ -182,7 +182,7 @@ export const SettingsMenu: React.FC<SettingsMenuProps> = ({ settings, onUpdateSe
                     </div>
                     <button
                         onClick={onClose}
-                        className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center text-stone-500 hover:text-white hover:bg-white/5 rounded-full transition-all active:scale-95 cursor-pointer"
+                        className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center text-stone-500 hover:text-white hover:bg-white/5 rounded-full transition-all active:scale-95 cursor-pointer touch-manipulation"
                         title="Close Settings"
                         aria-label="Close Settings"
                     >
@@ -190,7 +190,7 @@ export const SettingsMenu: React.FC<SettingsMenuProps> = ({ settings, onUpdateSe
                     </button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-2.5 sm:p-5 space-y-3 sm:space-y-5 custom-scrollbar">
+                <div className="flex-1 overflow-y-auto p-2.5 sm:p-5 space-y-3 sm:space-y-5 custom-scrollbar overscroll-contain">
 
                     {/* Visuals Group */}
                     <div className="space-y-3 sm:space-y-4">
@@ -275,57 +275,57 @@ export const SettingsMenu: React.FC<SettingsMenuProps> = ({ settings, onUpdateSe
                                 </div>
                             </div>
                             <span className="text-[8px] sm:text-[9px] text-stone-500 font-bold uppercase tracking-wider block -mt-1">Select performance layout optimized for your device hardware.</span>
-                            <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-2.5">
                                 {/* HIGH */}
                                 <button
                                     type="button"
-                                    title="Rich PBR, crisp shadows, volumetric feel, smooth particles"
+                                    title="Rich PBR materials, 1024 PCFSoft shadows, volumetric atmosphere, smooth particles"
                                     onClick={() => handleChange('graphicsMode', 'high')}
-                                    className={`flex flex-col items-center justify-center min-h-[44px] gap-1 py-2.5 px-1 text-[8px] sm:text-[9px] font-black tracking-widest uppercase transition-all rounded-xl border active:scale-95 cursor-pointer ${currentGraphicsMode === 'high' ? 'bg-sky-950/30 text-sky-300 border-sky-700/60 shadow-[0_0_14px_rgba(56,189,248,0.2)]' : 'bg-transparent text-stone-500 border-stone-800/60 hover:bg-stone-900/60 hover:text-stone-300'}`}
+                                    className={`flex flex-col items-center justify-center min-h-[46px] gap-1 py-2.5 px-2 text-[8px] sm:text-[9.5px] font-black tracking-widest uppercase transition-all rounded-xl border active:scale-95 cursor-pointer touch-manipulation ${currentGraphicsMode === 'high' || currentGraphicsMode === 'ultra' ? 'bg-sky-955/40 text-sky-300 border-sky-500/80 shadow-[0_0_16px_rgba(56,189,248,0.25)]' : 'bg-stone-900/40 text-stone-400 border-stone-800/60 hover:bg-stone-900/80 hover:text-stone-300'}`}
                                 >
                                     <span className="text-base leading-none">🌟</span>
                                     <span>HIGH</span>
-                                    <span className="text-[7px] font-semibold opacity-70 normal-case tracking-normal">Max quality</span>
+                                    <span className="text-[7px] font-semibold opacity-75 normal-case tracking-normal">Full PBR + Shadows</span>
                                 </button>
                                 {/* BALANCED */}
                                 <button
                                     type="button"
-                                    title="Crisp, brightly visible, medium shadows, great 60fps performance"
+                                    title="Crisp, cleanly lit, 512 PCF shadows, solid 60fps performance"
                                     onClick={() => handleChange('graphicsMode', 'balanced')}
-                                    className={`flex flex-col items-center justify-center min-h-[44px] gap-1 py-2.5 px-1 text-[8px] sm:text-[9px] font-black tracking-widest uppercase transition-all rounded-xl border active:scale-95 cursor-pointer ${currentGraphicsMode === 'balanced' ? 'bg-green-950/30 text-green-400 border-green-700/60 shadow-[0_0_14px_rgba(74,222,128,0.2)]' : 'bg-transparent text-stone-500 border-stone-800/60 hover:bg-stone-900/60 hover:text-stone-300'}`}
+                                    className={`flex flex-col items-center justify-center min-h-[46px] gap-1 py-2.5 px-2 text-[8px] sm:text-[9.5px] font-black tracking-widest uppercase transition-all rounded-xl border active:scale-95 cursor-pointer touch-manipulation ${currentGraphicsMode === 'balanced' ? 'bg-green-955/40 text-green-300 border-green-500/80 shadow-[0_0_16px_rgba(74,222,128,0.25)]' : 'bg-stone-900/40 text-stone-400 border-stone-800/60 hover:bg-stone-900/80 hover:text-stone-300'}`}
                                 >
                                     <span className="text-base leading-none">⚖️</span>
                                     <span className="flex items-center gap-1">BALANCED {!isMobileDevice && <span className="text-[6px] text-green-400 bg-green-950/50 px-1 py-0.2 rounded border border-green-800/60">PC</span>}</span>
-                                    <span className="text-[7px] font-semibold opacity-70 normal-case tracking-normal">Best balance</span>
+                                    <span className="text-[7px] font-semibold opacity-75 normal-case tracking-normal">Solid 60 FPS</span>
                                 </button>
                                 {/* LOW */}
                                 <button
                                     type="button"
-                                    title="Vibrant lightweight lighting, zero shadows, blazing fast for mobile"
+                                    title="Fast & smooth with preserved processing: ACES tone mapping, fog, subtle lights & materials"
                                     onClick={() => handleChange('graphicsMode', 'low')}
-                                    className={`flex flex-col items-center justify-center min-h-[44px] gap-1 py-2.5 px-1 text-[8px] sm:text-[9px] font-black tracking-widest uppercase transition-all rounded-xl border active:scale-95 cursor-pointer ${currentGraphicsMode === 'low' ? 'bg-orange-950/30 text-orange-400 border-orange-600/60 shadow-[0_0_14px_rgba(249,115,22,0.2)]' : 'bg-transparent text-stone-500 border-stone-800/60 hover:bg-stone-900/60 hover:text-stone-300'}`}
+                                    className={`flex flex-col items-center justify-center min-h-[46px] gap-1 py-2.5 px-2 text-[8px] sm:text-[9.5px] font-black tracking-widest uppercase transition-all rounded-xl border active:scale-95 cursor-pointer touch-manipulation ${currentGraphicsMode === 'low' ? 'bg-orange-955/40 text-orange-300 border-orange-500/80 shadow-[0_0_16px_rgba(249,115,22,0.25)]' : 'bg-stone-900/40 text-stone-400 border-stone-800/60 hover:bg-stone-900/80 hover:text-stone-300'}`}
                                 >
                                     <span className="text-base leading-none">⚡</span>
                                     <span className="flex items-center gap-1">LOW {isMobileDevice && <span className="text-[6px] text-orange-400 bg-orange-950/50 px-1 py-0.2 rounded border border-orange-800/60">PHONE</span>}</span>
-                                    <span className="text-[7px] font-semibold opacity-70 normal-case tracking-normal">Fast + visible</span>
+                                    <span className="text-[7px] font-semibold opacity-75 normal-case tracking-normal">Fast + Preserved FX</span>
                                 </button>
                                 {/* POTATO */}
                                 <button
                                     type="button"
-                                    title="Maximum possible FPS, ultra-minimal flat shading"
+                                    title="Maximum possible FPS, flat shading, zero shadows, linear lighting, minimal fillrate"
                                     onClick={() => handleChange('graphicsMode', 'potato')}
-                                    className={`flex flex-col items-center justify-center min-h-[44px] gap-1 py-2.5 px-1 text-[8px] sm:text-[9px] font-black tracking-widest uppercase transition-all rounded-xl border active:scale-95 cursor-pointer ${currentGraphicsMode === 'potato' ? 'bg-red-950/30 text-red-400 border-red-700/60 shadow-[0_0_14px_rgba(239,68,68,0.2)]' : 'bg-transparent text-stone-500 border-stone-800/60 hover:bg-stone-900/60 hover:text-stone-300'}`}
+                                    className={`flex flex-col items-center justify-center min-h-[46px] gap-1 py-2.5 px-2 text-[8px] sm:text-[9.5px] font-black tracking-widest uppercase transition-all rounded-xl border active:scale-95 cursor-pointer touch-manipulation ${currentGraphicsMode === 'potato' ? 'bg-red-955/40 text-red-300 border-red-500/80 shadow-[0_0_16px_rgba(239,68,68,0.25)]' : 'bg-stone-900/40 text-stone-400 border-stone-800/60 hover:bg-stone-900/80 hover:text-stone-300'}`}
                                 >
                                     <span className="text-base leading-none">🥔</span>
                                     <span>POTATO</span>
-                                    <span className="text-[7px] font-semibold opacity-70 normal-case tracking-normal">Max FPS</span>
+                                    <span className="text-[7px] font-semibold opacity-75 normal-case tracking-normal">Bare Minimum / Max FPS</span>
                                 </button>
                             </div>
                             <p className="text-[7.5px] sm:text-[8px] text-stone-500 uppercase tracking-widest leading-relaxed">
-                                {currentGraphicsMode === 'high' && "🌟 High: Rich PBR, crisp shadows, volumetric feel, smooth particles."}
-                                {currentGraphicsMode === 'balanced' && "⚖️ Balanced: Crisp, brightly visible, medium shadows, great 60fps performance on laptops/desktops."}
-                                {currentGraphicsMode === 'low' && "⚡ Low: Vibrant lightweight lighting, zero shadows, blazing fast for mobile and low-spec PCs."}
-                                {currentGraphicsMode === 'potato' && "🥔 Potato: Maximum possible FPS, ultra-minimal flat shading."}
+                                {(currentGraphicsMode === 'high' || currentGraphicsMode === 'ultra') && "🌟 High: Clamped DPR <= 1.5, 1024 PCFSoft shadows, full lighting & reflections, smooth particles."}
+                                {currentGraphicsMode === 'balanced' && "⚖️ Balanced: Clamped DPR <= 1.0, 512 PCF shadows, selective lighting, solid 60fps performance."}
+                                {currentGraphicsMode === 'low' && "⚡ Low: Clamped DPR <= 0.95, preserved ACES tone mapping & fog, subtle lighting, fast performance without potato flat visuals."}
+                                {currentGraphicsMode === 'potato' && "🥔 Potato: Clamped DPR <= 0.85, zero shadows, flat shading, linear lighting, minimal fillrate."}
                             </p>
                         </div>
 
@@ -421,17 +421,34 @@ export const SettingsMenu: React.FC<SettingsMenuProps> = ({ settings, onUpdateSe
                     )}
                 </div>
 
-                <div className="p-2.5 sm:p-4 border-t border-stone-800/60 bg-stone-950/70 backdrop-blur-xl flex flex-col xs:flex-row gap-2 sm:gap-3 shrink-0 w-full">
+                <div className="p-2 sm:p-3.5 border-t border-stone-800/60 bg-stone-950/70 backdrop-blur-xl flex flex-row items-center gap-2 sm:gap-3 shrink-0 w-full">
                     {showExitToMenu && !isMultiplayer && onExitToMenu && (
-                        <button onClick={() => { audioManager.playSound('click'); onExitToMenu(); }} className="flex-1 min-w-[70px] h-11 sm:h-10 min-h-[44px] border border-red-900/50 bg-red-955/20 text-red-400 hover:text-red-300 hover:bg-red-950/40 hover:border-red-600/50 px-2 sm:px-3 font-black tracking-[0.15em] flex items-center justify-center gap-1.5 transition-all rounded-xl text-[9px] sm:text-[10px] uppercase cursor-pointer active:scale-95">
-                            <LogOut size={14} /> Exit
+                        <button 
+                            type="button"
+                            onClick={() => { audioManager.playSound('click'); onExitToMenu(); }} 
+                            className="flex-[0.8] min-w-[65px] h-10 min-h-[40px] border border-red-900/50 bg-red-955/20 text-red-400 hover:text-red-300 hover:bg-red-950/40 hover:border-red-600/50 px-2 sm:px-3 font-black tracking-[0.1em] flex items-center justify-center gap-1.5 transition-all rounded-xl text-[9px] sm:text-[10px] uppercase cursor-pointer active:scale-95 touch-manipulation"
+                            title="Exit to Main Menu"
+                        >
+                            <LogOut size={13} className="shrink-0" />
+                            <span>Exit</span>
                         </button>
                     )}
-                    <button onClick={() => { audioManager.playSound('click'); onResetDefaults(); }} className="flex-1 min-w-[120px] h-11 sm:h-10 min-h-[44px] border border-stone-700 bg-stone-900/80 text-stone-300 hover:text-white hover:bg-stone-800/90 px-2 sm:px-3 font-black tracking-[0.15em] flex items-center justify-center gap-1.5 transition-all rounded-xl text-[9px] sm:text-[10px] uppercase cursor-pointer active:scale-95">
-                        <RotateCcw size={14} /> Reset Settings
+                    <button 
+                        type="button"
+                        onClick={() => { audioManager.playSound('click'); onResetDefaults(); }} 
+                        className="flex-1 min-w-[90px] sm:min-w-[130px] h-10 min-h-[40px] border border-stone-700/70 bg-stone-900/60 text-stone-300 hover:text-white hover:bg-stone-850/80 px-2 sm:px-3 font-black tracking-[0.1em] flex items-center justify-center gap-1.5 transition-all rounded-xl text-[8.5px] sm:text-[10px] uppercase cursor-pointer active:scale-95 touch-manipulation"
+                        title="Reset settings to defaults"
+                    >
+                        <RotateCcw size={13} className="shrink-0" />
+                        <span className="truncate">Reset Defaults</span>
                     </button>
-                    <button onClick={() => { audioManager.playSound('click'); onClose(); }} className="w-full xs:flex-[1.5] h-11 sm:h-10 min-h-[44px] bg-white text-black font-black px-3 sm:px-4 hover:bg-stone-200 transition-all tracking-[0.15em] sm:tracking-[0.25em] rounded-xl text-[10px] sm:text-xs uppercase shadow-xl cursor-pointer active:scale-95 flex items-center justify-center">
-                        Return to Game
+                    <button 
+                        type="button"
+                        onClick={() => { audioManager.playSound('click'); onClose(); }} 
+                        className="flex-[1.4] min-w-[110px] sm:min-w-[150px] h-10 min-h-[40px] bg-white hover:bg-stone-200 text-black font-black px-3 sm:px-4 transition-all tracking-[0.15em] sm:tracking-[0.2em] rounded-xl text-[9.5px] sm:text-xs uppercase shadow-xl cursor-pointer active:scale-95 flex items-center justify-center touch-manipulation"
+                        title="Close settings"
+                    >
+                        <span className="truncate">Return to Game</span>
                     </button>
                 </div>
             </div>

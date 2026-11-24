@@ -29,7 +29,6 @@
   },
   "exclude": [
     "node_modules",
-    "dist",
-    "old_sceneLogic.ts"
+    "dist"
   ]
 }

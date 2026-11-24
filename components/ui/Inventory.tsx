@@ -64,12 +64,12 @@ const InventoryComponent: React.FC<InventoryProps> = ({ player, dealer, gameStat
         const updateBottom = () => {
             const el = scrollRef.current;
             if (!el) {
-                setTooltipBottom('1.5rem');
+                setTooltipBottom('calc(1.5rem + max(env(safe-area-inset-bottom, 0px), 0px))');
                 return;
             }
             const height = el.clientHeight;
             const offset = Math.max(height + 16, 24);
-            setTooltipBottom(`${offset}px`);
+            setTooltipBottom(`calc(${offset}px + max(env(safe-area-inset-bottom, 0px), 0px))`);
         };
 
         updateBottom();
@@ -202,9 +202,9 @@ const InventoryComponent: React.FC<InventoryProps> = ({ player, dealer, gameStat
         'JACKPOT': 'JACKPOT'
     };
 
-    let containerClass = "relative flex gap-1 md:gap-3 p-2 md:p-4 bg-gradient-to-t from-black/95 to-black/70 border-t border-l border-r border-white/10 backdrop-blur-3xl min-h-[40px] md:min-h-[100px] items-end overflow-x-auto overflow-y-visible md:overflow-visible max-w-full [&::-webkit-scrollbar]:hidden [scrollbar-width:none] rounded-t-[2rem]";
+    let containerClass = "relative flex gap-1 md:gap-3 p-2 md:p-4 bg-gradient-to-t from-black/95 to-black/70 border-t border-l border-r border-white/10 backdrop-blur-3xl min-h-[48px] md:min-h-[100px] items-end overflow-x-auto overflow-y-visible md:overflow-visible max-w-full [&::-webkit-scrollbar]:hidden [scrollbar-width:none] rounded-t-[2rem]";
     if (isPotato) {
-        containerClass = "relative flex gap-1 md:gap-3 p-2 md:p-3 bg-neutral-950 border-t border-neutral-800 min-h-[40px] md:min-h-[100px] items-end overflow-x-auto overflow-y-visible md:overflow-visible max-w-full [&::-webkit-scrollbar]:hidden [scrollbar-width:none] rounded-none";
+        containerClass = "relative flex gap-1 md:gap-3 p-2 md:p-3 bg-neutral-950 border-t border-neutral-800 min-h-[48px] md:min-h-[100px] items-end overflow-x-auto overflow-y-visible md:overflow-visible max-w-full [&::-webkit-scrollbar]:hidden [scrollbar-width:none] rounded-none";
     } else if (isBalanced) {
         containerClass += " shadow-none";
     } else {
@@ -229,7 +229,7 @@ const InventoryComponent: React.FC<InventoryProps> = ({ player, dealer, gameStat
 
             {/* Bottom-right tooltip panel for hovered inventory items */}
             {(mobileTooltipItem || hoveredIdx !== null) && (
-                <div style={{ bottom: tooltipBottom }} className="fixed right-6 z-[999] w-[min(22rem,92vw)] max-w-[22rem] bg-stone-950/95 border border-stone-800 rounded-3xl p-4 text-left text-stone-300 shadow-[0_25px_70px_rgba(0,0,0,0.8)] backdrop-blur-2xl pointer-events-none">
+                <div style={{ bottom: tooltipBottom }} className="fixed right-4 sm:right-6 z-[999] w-[min(22rem,calc(100vw-2rem))] max-w-[22rem] bg-stone-950/95 border border-stone-800 rounded-3xl p-4 text-left text-stone-300 shadow-[0_25px_70px_rgba(0,0,0,0.8)] backdrop-blur-2xl pointer-events-none">
                     <div className="flex items-center justify-between gap-3 mb-3">
                         <div className="font-black text-white text-sm uppercase tracking-[0.35em]">{ITEM_NAMES[mobileTooltipItem || hoveredItem!]}</div>
                         <span className="text-[10px] text-stone-400 uppercase tracking-[0.35em]">Description</span>
@@ -278,9 +278,9 @@ const InventoryComponent: React.FC<InventoryProps> = ({ player, dealer, gameStat
 
                     let btnClass = "";
                     if (isPotato) {
-                        btnClass = `w-14 h-16 md:w-24 md:h-24 bg-neutral-900 border ${isCuffDisabled ? 'border-red-900 bg-red-950/30' : 'border-stone-850'} flex flex-col items-center justify-center hover:bg-neutral-850 disabled:opacity-25 disabled:cursor-not-allowed relative overflow-hidden rounded-md transition-all duration-150`;
+                        btnClass = `w-12 h-16 min-w-[48px] min-h-[48px] md:w-24 md:h-24 bg-neutral-900 border ${isCuffDisabled ? 'border-red-900 bg-red-950/30' : 'border-stone-850'} flex flex-col items-center justify-center hover:bg-neutral-850 disabled:opacity-25 disabled:cursor-not-allowed relative overflow-hidden rounded-md transition-all duration-150 touch-manipulation`;
                     } else {
-                        btnClass = `w-10 h-16 md:w-24 md:h-24 bg-zinc-950/60 border-2 ${isCuffDisabled ? 'border-red-900/50 bg-red-950/10' : BORDER_COLORS[item]} flex flex-col items-center justify-center hover:bg-stone-900/40 disabled:opacity-20 disabled:cursor-not-allowed transition-all duration-300 relative overflow-hidden rounded-xl ${isBalanced ? '' : 'shadow-[0_10px_30px_rgba(0,0,0,0.5)]'}`;
+                        btnClass = `w-12 h-16 min-w-[48px] min-h-[48px] md:w-24 md:h-24 bg-zinc-950/60 border-2 ${isCuffDisabled ? 'border-red-900/50 bg-red-950/10' : BORDER_COLORS[item]} flex flex-col items-center justify-center hover:bg-stone-900/40 disabled:opacity-20 disabled:cursor-not-allowed transition-all duration-300 relative overflow-hidden rounded-xl touch-manipulation ${isBalanced ? '' : 'shadow-[0_10px_30px_rgba(0,0,0,0.5)]'}`;
                     }
 
                     if (isSelected) {
@@ -394,7 +394,7 @@ const InventoryComponent: React.FC<InventoryProps> = ({ player, dealer, gameStat
                                 {item === 'DECK_CARD' && <Icons.DeckCard className="text-purple-400 mb-0 md:mb-2 w-4 h-4 md:w-6 md:h-6 transition-transform group-hover:scale-110 duration-300" />}
                                 {item === 'JACKPOT' && <Icons.Jackpot className="text-yellow-500 mb-0 md:mb-2 w-4 h-4 md:w-6 md:h-6 transition-transform group-hover:scale-110 duration-300" />}
 
-                                <span className={`text-[6px] md:text-[8px] text-stone-400 font-black tracking-widest block text-center px-1 truncate w-full relative z-10 transition-colors group-hover:text-white ${isPotato ? '' : 'animate-pulse'}`}>
+                                <span className={`text-[6px] md:text-[8px] text-stone-300 font-black tracking-widest block text-center px-1 truncate w-full relative z-10 transition-colors group-hover:text-white ${isPotato ? '' : 'animate-pulse'}`}>
                                     {ITEM_LABELS[item]}
                                 </span>
 

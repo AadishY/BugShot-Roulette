@@ -69,3 +69,12 @@ declare module 'three/examples/jsm/loaders/DRACOLoader.js' {
     dispose(): this;
   }
 }
+
+declare module '@discord/embedded-app-sdk' {
+  export class DiscordSDK {
+    constructor(clientId: string);
+    ready(): Promise<void>;
+    commands: any;
+    instanceId: string;
+  }
+}

@@ -1,0 +1,1990 @@
+[
+  {
+    "uid": "upstash_333_1795526551005",
+    "username": "333",
+    "displayName": "333",
+    "email": "333@legacy.local",
+    "avatarUrl": "https://api.dicebear.com/7.x/bottts-neutral/svg?seed=333_3333",
+    "avatarStyle": "bottts-neutral",
+    "avatarSeed": "333_3333",
+    "isDeveloper": false,
+    "role": "player",
+    "totalTimePlayed": 0,
+    "stats": {
+      "wins": 0,
+      "losses": 0,
+      "totalRounds": 0,
+      "shotsFired": 0,
+      "shotsHit": 0,
+      "selfShots": 0,
+      "damageDealt": 0,
+      "itemsUsed": 0,
+      "highestRound": 0,
+      "matchHistory": []
+    },
+    "needsGmailMigration": true,
+    "legacyPasswordHash": "333333",
+    "playerId": "@333#6643",
+    "createdAt": 1795526551005,
+    "lastLoginAt": 1795526551005
+  },
+  {
+    "uid": "upstash_aadish_1795526551683",
+    "username": "aadish",
+    "displayName": "aadish",
+    "email": "aadish@legacy.local",
+    "avatarUrl": "https://api.dicebear.com/7.x/bottts-neutral/svg?seed=aadish_Aadi",
+    "avatarStyle": "bottts-neutral",
+    "avatarSeed": "aadish_Aadi",
+    "isDeveloper": true,
+    "role": "developer",
+    "totalTimePlayed": 0,
+    "stats": {
+      "wins": 15,
+      "losses": 5,
+      "totalRounds": 46,
+      "shotsFired": 198,
+      "shotsHit": 82,
+      "selfShots": 32,
+      "damageDealt": 105,
+      "itemsUsed": 95,
+      "highestRound": 4,
+      "matchHistory": [
+        {
+          "result": "WIN",
+          "roundsSurvived": 3,
+          "shotsFired": 13,
+          "shotsHit": 3,
+          "selfShots": 8,
+          "itemsUsed": {
+            "GLASS": 2,
+            "SAW": 4,
+            "BEER": 2
+          },
+          "damageDealt": 5,
+          "damageTaken": 2,
+          "totalScore": 1330,
+          "isHardMode": false,
+          "roundResults": [
+            "WIN",
+            "WIN"
+          ],
+          "isMultiplayer": false,
+          "timestamp": 1793435881980,
+          "mpPlayers": []
+        },
+        {
+          "result": "LOSS",
+          "roundsSurvived": 2,
+          "shotsFired": 4,
+          "shotsHit": 0,
+          "selfShots": 0,
+          "itemsUsed": {},
+          "damageDealt": 0,
+          "damageTaken": 2,
+          "totalScore": 200,
+          "isHardMode": false,
+          "roundResults": [
+            "LOSS"
+          ],
+          "isMultiplayer": false,
+          "timestamp": 1788677334091,
+          "mpPlayers": []
+        },
+        {
+          "result": "WIN",
+          "roundsSurvived": 4,
+          "shotsFired": 10,
+          "shotsHit": 5,
+          "selfShots": 1,
+          "itemsUsed": {
+            "CIGS": 2,
+            "SAW": 4,
+            "PHONE": 2,
+            "INVERTER": 4,
+            "CRUSHER": 2,
+            "BEER": 2,
+            "CHOKE": 2
+          },
+          "damageDealt": 9,
+          "damageTaken": 2,
+          "totalScore": 2170,
+          "isHardMode": false,
+          "roundResults": [
+            "WIN",
+            "WIN"
+          ],
+          "isMultiplayer": true,
+          "mpPlayers": [
+            {
+              "name": "Yuvraj",
+              "id": "W55pJ3p5svoAINqSAAAR",
+              "isHost": true,
+              "isMe": true,
+              "result": "WIN"
+            },
+            {
+              "name": "PRIYANSHU123",
+              "id": "WtCo-0H7LmHXbFWqAAAT",
+              "isHost": false,
+              "isMe": false,
+              "result": "LOSS"
+            }
+          ],
+          "timestamp": 1786868833415
+        },
+        {
+          "result": "WIN",
+          "roundsSurvived": 2,
+          "shotsFired": 3,
+          "shotsHit": 2,
+          "selfShots": 0,
+          "itemsUsed": {
+            "CHOKE": 2,
+            "SAW": 2
+          },
+          "damageDealt": 5,
+          "damageTaken": 1,
+          "totalScore": 1550,
+          "isHardMode": false,
+          "roundResults": [
+            "WIN",
+            "WIN"
+          ],
+          "matchId": "mp_5999_fv5ZS6qDuYu_gwFqAAAN_1783274149175",
+          "isMultiplayer": true,
+          "mpPlayers": [
+            {
+              "name": "AADISH",
+              "id": "fv5ZS6qDuYu_gwFqAAAN",
+              "isHost": true,
+              "isMe": true,
+              "result": "WIN"
+            },
+            {
+              "name": "AKATSUKI",
+              "id": "jF_N5za64qpd-SsdAAAP",
+              "isHost": false,
+              "isMe": false,
+              "result": "LOSS"
+            }
+          ],
+          "timestamp": 1783274240185
+        },
+        {
+          "result": "WIN",
+          "roundsSurvived": 1,
+          "shotsFired": 0,
+          "shotsHit": 0,
+          "selfShots": 0,
+          "itemsUsed": {},
+          "damageDealt": 0,
+          "damageTaken": 0,
+          "totalScore": 1100,
+          "isHardMode": false,
+          "roundResults": [],
+          "matchId": "mp_8293_5oVIkCggXCYB5wLeAAAJ_1783274065794",
+          "isMultiplayer": true,
+          "mpPlayers": [
+            {
+              "name": "AADISH",
+              "id": "5oVIkCggXCYB5wLeAAAJ",
+              "isHost": true,
+              "isMe": true,
+              "result": "WIN"
+            },
+            {
+              "name": "AKATSUKI",
+              "id": "BUlZ4YgHLodPwGkbAAAL",
+              "isHost": false,
+              "isMe": false,
+              "result": "LOSS"
+            }
+          ],
+          "timestamp": 1783274116150
+        },
+        {
+          "result": "WIN",
+          "roundsSurvived": 3,
+          "shotsFired": 4,
+          "shotsHit": 2,
+          "selfShots": 2,
+          "itemsUsed": {
+            "SAW": 4,
+            "CHOKE": 4
+          },
+          "damageDealt": 8,
+          "damageTaken": 0,
+          "totalScore": 1760,
+          "isHardMode": false,
+          "roundResults": [
+            "WIN",
+            "WIN"
+          ],
+          "matchId": "mp_8968_elJR8zjzb9xRFGKhAAAB_1783273001321",
+          "isMultiplayer": true,
+          "mpPlayers": [
+            {
+              "name": "AADISH",
+              "id": "elJR8zjzb9xRFGKhAAAB",
+              "isHost": true,
+              "isMe": true,
+              "result": "WIN"
+            },
+            {
+              "name": "AKATSUKI",
+              "id": "r_OM-zBqVGvPfZIAAAAD",
+              "isHost": false,
+              "isMe": false,
+              "result": "LOSS"
+            }
+          ],
+          "timestamp": 1783273160529
+        },
+        {
+          "result": "WIN",
+          "roundsSurvived": 2,
+          "shotsFired": 8,
+          "shotsHit": 4,
+          "selfShots": 2,
+          "itemsUsed": {
+            "CHOKE": 4,
+            "SAW": 4
+          },
+          "damageDealt": 8,
+          "damageTaken": 1,
+          "totalScore": 1700,
+          "isHardMode": false,
+          "roundResults": [
+            "WIN",
+            "WIN"
+          ],
+          "isMultiplayer": true,
+          "mpPlayers": [
+            {
+              "name": "AADISH",
+              "id": "KN0V0dqexCf1JEfYAAAD",
+              "isHost": true,
+              "isMe": true,
+              "result": "WIN"
+            },
+            {
+              "name": "AKATSUKI",
+              "id": "7Loc0WUlXY5AINK2AAAF",
+              "isHost": false,
+              "isMe": false,
+              "result": "LOSS"
+            }
+          ],
+          "timestamp": 1783267968170
+        },
+        {
+          "result": "LOSS",
+          "roundsSurvived": 2,
+          "shotsFired": 7,
+          "shotsHit": 0,
+          "selfShots": 3,
+          "itemsUsed": {
+            "DECK_CARD": 2,
+            "ADRENALINE": 2,
+            "CIGS": 1,
+            "CHOKE": 2
+          },
+          "damageDealt": 0,
+          "damageTaken": 7,
+          "totalScore": 155,
+          "isHardMode": false,
+          "roundResults": [
+            "LOSS",
+            "LOSS"
+          ],
+          "isMultiplayer": true,
+          "mpPlayers": [
+            {
+              "name": "AADISH",
+              "id": "_K4xxsORowxOCmHEAAAF",
+              "isHost": true,
+              "isMe": true,
+              "result": "LOSS"
+            },
+            {
+              "name": "AKATSUKI",
+              "id": "5H4xwpC2y7sg2qMmAAAD",
+              "isHost": false,
+              "isMe": false,
+              "result": "WIN"
+            }
+          ],
+          "timestamp": 1783265027349
+        },
+        {
+          "result": "LOSS",
+          "roundsSurvived": 1,
+          "shotsFired": 4,
+          "shotsHit": 0,
+          "selfShots": 0,
+          "itemsUsed": {
+            "FLASHBANG": 2
+          },
+          "damageDealt": 0,
+          "damageTaken": 2,
+          "totalScore": 130,
+          "isHardMode": false,
+          "roundResults": [
+            "LOSS"
+          ],
+          "timestamp": 1783153522406,
+          "isMultiplayer": false,
+          "mpPlayers": []
+        },
+        {
+          "result": "LOSS",
+          "roundsSurvived": 2,
+          "shotsFired": 4,
+          "shotsHit": 0,
+          "selfShots": 0,
+          "itemsUsed": {},
+          "damageDealt": 0,
+          "damageTaken": 2,
+          "totalScore": 200,
+          "isHardMode": false,
+          "roundResults": [
+            "LOSS"
+          ],
+          "timestamp": 1782886442699
+        },
+        {
+          "result": "WIN",
+          "roundsSurvived": 3,
+          "shotsFired": 15,
+          "shotsHit": 8,
+          "selfShots": 1,
+          "itemsUsed": {
+            "CIGS": 2,
+            "SAW": 2,
+            "CUFFS": 1
+          },
+          "damageDealt": 8,
+          "damageTaken": 6,
+          "totalScore": 1450,
+          "isHardMode": false,
+          "roundResults": [
+            "LOSS",
+            "WIN",
+            "WIN"
+          ],
+          "isMultiplayer": true,
+          "mpPlayers": [
+            {
+              "name": "AADISH",
+              "id": "J4TYLsvoGDlOOSrvAABj",
+              "isHost": true,
+              "isMe": true,
+              "result": "WIN"
+            },
+            {
+              "name": "ADITYA",
+              "id": "NboQQ_SvFNB4TfGzAABl",
+              "isHost": false,
+              "isMe": false,
+              "result": "LOSS"
+            }
+          ],
+          "timestamp": 1782666399102
+        },
+        {
+          "result": "WIN",
+          "roundsSurvived": 2,
+          "shotsFired": 12,
+          "shotsHit": 7,
+          "selfShots": 2,
+          "itemsUsed": {
+            "BEER": 2,
+            "GLASS": 1
+          },
+          "damageDealt": 7,
+          "damageTaken": 6,
+          "totalScore": 1320,
+          "isHardMode": false,
+          "roundResults": [
+            "LOSS",
+            "WIN"
+          ],
+          "isMultiplayer": true,
+          "mpPlayers": [
+            {
+              "name": "AADISH",
+              "id": "J4TYLsvoGDlOOSrvAABj",
+              "isHost": true,
+              "isMe": true,
+              "result": "WIN"
+            },
+            {
+              "name": "ADITYA",
+              "id": "NboQQ_SvFNB4TfGzAABl",
+              "isHost": false,
+              "isMe": false,
+              "result": "LOSS"
+            }
+          ],
+          "timestamp": 1782666361664
+        },
+        {
+          "result": "WIN",
+          "roundsSurvived": 3,
+          "shotsFired": 28,
+          "shotsHit": 12,
+          "selfShots": 4,
+          "itemsUsed": {
+            "CIGS": 3,
+            "INVERTER": 2,
+            "SAW": 2,
+            "PHONE": 1
+          },
+          "damageDealt": 15,
+          "damageTaken": 7,
+          "totalScore": 1510,
+          "isHardMode": false,
+          "roundResults": [
+            "LOSS",
+            "WIN",
+            "WIN"
+          ],
+          "isMultiplayer": true,
+          "mpPlayers": [
+            {
+              "name": "AADISH",
+              "id": "EHIUyfOMxIPKa16HAAAx",
+              "isHost": true,
+              "isMe": true,
+              "result": "WIN"
+            },
+            {
+              "name": "ADITYA",
+              "id": "6TnTzpf51xC9zp6NAAA1",
+              "isHost": false,
+              "isMe": false,
+              "result": "LOSS"
+            }
+          ],
+          "timestamp": 1782578053803
+        },
+        {
+          "result": "WIN",
+          "roundsSurvived": 2,
+          "shotsFired": 19,
+          "shotsHit": 9,
+          "selfShots": 3,
+          "itemsUsed": {
+            "MIRROR": 1,
+            "CIGS": 2,
+            "SAW": 1
+          },
+          "damageDealt": 10,
+          "damageTaken": 4,
+          "totalScore": 1280,
+          "isHardMode": false,
+          "roundResults": [
+            "LOSS",
+            "WIN"
+          ],
+          "isMultiplayer": true,
+          "mpPlayers": [
+            {
+              "name": "AADISH",
+              "id": "EHIUyfOMxIPKa16HAAAx",
+              "isHost": true,
+              "isMe": true,
+              "result": "WIN"
+            },
+            {
+              "name": "ADITYA",
+              "id": "6TnTzpf51xC9zp6NAAA1",
+              "isHost": false,
+              "isMe": false,
+              "result": "LOSS"
+            }
+          ],
+          "timestamp": 1782577798477
+        },
+        {
+          "result": "LOSS",
+          "roundsSurvived": 1,
+          "shotsFired": 3,
+          "shotsHit": 0,
+          "selfShots": 1,
+          "itemsUsed": {},
+          "damageDealt": 0,
+          "damageTaken": 3,
+          "totalScore": 150,
+          "isHardMode": false,
+          "roundResults": [
+            "LOSS"
+          ],
+          "isMultiplayer": true,
+          "mpPlayers": [
+            {
+              "name": "AADISH",
+              "id": "EHIUyfOMxIPKa16HAAAx",
+              "isHost": true,
+              "isMe": true,
+              "result": "LOSS"
+            },
+            {
+              "name": "ADITYA",
+              "id": "6TnTzpf51xC9zp6NAAA1",
+              "isHost": false,
+              "isMe": false,
+              "result": "WIN"
+            }
+          ],
+          "timestamp": 1782577063952
+        },
+        {
+          "result": "WIN",
+          "roundsSurvived": 3,
+          "shotsFired": 14,
+          "shotsHit": 6,
+          "selfShots": 1,
+          "itemsUsed": {
+            "CIGS": 2,
+            "SAW": 1,
+            "CUFFS": 1
+          },
+          "damageDealt": 6,
+          "damageTaken": 4,
+          "totalScore": 1350,
+          "isHardMode": false,
+          "roundResults": [
+            "WIN",
+            "LOSS",
+            "WIN"
+          ],
+          "timestamp": 1782576500000
+        },
+        {
+          "result": "WIN",
+          "roundsSurvived": 2,
+          "shotsFired": 10,
+          "shotsHit": 5,
+          "selfShots": 0,
+          "itemsUsed": {
+            "BEER": 2,
+            "GLASS": 1
+          },
+          "damageDealt": 5,
+          "damageTaken": 2,
+          "totalScore": 1400,
+          "isHardMode": false,
+          "roundResults": [
+            "WIN",
+            "WIN"
+          ],
+          "timestamp": 1782576000000
+        },
+        {
+          "result": "WIN",
+          "roundsSurvived": 3,
+          "shotsFired": 15,
+          "shotsHit": 7,
+          "selfShots": 2,
+          "itemsUsed": {
+            "CIGS": 2,
+            "INVERTER": 2,
+            "SAW": 1
+          },
+          "damageDealt": 7,
+          "damageTaken": 5,
+          "totalScore": 1250,
+          "isHardMode": false,
+          "roundResults": [
+            "LOSS",
+            "WIN",
+            "WIN"
+          ],
+          "timestamp": 1782575500000
+        },
+        {
+          "result": "WIN",
+          "roundsSurvived": 2,
+          "shotsFired": 9,
+          "shotsHit": 4,
+          "selfShots": 1,
+          "itemsUsed": {
+            "CUFFS": 1,
+            "CIGS": 1
+          },
+          "damageDealt": 4,
+          "damageTaken": 2,
+          "totalScore": 1300,
+          "isHardMode": false,
+          "roundResults": [
+            "WIN",
+            "WIN"
+          ],
+          "timestamp": 1782575000000
+        },
+        {
+          "result": "WIN",
+          "roundsSurvived": 3,
+          "shotsFired": 16,
+          "shotsHit": 8,
+          "selfShots": 1,
+          "itemsUsed": {
+            "CIGS": 3,
+            "SAW": 2,
+            "CUFFS": 1
+          },
+          "damageDealt": 8,
+          "damageTaken": 4,
+          "totalScore": 1500,
+          "isHardMode": false,
+          "roundResults": [
+            "WIN",
+            "LOSS",
+            "WIN"
+          ],
+          "timestamp": 1782574500000
+        }
+      ]
+    },
+    "needsGmailMigration": true,
+    "legacyPasswordHash": "Aadish20m",
+    "playerId": "@aadish#8438",
+    "createdAt": 1795526551683,
+    "lastLoginAt": 1795526551683
+  },
+  {
+    "uid": "upstash_aditya_1795526552018",
+    "username": "aditya",
+    "displayName": "aditya",
+    "email": "aditya@legacy.local",
+    "avatarUrl": "https://api.dicebear.com/7.x/bottts-neutral/svg?seed=aditya_Knig",
+    "avatarStyle": "bottts-neutral",
+    "avatarSeed": "aditya_Knig",
+    "isDeveloper": false,
+    "role": "player",
+    "totalTimePlayed": 0,
+    "stats": {
+      "wins": 1,
+      "losses": 4,
+      "totalRounds": 12,
+      "shotsFired": 106,
+      "shotsHit": 24,
+      "selfShots": 32,
+      "damageDealt": 26,
+      "itemsUsed": 76,
+      "mostUsedItem": "NONE",
+      "highestRound": 4,
+      "itemPoints": 1140,
+      "matchHistory": [
+        {
+          "result": "LOSS",
+          "roundsSurvived": 2,
+          "shotsFired": 20,
+          "shotsHit": 5,
+          "selfShots": 5,
+          "itemsUsed": {
+            "GLASS": 4,
+            "ADRENALINE": 2,
+            "BIG_INVERTER": 1,
+            "CUFFS": 2,
+            "FLASHBANG": 2,
+            "INVERTER": 2,
+            "CHOKE": 2,
+            "DECK_CARD": 2
+          },
+          "damageDealt": 6,
+          "damageTaken": 8,
+          "totalScore": 605,
+          "isHardMode": false,
+          "roundResults": [
+            "WIN",
+            "LOSS",
+            "LOSS"
+          ],
+          "isMultiplayer": true,
+          "mpPlayers": [
+            {
+              "name": "AADISH",
+              "id": "J4TYLsvoGDlOOSrvAABj",
+              "isHost": true,
+              "isMe": false,
+              "result": "WIN"
+            },
+            {
+              "name": "ADITYA",
+              "id": "NboQQ_SvFNB4TfGzAABl",
+              "isHost": false,
+              "isMe": true,
+              "result": "LOSS"
+            }
+          ],
+          "timestamp": 1782666399102
+        },
+        {
+          "result": "LOSS",
+          "roundsSurvived": 2,
+          "shotsFired": 18,
+          "shotsHit": 5,
+          "selfShots": 5,
+          "itemsUsed": {
+            "GLASS": 4,
+            "ADRENALINE": 2,
+            "BIG_INVERTER": 1,
+            "CUFFS": 2,
+            "FLASHBANG": 2,
+            "INVERTER": 2,
+            "CHOKE": 2,
+            "DECK_CARD": 2
+          },
+          "damageDealt": 6,
+          "damageTaken": 7,
+          "totalScore": 605,
+          "isHardMode": false,
+          "roundResults": [
+            "WIN",
+            "LOSS"
+          ],
+          "isMultiplayer": true,
+          "mpPlayers": [
+            {
+              "name": "AADISH",
+              "id": "J4TYLsvoGDlOOSrvAABj",
+              "isHost": true,
+              "isMe": false,
+              "result": "WIN"
+            },
+            {
+              "name": "ADITYA",
+              "id": "NboQQ_SvFNB4TfGzAABl",
+              "isHost": false,
+              "isMe": true,
+              "result": "LOSS"
+            }
+          ],
+          "timestamp": 1782666361664
+        },
+        {
+          "result": "LOSS",
+          "roundsSurvived": 2,
+          "shotsFired": 37,
+          "shotsHit": 7,
+          "selfShots": 11,
+          "itemsUsed": {
+            "MIRROR": 2,
+            "DECK_CARD": 1,
+            "GLASS": 1,
+            "CIGS": 6,
+            "INVERTER": 4,
+            "BEER": 2,
+            "SAW": 2,
+            "PHONE": 2,
+            "LUCKYCHARM": 2,
+            "CUFFS": 2,
+            "CONTRACT": 2
+          },
+          "damageDealt": 7,
+          "damageTaken": 15,
+          "totalScore": 530,
+          "isHardMode": false,
+          "roundResults": [
+            "WIN",
+            "LOSS",
+            "LOSS"
+          ],
+          "isMultiplayer": true,
+          "mpPlayers": [
+            {
+              "name": "AADISH",
+              "id": "EHIUyfOMxIPKa16HAAAx",
+              "isHost": true,
+              "isMe": false,
+              "result": "WIN"
+            },
+            {
+              "name": "ADITYA",
+              "id": "6TnTzpf51xC9zp6NAAA1",
+              "isHost": false,
+              "isMe": true,
+              "result": "LOSS"
+            }
+          ],
+          "timestamp": 1782578053803
+        },
+        {
+          "result": "LOSS",
+          "roundsSurvived": 4,
+          "shotsFired": 26,
+          "shotsHit": 4,
+          "selfShots": 10,
+          "itemsUsed": {
+            "MIRROR": 2,
+            "DECK_CARD": 1,
+            "GLASS": 1,
+            "CIGS": 4,
+            "INVERTER": 2,
+            "BEER": 2,
+            "SAW": 2
+          },
+          "damageDealt": 4,
+          "damageTaken": 10,
+          "totalScore": 390,
+          "isHardMode": false,
+          "roundResults": [
+            "WIN",
+            "LOSS"
+          ],
+          "isMultiplayer": true,
+          "mpPlayers": [
+            {
+              "name": "AADISH",
+              "id": "EHIUyfOMxIPKa16HAAAx",
+              "isHost": true,
+              "isMe": false,
+              "result": "WIN"
+            },
+            {
+              "name": "ADITYA",
+              "id": "6TnTzpf51xC9zp6NAAA1",
+              "isHost": false,
+              "isMe": true,
+              "result": "LOSS"
+            }
+          ],
+          "timestamp": 1782577798477
+        },
+        {
+          "result": "WIN",
+          "roundsSurvived": 2,
+          "shotsFired": 5,
+          "shotsHit": 3,
+          "selfShots": 1,
+          "itemsUsed": {
+            "DECK_CARD": 2
+          },
+          "damageDealt": 3,
+          "damageTaken": 0,
+          "totalScore": 1390,
+          "isHardMode": false,
+          "roundResults": [
+            "WIN"
+          ],
+          "isMultiplayer": true,
+          "mpPlayers": [
+            {
+              "name": "AADISH",
+              "id": "EHIUyfOMxIPKa16HAAAx",
+              "isHost": true,
+              "isMe": false,
+              "result": "LOSS"
+            },
+            {
+              "name": "ADITYA",
+              "id": "6TnTzpf51xC9zp6NAAA1",
+              "isHost": false,
+              "isMe": true,
+              "result": "WIN"
+            }
+          ],
+          "timestamp": 1782577063952
+        }
+      ]
+    },
+    "needsGmailMigration": true,
+    "legacyPasswordHash": "KnightHunter",
+    "playerId": "@aditya#3170",
+    "createdAt": 1795526552018,
+    "lastLoginAt": 1795526552018
+  },
+  {
+    "uid": "upstash_akatsuki_1795526552264",
+    "username": "akatsuki",
+    "displayName": "akatsuki",
+    "email": "akatsuki@legacy.local",
+    "avatarUrl": "https://api.dicebear.com/7.x/bottts-neutral/svg?seed=akatsuki_Aadi",
+    "avatarStyle": "bottts-neutral",
+    "avatarSeed": "akatsuki_Aadi",
+    "isDeveloper": false,
+    "role": "player",
+    "totalTimePlayed": 0,
+    "stats": {
+      "wins": 3,
+      "losses": 3,
+      "totalRounds": 28,
+      "shotsFired": 55,
+      "shotsHit": 12,
+      "selfShots": 24,
+      "damageDealt": 13,
+      "itemsUsed": 12,
+      "highestRound": 4,
+      "matchHistory": [
+        {
+          "result": "WIN",
+          "roundsSurvived": 4,
+          "shotsFired": 13,
+          "shotsHit": 6,
+          "selfShots": 6,
+          "itemsUsed": {
+            "CHOKE": 4,
+            "CIGS": 2,
+            "CUFFS": 2,
+            "GLASS": 4
+          },
+          "damageDealt": 7,
+          "damageTaken": 1,
+          "totalScore": 1750,
+          "isHardMode": false,
+          "roundResults": [
+            "WIN",
+            "WIN"
+          ],
+          "timestamp": 1783263664169,
+          "isMultiplayer": false,
+          "mpPlayers": []
+        },
+        {
+          "result": "LOSS",
+          "roundsSurvived": 1,
+          "shotsFired": 3,
+          "shotsHit": 0,
+          "selfShots": 2,
+          "itemsUsed": {},
+          "damageDealt": 0,
+          "damageTaken": 1,
+          "totalScore": 0,
+          "isHardMode": false,
+          "roundResults": [
+            "LOSS"
+          ],
+          "isMultiplayer": true,
+          "mpPlayers": [
+            {
+              "name": "AADISH",
+              "id": "94YnFOgWg_MKdlIQAAAB",
+              "isHost": true,
+              "isMe": false,
+              "result": "WIN"
+            },
+            {
+              "name": "AKATSUKI",
+              "id": "DL8rnFlpkekrCRMSAAAD",
+              "isHost": false,
+              "isMe": true,
+              "result": "LOSS"
+            }
+          ],
+          "timestamp": 1782667372782
+        },
+        {
+          "result": "WIN",
+          "roundsSurvived": 3,
+          "shotsFired": 4,
+          "shotsHit": 1,
+          "selfShots": 1,
+          "itemsUsed": {},
+          "damageDealt": 1,
+          "damageTaken": 0,
+          "totalScore": 1320,
+          "isHardMode": false,
+          "roundResults": [
+            "WIN"
+          ],
+          "isMultiplayer": true,
+          "mpPlayers": [
+            {
+              "name": "AADISH",
+              "id": "zb1RvgQxA1VP12cCAAAB",
+              "isHost": true,
+              "isMe": false,
+              "result": "LOSS"
+            },
+            {
+              "name": "AKATSUKI",
+              "id": "1fvj_8AP_TJaJW5jAAAD",
+              "isHost": false,
+              "isMe": true,
+              "result": "WIN"
+            }
+          ],
+          "timestamp": 1782560799726
+        }
+      ]
+    },
+    "needsGmailMigration": true,
+    "legacyPasswordHash": "Aadish20m",
+    "playerId": "@akatsuki#9917",
+    "createdAt": 1795526552264,
+    "lastLoginAt": 1795526552264
+  },
+  {
+    "uid": "upstash_astelvoid90_1795526552472",
+    "username": "astelvoid90",
+    "displayName": "astelvoid90",
+    "email": "astelvoid90@legacy.local",
+    "avatarUrl": "https://api.dicebear.com/7.x/bottts-neutral/svg?seed=astelvoid90_live",
+    "avatarStyle": "bottts-neutral",
+    "avatarSeed": "astelvoid90_live",
+    "isDeveloper": false,
+    "role": "player",
+    "totalTimePlayed": 0,
+    "stats": {
+      "wins": 0,
+      "losses": 0,
+      "totalRounds": 0,
+      "shotsFired": 0,
+      "shotsHit": 0,
+      "selfShots": 0,
+      "damageDealt": 0,
+      "itemsUsed": 0,
+      "highestRound": 0,
+      "matchHistory": []
+    },
+    "needsGmailMigration": true,
+    "legacyPasswordHash": "liver@69k",
+    "playerId": "@astelvoid90#7572",
+    "createdAt": 1795526552472,
+    "lastLoginAt": 1795526552472
+  },
+  {
+    "uid": "upstash_faiyaz_1795526552657",
+    "username": "faiyaz",
+    "displayName": "faiyaz",
+    "email": "faiyaz@legacy.local",
+    "avatarUrl": "https://api.dicebear.com/7.x/bottts-neutral/svg?seed=faiyaz_0171",
+    "avatarStyle": "bottts-neutral",
+    "avatarSeed": "faiyaz_0171",
+    "isDeveloper": false,
+    "role": "player",
+    "totalTimePlayed": 0,
+    "stats": {
+      "wins": 0,
+      "losses": 0,
+      "totalRounds": 0,
+      "shotsFired": 0,
+      "shotsHit": 0,
+      "selfShots": 0,
+      "damageDealt": 0,
+      "itemsUsed": 0,
+      "highestRound": 0,
+      "matchHistory": []
+    },
+    "needsGmailMigration": true,
+    "legacyPasswordHash": "01712775722",
+    "playerId": "@faiyaz#5892",
+    "createdAt": 1795526552657,
+    "lastLoginAt": 1795526552657
+  },
+  {
+    "uid": "upstash_fwxhsa_1795526552845",
+    "username": "fwxhsa",
+    "displayName": "fwxhsa",
+    "email": "fwxhsa@legacy.local",
+    "avatarUrl": "https://api.dicebear.com/7.x/bottts-neutral/svg?seed=fwxhsa_1234",
+    "avatarStyle": "bottts-neutral",
+    "avatarSeed": "fwxhsa_1234",
+    "isDeveloper": false,
+    "role": "player",
+    "totalTimePlayed": 0,
+    "stats": {
+      "wins": 0,
+      "losses": 0,
+      "totalRounds": 0,
+      "shotsFired": 0,
+      "shotsHit": 0,
+      "selfShots": 0,
+      "damageDealt": 0,
+      "itemsUsed": 0,
+      "highestRound": 0,
+      "matchHistory": []
+    },
+    "needsGmailMigration": true,
+    "legacyPasswordHash": "1234567",
+    "playerId": "@fwxhsa#2369",
+    "createdAt": 1795526552845,
+    "lastLoginAt": 1795526552845
+  },
+  {
+    "uid": "upstash_fwxhsa666_1795526553035",
+    "username": "fwxhsa666",
+    "displayName": "fwxhsa666",
+    "email": "fwxhsa666@legacy.local",
+    "avatarUrl": "https://api.dicebear.com/7.x/bottts-neutral/svg?seed=fwxhsa666_1234",
+    "avatarStyle": "bottts-neutral",
+    "avatarSeed": "fwxhsa666_1234",
+    "isDeveloper": false,
+    "role": "player",
+    "totalTimePlayed": 0,
+    "stats": {
+      "wins": 0,
+      "losses": 0,
+      "totalRounds": 0,
+      "shotsFired": 0,
+      "shotsHit": 0,
+      "selfShots": 0,
+      "damageDealt": 0,
+      "itemsUsed": 0,
+      "highestRound": 0,
+      "matchHistory": []
+    },
+    "needsGmailMigration": true,
+    "legacyPasswordHash": "123456",
+    "playerId": "@fwxhsa666#8849",
+    "createdAt": 1795526553035,
+    "lastLoginAt": 1795526553035
+  },
+  {
+    "uid": "upstash_heehee_1795526553241",
+    "username": "heehee",
+    "displayName": "heehee",
+    "email": "heehee@legacy.local",
+    "avatarUrl": "https://api.dicebear.com/7.x/bottts-neutral/svg?seed=heehee_1234",
+    "avatarStyle": "bottts-neutral",
+    "avatarSeed": "heehee_1234",
+    "isDeveloper": false,
+    "role": "player",
+    "totalTimePlayed": 0,
+    "stats": {
+      "wins": 0,
+      "losses": 1,
+      "totalRounds": 2,
+      "shotsFired": 6,
+      "shotsHit": 1,
+      "selfShots": 2,
+      "damageDealt": 1,
+      "itemsUsed": 0,
+      "highestRound": 2,
+      "matchHistory": [
+        {
+          "result": "LOSS",
+          "roundsSurvived": 2,
+          "shotsFired": 6,
+          "shotsHit": 1,
+          "selfShots": 2,
+          "itemsUsed": {},
+          "damageDealt": 1,
+          "damageTaken": 2,
+          "totalScore": 170,
+          "isHardMode": false,
+          "roundResults": [
+            "LOSS"
+          ],
+          "isMultiplayer": false,
+          "timestamp": 1790352081208,
+          "mpPlayers": []
+        }
+      ]
+    },
+    "needsGmailMigration": true,
+    "legacyPasswordHash": "1234567",
+    "playerId": "@heehee#1904",
+    "createdAt": 1795526553241,
+    "lastLoginAt": 1795526553241
+  },
+  {
+    "uid": "upstash_huo_jun_1795526553460",
+    "username": "huo_jun",
+    "displayName": "huo_jun",
+    "email": "huo_jun@legacy.local",
+    "avatarUrl": "https://api.dicebear.com/7.x/bottts-neutral/svg?seed=huo_jun_1234",
+    "avatarStyle": "bottts-neutral",
+    "avatarSeed": "huo_jun_1234",
+    "isDeveloper": false,
+    "role": "player",
+    "totalTimePlayed": 0,
+    "stats": {
+      "wins": 0,
+      "losses": 0,
+      "totalRounds": 0,
+      "shotsFired": 0,
+      "shotsHit": 0,
+      "selfShots": 0,
+      "damageDealt": 0,
+      "itemsUsed": 0,
+      "highestRound": 0,
+      "matchHistory": []
+    },
+    "needsGmailMigration": true,
+    "legacyPasswordHash": "123456",
+    "playerId": "@huojun#9231",
+    "createdAt": 1795526553460,
+    "lastLoginAt": 1795526553460
+  },
+  {
+    "uid": "upstash_jjmeooow_1795526553664",
+    "username": "jjmeooow",
+    "displayName": "jjmeooow",
+    "email": "jjmeooow@legacy.local",
+    "avatarUrl": "https://api.dicebear.com/7.x/bottts-neutral/svg?seed=jjmeooow_2008",
+    "avatarStyle": "bottts-neutral",
+    "avatarSeed": "jjmeooow_2008",
+    "isDeveloper": false,
+    "role": "player",
+    "totalTimePlayed": 0,
+    "stats": {
+      "wins": 0,
+      "losses": 0,
+      "totalRounds": 0,
+      "shotsFired": 0,
+      "shotsHit": 0,
+      "selfShots": 0,
+      "damageDealt": 0,
+      "itemsUsed": 0,
+      "highestRound": 0,
+      "matchHistory": []
+    },
+    "needsGmailMigration": true,
+    "legacyPasswordHash": "2008Jan07",
+    "playerId": "@jjmeooow#4728",
+    "createdAt": 1795526553664,
+    "lastLoginAt": 1795526553664
+  },
+  {
+    "uid": "upstash_jjmeoow_1795526553870",
+    "username": "jjmeoow",
+    "displayName": "jjmeoow",
+    "email": "jjmeoow@legacy.local",
+    "avatarUrl": "https://api.dicebear.com/7.x/bottts-neutral/svg?seed=jjmeoow_2008",
+    "avatarStyle": "bottts-neutral",
+    "avatarSeed": "jjmeoow_2008",
+    "isDeveloper": false,
+    "role": "player",
+    "totalTimePlayed": 0,
+    "stats": {
+      "wins": 0,
+      "losses": 0,
+      "totalRounds": 0,
+      "shotsFired": 0,
+      "shotsHit": 0,
+      "selfShots": 0,
+      "damageDealt": 0,
+      "itemsUsed": 0,
+      "highestRound": 0,
+      "matchHistory": []
+    },
+    "needsGmailMigration": true,
+    "legacyPasswordHash": "2008Jan-7",
+    "playerId": "@jjmeoow#2705",
+    "createdAt": 1795526553870,
+    "lastLoginAt": 1795526553870
+  },
+  {
+    "uid": "upstash_kathir_1795526554087",
+    "username": "kathir",
+    "displayName": "kathir",
+    "email": "kathir@legacy.local",
+    "avatarUrl": "https://api.dicebear.com/7.x/bottts-neutral/svg?seed=kathir_kath",
+    "avatarStyle": "bottts-neutral",
+    "avatarSeed": "kathir_kath",
+    "isDeveloper": false,
+    "role": "player",
+    "totalTimePlayed": 0,
+    "stats": {
+      "wins": 0,
+      "losses": 0,
+      "totalRounds": 0,
+      "shotsFired": 0,
+      "shotsHit": 0,
+      "selfShots": 0,
+      "damageDealt": 0,
+      "itemsUsed": 0,
+      "highestRound": 0,
+      "matchHistory": []
+    },
+    "needsGmailMigration": true,
+    "legacyPasswordHash": "kathir001",
+    "playerId": "@kathir#8533",
+    "createdAt": 1795526554087,
+    "lastLoginAt": 1795526554087
+  },
+  {
+    "uid": "upstash_kotaaaaaaa12_1795526554326",
+    "username": "kotaaaaaaa12",
+    "displayName": "kotaaaaaaa12",
+    "email": "kotaaaaaaa12@legacy.local",
+    "avatarUrl": "https://api.dicebear.com/7.x/bottts-neutral/svg?seed=kotaaaaaaa12_Kota",
+    "avatarStyle": "bottts-neutral",
+    "avatarSeed": "kotaaaaaaa12_Kota",
+    "isDeveloper": false,
+    "role": "player",
+    "totalTimePlayed": 0,
+    "stats": {
+      "wins": 0,
+      "losses": 0,
+      "totalRounds": 0,
+      "shotsFired": 0,
+      "shotsHit": 0,
+      "selfShots": 0,
+      "damageDealt": 0,
+      "itemsUsed": 0,
+      "highestRound": 0,
+      "matchHistory": []
+    },
+    "needsGmailMigration": true,
+    "legacyPasswordHash": "Kotarodesuyo-1212",
+    "playerId": "@kotaaaaaaa12#5574",
+    "createdAt": 1795526554326,
+    "lastLoginAt": 1795526554326
+  },
+  {
+    "uid": "upstash_krisno.saha_1795526554532",
+    "username": "krisno.saha",
+    "displayName": "krisno.saha",
+    "email": "krisno.saha@legacy.local",
+    "avatarUrl": "https://api.dicebear.com/7.x/bottts-neutral/svg?seed=krisno.saha_kris",
+    "avatarStyle": "bottts-neutral",
+    "avatarSeed": "krisno.saha_kris",
+    "isDeveloper": false,
+    "role": "player",
+    "totalTimePlayed": 0,
+    "stats": {
+      "wins": 0,
+      "losses": 0,
+      "totalRounds": 0,
+      "shotsFired": 0,
+      "shotsHit": 0,
+      "selfShots": 0,
+      "damageDealt": 0,
+      "itemsUsed": 0,
+      "highestRound": 0,
+      "matchHistory": []
+    },
+    "needsGmailMigration": true,
+    "legacyPasswordHash": "krisno",
+    "playerId": "@krisnosaha#7473",
+    "createdAt": 1795526554532,
+    "lastLoginAt": 1795526554532
+  },
+  {
+    "uid": "upstash_my_1795526554743",
+    "username": "my",
+    "displayName": "my",
+    "email": "my@legacy.local",
+    "avatarUrl": "https://api.dicebear.com/7.x/bottts-neutral/svg?seed=my_M093",
+    "avatarStyle": "bottts-neutral",
+    "avatarSeed": "my_M093",
+    "isDeveloper": false,
+    "role": "player",
+    "totalTimePlayed": 0,
+    "stats": {
+      "wins": 0,
+      "losses": 0,
+      "totalRounds": 0,
+      "shotsFired": 0,
+      "shotsHit": 0,
+      "selfShots": 0,
+      "damageDealt": 0,
+      "itemsUsed": 0,
+      "highestRound": 0,
+      "matchHistory": []
+    },
+    "needsGmailMigration": true,
+    "legacyPasswordHash": "M093962",
+    "playerId": "@my#4500",
+    "createdAt": 1795526554743,
+    "lastLoginAt": 1795526554743
+  },
+  {
+    "uid": "upstash_navitoper_1795526554969",
+    "username": "navitoper",
+    "displayName": "navitoper",
+    "email": "navitoper@legacy.local",
+    "avatarUrl": "https://api.dicebear.com/7.x/bottts-neutral/svg?seed=navitoper_1385",
+    "avatarStyle": "bottts-neutral",
+    "avatarSeed": "navitoper_1385",
+    "isDeveloper": false,
+    "role": "player",
+    "totalTimePlayed": 0,
+    "stats": {
+      "wins": 0,
+      "losses": 0,
+      "totalRounds": 0,
+      "shotsFired": 0,
+      "shotsHit": 0,
+      "selfShots": 0,
+      "damageDealt": 0,
+      "itemsUsed": 0,
+      "highestRound": 0,
+      "matchHistory": []
+    },
+    "needsGmailMigration": true,
+    "legacyPasswordHash": "1385032056088",
+    "playerId": "@navitoper#8564",
+    "createdAt": 1795526554969,
+    "lastLoginAt": 1795526554969
+  },
+  {
+    "uid": "upstash_paarth_1795526555163",
+    "username": "paarth",
+    "displayName": "paarth",
+    "email": "paarth@legacy.local",
+    "avatarUrl": "https://api.dicebear.com/7.x/bottts-neutral/svg?seed=paarth_Paar",
+    "avatarStyle": "bottts-neutral",
+    "avatarSeed": "paarth_Paar",
+    "isDeveloper": false,
+    "role": "player",
+    "totalTimePlayed": 0,
+    "stats": {
+      "wins": 0,
+      "losses": 0,
+      "totalRounds": 0,
+      "shotsFired": 0,
+      "shotsHit": 0,
+      "selfShots": 0,
+      "damageDealt": 0,
+      "itemsUsed": 0,
+      "highestRound": 0,
+      "matchHistory": []
+    },
+    "needsGmailMigration": true,
+    "legacyPasswordHash": "Paarth@1603",
+    "playerId": "@paarth#5866",
+    "createdAt": 1795526555163,
+    "lastLoginAt": 1795526555163
+  },
+  {
+    "uid": "upstash_priyanshu01_1795526555352",
+    "username": "priyanshu01",
+    "displayName": "priyanshu01",
+    "email": "priyanshu01@legacy.local",
+    "avatarUrl": "https://api.dicebear.com/7.x/bottts-neutral/svg?seed=priyanshu01_priy",
+    "avatarStyle": "bottts-neutral",
+    "avatarSeed": "priyanshu01_priy",
+    "isDeveloper": false,
+    "role": "player",
+    "totalTimePlayed": 0,
+    "stats": {
+      "wins": 0,
+      "losses": 1,
+      "totalRounds": 3,
+      "shotsFired": 9,
+      "shotsHit": 1,
+      "selfShots": 3,
+      "damageDealt": 1,
+      "itemsUsed": 0,
+      "highestRound": 3,
+      "matchHistory": [
+        {
+          "result": "LOSS",
+          "roundsSurvived": 3,
+          "shotsFired": 9,
+          "shotsHit": 1,
+          "selfShots": 3,
+          "itemsUsed": {},
+          "damageDealt": 1,
+          "damageTaken": 2,
+          "totalScore": 220,
+          "isHardMode": false,
+          "roundResults": [
+            "LOSS"
+          ],
+          "isMultiplayer": false,
+          "timestamp": 1787031021221,
+          "mpPlayers": []
+        }
+      ]
+    },
+    "needsGmailMigration": true,
+    "legacyPasswordHash": "priyanshu",
+    "playerId": "@priyanshu01#4342",
+    "createdAt": 1795526555352,
+    "lastLoginAt": 1795526555352
+  },
+  {
+    "uid": "upstash_priyanshu123_1795526555570",
+    "username": "priyanshu123",
+    "displayName": "priyanshu123",
+    "email": "priyanshu123@legacy.local",
+    "avatarUrl": "https://api.dicebear.com/7.x/bottts-neutral/svg?seed=priyanshu123_ANSH",
+    "avatarStyle": "bottts-neutral",
+    "avatarSeed": "priyanshu123_ANSH",
+    "isDeveloper": false,
+    "role": "player",
+    "totalTimePlayed": 0,
+    "stats": {
+      "wins": 0,
+      "losses": 0,
+      "totalRounds": 0,
+      "shotsFired": 0,
+      "shotsHit": 0,
+      "selfShots": 0,
+      "damageDealt": 0,
+      "itemsUsed": 0,
+      "highestRound": 0,
+      "matchHistory": []
+    },
+    "needsGmailMigration": true,
+    "legacyPasswordHash": "ANSH1221#$",
+    "playerId": "@priyanshu123#9303",
+    "createdAt": 1795526555570,
+    "lastLoginAt": 1795526555570
+  },
+  {
+    "uid": "upstash_quiet_1795526555763",
+    "username": "quiet",
+    "displayName": "quiet",
+    "email": "quiet@legacy.local",
+    "avatarUrl": "https://api.dicebear.com/7.x/bottts-neutral/svg?seed=quiet_E890",
+    "avatarStyle": "bottts-neutral",
+    "avatarSeed": "quiet_E890",
+    "isDeveloper": false,
+    "role": "player",
+    "totalTimePlayed": 0,
+    "stats": {
+      "wins": 1,
+      "losses": 0,
+      "totalRounds": 8,
+      "shotsFired": 39,
+      "shotsHit": 9,
+      "selfShots": 16,
+      "damageDealt": 12,
+      "itemsUsed": 45,
+      "highestRound": 8,
+      "matchHistory": [
+        {
+          "result": "WIN",
+          "roundsSurvived": 8,
+          "shotsFired": 39,
+          "shotsHit": 9,
+          "selfShots": 16,
+          "itemsUsed": {
+            "GLASS": 5,
+            "ADRENALINE": 6,
+            "BIG_INVERTER": 5,
+            "SAW": 6,
+            "CUFFS": 4,
+            "CHOKE": 4,
+            "FLASHBANG": 4,
+            "PHONE": 5,
+            "CIGS": 2,
+            "CONTRACT": 4
+          },
+          "damageDealt": 12,
+          "damageTaken": 9,
+          "totalScore": 2455,
+          "isHardMode": false,
+          "roundResults": [
+            "LOSS",
+            "WIN",
+            "WIN"
+          ],
+          "isMultiplayer": true,
+          "mpPlayers": [
+            {
+              "name": "QUIET",
+              "id": "s0Jakdc8mHHDP9MmAAAB",
+              "isHost": true,
+              "isMe": true,
+              "result": "WIN"
+            },
+            {
+              "name": "RAFA",
+              "id": "pFP3zOLywYM_0iHzAAAD",
+              "isHost": false,
+              "isMe": false,
+              "result": "LOSS"
+            }
+          ],
+          "timestamp": 1788451368473
+        }
+      ]
+    },
+    "needsGmailMigration": true,
+    "legacyPasswordHash": "E890f894!",
+    "playerId": "@quiet#2572",
+    "createdAt": 1795526555763,
+    "lastLoginAt": 1795526555763
+  },
+  {
+    "uid": "upstash_rafa_1795526555974",
+    "username": "rafa",
+    "displayName": "rafa",
+    "email": "rafa@legacy.local",
+    "avatarUrl": "https://api.dicebear.com/7.x/bottts-neutral/svg?seed=rafa_1234",
+    "avatarStyle": "bottts-neutral",
+    "avatarSeed": "rafa_1234",
+    "isDeveloper": false,
+    "role": "player",
+    "totalTimePlayed": 0,
+    "stats": {
+      "wins": 0,
+      "losses": 2,
+      "totalRounds": 8,
+      "shotsFired": 51,
+      "shotsHit": 8,
+      "selfShots": 22,
+      "damageDealt": 8,
+      "itemsUsed": 43,
+      "highestRound": 7,
+      "matchHistory": [
+        {
+          "result": "LOSS",
+          "roundsSurvived": 7,
+          "shotsFired": 39,
+          "shotsHit": 6,
+          "selfShots": 16,
+          "itemsUsed": {
+            "FLASHBANG": 6,
+            "GLASS": 4,
+            "PHONE": 8,
+            "CRUSHER": 2,
+            "MIRROR": 2,
+            "CIGS": 5,
+            "ADRENALINE": 2,
+            "CONTRACT": 2,
+            "CUFFS": 2
+          },
+          "damageDealt": 6,
+          "damageTaken": 15,
+          "totalScore": 815,
+          "isHardMode": false,
+          "roundResults": [
+            "WIN",
+            "LOSS",
+            "LOSS"
+          ],
+          "isMultiplayer": true,
+          "mpPlayers": [
+            {
+              "name": "QUIET",
+              "id": "s0Jakdc8mHHDP9MmAAAB",
+              "isHost": true,
+              "isMe": false,
+              "result": "WIN"
+            },
+            {
+              "name": "RAFA",
+              "id": "pFP3zOLywYM_0iHzAAAD",
+              "isHost": false,
+              "isMe": true,
+              "result": "LOSS"
+            }
+          ],
+          "timestamp": 1788451367966
+        },
+        {
+          "result": "LOSS",
+          "roundsSurvived": 1,
+          "shotsFired": 12,
+          "shotsHit": 2,
+          "selfShots": 6,
+          "itemsUsed": {
+            "FLASHBANG": 4,
+            "GLASS": 4,
+            "PHONE": 2
+          },
+          "damageDealt": 2,
+          "damageTaken": 5,
+          "totalScore": 90,
+          "isHardMode": false,
+          "roundResults": [
+            "WIN",
+            "LOSS"
+          ],
+          "isMultiplayer": true,
+          "mpPlayers": [
+            {
+              "name": "QUIET",
+              "id": "s0Jakdc8mHHDP9MmAAAB",
+              "isHost": true,
+              "isMe": false,
+              "result": "WIN"
+            },
+            {
+              "name": "RAFA",
+              "id": "pFP3zOLywYM_0iHzAAAD",
+              "isHost": false,
+              "isMe": true,
+              "result": "LOSS"
+            }
+          ],
+          "timestamp": 1788450576475
+        }
+      ]
+    },
+    "needsGmailMigration": true,
+    "legacyPasswordHash": "123456",
+    "playerId": "@rafa#1650",
+    "createdAt": 1795526555974,
+    "lastLoginAt": 1795526555974
+  },
+  {
+    "uid": "upstash_test_1795526556193",
+    "username": "test",
+    "displayName": "test",
+    "email": "test@legacy.local",
+    "avatarUrl": "https://api.dicebear.com/7.x/bottts-neutral/svg?seed=test_Test",
+    "avatarStyle": "bottts-neutral",
+    "avatarSeed": "test_Test",
+    "isDeveloper": false,
+    "role": "player",
+    "totalTimePlayed": 0,
+    "stats": {
+      "wins": 0,
+      "losses": 11,
+      "totalRounds": 19,
+      "shotsFired": 49,
+      "shotsHit": 3,
+      "selfShots": 8,
+      "damageDealt": 3,
+      "itemsUsed": 0,
+      "highestRound": 3,
+      "matchHistory": [
+        {
+          "result": "LOSS",
+          "roundsSurvived": 3,
+          "shotsFired": 7,
+          "shotsHit": 1,
+          "selfShots": 4,
+          "itemsUsed": {},
+          "damageDealt": 1,
+          "damageTaken": 2,
+          "totalScore": 170,
+          "isHardMode": false,
+          "roundResults": [
+            "LOSS"
+          ],
+          "timestamp": 1783095799910,
+          "isMultiplayer": false,
+          "mpPlayers": []
+        },
+        {
+          "result": "LOSS",
+          "roundsSurvived": 2,
+          "shotsFired": 5,
+          "shotsHit": 1,
+          "selfShots": 2,
+          "itemsUsed": {},
+          "damageDealt": 1,
+          "damageTaken": 2,
+          "totalScore": 170,
+          "isHardMode": false,
+          "roundResults": [
+            "LOSS"
+          ],
+          "timestamp": 1783003742495,
+          "isMultiplayer": false,
+          "mpPlayers": []
+        },
+        {
+          "result": "LOSS",
+          "roundsSurvived": 1,
+          "shotsFired": 4,
+          "shotsHit": 0,
+          "selfShots": 0,
+          "itemsUsed": {},
+          "damageDealt": 0,
+          "damageTaken": 2,
+          "totalScore": 100,
+          "isHardMode": false,
+          "roundResults": [
+            "LOSS"
+          ],
+          "timestamp": 1782916840782
+        },
+        {
+          "result": "LOSS",
+          "roundsSurvived": 2,
+          "shotsFired": 4,
+          "shotsHit": 0,
+          "selfShots": 0,
+          "itemsUsed": {},
+          "damageDealt": 0,
+          "damageTaken": 2,
+          "totalScore": 200,
+          "isHardMode": false,
+          "roundResults": [
+            "LOSS"
+          ],
+          "timestamp": 1782650994230
+        }
+      ]
+    },
+    "needsGmailMigration": true,
+    "legacyPasswordHash": "Test@123",
+    "playerId": "@test#2498",
+    "createdAt": 1795526556193,
+    "lastLoginAt": 1795526556193
+  },
+  {
+    "uid": "upstash_test2_1795526556413",
+    "username": "test2",
+    "displayName": "test2",
+    "email": "test2@legacy.local",
+    "avatarUrl": "https://api.dicebear.com/7.x/bottts-neutral/svg?seed=test2_Test",
+    "avatarStyle": "bottts-neutral",
+    "avatarSeed": "test2_Test",
+    "isDeveloper": false,
+    "role": "player",
+    "totalTimePlayed": 0,
+    "stats": {
+      "wins": 0,
+      "losses": 1,
+      "totalRounds": 2,
+      "shotsFired": 12,
+      "shotsHit": 0,
+      "selfShots": 6,
+      "damageDealt": 0,
+      "itemsUsed": 0,
+      "mostUsedItem": "NONE",
+      "highestRound": 2,
+      "itemPoints": 0,
+      "matchHistory": [
+        {
+          "result": "LOSS",
+          "roundsSurvived": 2,
+          "shotsFired": 12,
+          "shotsHit": 0,
+          "selfShots": 6,
+          "itemsUsed": {},
+          "damageDealt": 0,
+          "damageTaken": 8,
+          "totalScore": 0,
+          "isHardMode": false,
+          "roundResults": [
+            "LOSS"
+          ],
+          "isMultiplayer": true,
+          "mpPlayers": [
+            {
+              "name": "TEST",
+              "id": "7Dp0hP1PT-JrzIOiAAAF",
+              "isHost": true,
+              "isMe": false,
+              "result": "WIN"
+            },
+            {
+              "name": "TEST2",
+              "id": "LalS0ESeCENOiaJSAAAH",
+              "isHost": false,
+              "isMe": true,
+              "result": "LOSS"
+            }
+          ],
+          "timestamp": 1782648523117
+        }
+      ]
+    },
+    "needsGmailMigration": true,
+    "legacyPasswordHash": "Test@123",
+    "playerId": "@test2#2488",
+    "createdAt": 1795526556413,
+    "lastLoginAt": 1795526556413
+  },
+  {
+    "uid": "upstash_vigilante_1795526556665",
+    "username": "vigilante",
+    "displayName": "vigilante",
+    "email": "vigilante@legacy.local",
+    "avatarUrl": "https://api.dicebear.com/7.x/bottts-neutral/svg?seed=vigilante_IMys",
+    "avatarStyle": "bottts-neutral",
+    "avatarSeed": "vigilante_IMys",
+    "isDeveloper": false,
+    "role": "player",
+    "totalTimePlayed": 0,
+    "stats": {
+      "wins": 0,
+      "losses": 0,
+      "totalRounds": 0,
+      "shotsFired": 0,
+      "shotsHit": 0,
+      "selfShots": 0,
+      "damageDealt": 0,
+      "itemsUsed": 0,
+      "highestRound": 0,
+      "matchHistory": []
+    },
+    "needsGmailMigration": true,
+    "legacyPasswordHash": "IMyselfAdit@22",
+    "playerId": "@vigilante#1499",
+    "createdAt": 1795526556665,
+    "lastLoginAt": 1795526556665
+  },
+  {
+    "uid": "upstash_vijay_1795526556872",
+    "username": "vijay",
+    "displayName": "vijay",
+    "email": "vijay@legacy.local",
+    "avatarUrl": "https://api.dicebear.com/7.x/bottts-neutral/svg?seed=vijay_Vija",
+    "avatarStyle": "bottts-neutral",
+    "avatarSeed": "vijay_Vija",
+    "isDeveloper": false,
+    "role": "player",
+    "totalTimePlayed": 0,
+    "stats": {
+      "wins": 0,
+      "losses": 0,
+      "totalRounds": 0,
+      "shotsFired": 0,
+      "shotsHit": 0,
+      "selfShots": 0,
+      "damageDealt": 0,
+      "itemsUsed": 0,
+      "highestRound": 0,
+      "matchHistory": []
+    },
+    "needsGmailMigration": true,
+    "legacyPasswordHash": "Vijay@123",
+    "playerId": "@vijay#6527",
+    "createdAt": 1795526556872,
+    "lastLoginAt": 1795526556872
+  },
+  {
+    "uid": "upstash_viplord_1795526557210",
+    "username": "viplord",
+    "displayName": "viplord",
+    "email": "viplord@legacy.local",
+    "avatarUrl": "https://api.dicebear.com/7.x/bottts-neutral/svg?seed=viplord_0708",
+    "avatarStyle": "bottts-neutral",
+    "avatarSeed": "viplord_0708",
+    "isDeveloper": false,
+    "role": "player",
+    "totalTimePlayed": 0,
+    "stats": {
+      "wins": 0,
+      "losses": 0,
+      "totalRounds": 0,
+      "shotsFired": 0,
+      "shotsHit": 0,
+      "selfShots": 0,
+      "damageDealt": 0,
+      "itemsUsed": 0,
+      "highestRound": 0,
+      "matchHistory": []
+    },
+    "needsGmailMigration": true,
+    "legacyPasswordHash": "070897Pahan)",
+    "playerId": "@viplord#8898",
+    "createdAt": 1795526557210,
+    "lastLoginAt": 1795526557210
+  },
+  {
+    "uid": "upstash_zihao_1795526559019",
+    "username": "zihao",
+    "displayName": "zihao",
+    "email": "zihao@legacy.local",
+    "avatarUrl": "https://api.dicebear.com/7.x/bottts-neutral/svg?seed=zihao_gzh4",
+    "avatarStyle": "bottts-neutral",
+    "avatarSeed": "zihao_gzh4",
+    "isDeveloper": false,
+    "role": "player",
+    "totalTimePlayed": 0,
+    "stats": {
+      "wins": 0,
+      "losses": 0,
+      "totalRounds": 0,
+      "shotsFired": 0,
+      "shotsHit": 0,
+      "selfShots": 0,
+      "damageDealt": 0,
+      "itemsUsed": 0,
+      "highestRound": 0,
+      "matchHistory": []
+    },
+    "needsGmailMigration": true,
+    "legacyPasswordHash": "gzh4282297",
+    "playerId": "@zihao#8679",
+    "createdAt": 1795526559019,
+    "lastLoginAt": 1795526559019
+  }
+]

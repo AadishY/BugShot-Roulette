@@ -1,0 +1,77 @@
+# Bugshot Roulette - Complete Technical & Gameplay Specification
+
+> Created by Aadish (https://github.com/AadishY)
+> Website: https://bugshotroulette.pages.dev/
+> Repository: https://github.com/AadishY/BugShot-Roulette
+
+## 1. Overview & Identity
+
+Bugshot Roulette is an open-source, web-based 3D tactical game of chance and bluffing. Inspired by Mike Klubnika's Buckshot Roulette, Bugshot Roulette was engineered from the ground up by Aadish using modern web standards (React 19, TypeScript, Three.js, React Three Fiber, Vite, and WebSockets).
+
+Key aliases and search tags:
+- Aadish
+- Aadish Roulette
+- Aadish Bugshot
+- Bugshot Roulette
+- BugshotRouleette
+- Buckshot Roulette Browser Game
+- Buckshot Roulette Multiplayer
+- 12 Gauge Shotgun Roulette
+
+## 2. Gameplay Architecture
+
+### Magazine & Rounds
+- Magazines contain between 2 and 8 shells.
+- Before each round, the game displays the shell count breakdown: Live (red) shells and Blank (blue) shells.
+- The shells are loaded in a randomized order known only to the internal state engine.
+
+### Player Turn Actions
+- **Item Consumption**: Players may use items in their inventory during their turn before interacting with the shotgun.
+- **Shot Resolution**:
+  - **Self-Target**:
+    - If BLANK: Turn continues, allowing the player another shot or item usage.
+    - If LIVE: The player suffers damage (1 HP default, 2 HP if Hand Saw active), and turn transitions to opponent.
+  - **Opponent-Target**:
+    - If LIVE: Opponent suffers damage (1 HP default, 2 HP if Hand Saw active), and turn transitions to opponent.
+    - If BLANK: 0 damage dealt, turn transitions to opponent.
+
+### Health & Defeat
+- When a combatant's health reaches 0, the Totem of Undying will trigger if possessed (restoring 1 HP). If no totem is held, the match ends in victory or defeat.
+
+## 3. Items & Strategic Value
+
+- **Cigarettes**: Heals 1 HP (up to maximum HP limit).
+- **Beer**: Ejects the currently chambered shell without firing, revealing whether it was live or blank.
+- **Handcuffs**: Skips the opponent's upcoming turn.
+- **Magnifying Glass**: Inspects the current chambered shell secretly.
+- **Hand Saw**: Doubles next shot damage from 1 to 2 HP.
+- **Burner Phone**: Calls a mysterious line that reveals the polarity of a future shell.
+- **Inverter**: Toggles the polarity of the currently loaded shell (Live <-> Blank).
+- **Big Inverter**: Inverts the polarity of all remaining shells in the magazine.
+- **Adrenaline**: Steals one item from the opponent's inventory and consumes it immediately.
+- **Remote**: Swaps the current chambered shell with the next shell in line.
+- **Choke**: Discharges the current and next shell in a dual blast.
+- **Blood Contract**: Sacrifices 1 HP to draw 2 high-value items.
+- **Lucky Charm**: Multiplicatively improves item drop tier quality.
+- **Flashbang**: Blinds the opponent, preventing item use on their next turn.
+- **Crusher**: Destroys an item in the opponent's inventory.
+- **Totem of Undying**: Passive safeguard preventing lethal knockout.
+- **Mirror**: Repeats all items the opponent used during their previous turn.
+- **Tarot Deck**: Draw 1 of 6 cards with high-variance board-altering effects.
+- **Jackpot Slot Machine**: Spins for 1 to 3 shots of damage immunity.
+
+## 4. Single-Player & Multiplayer
+
+- **Single Player vs AI Dealer**:
+  - **Normal Mode**: Standard AI decision tree balancing HP recovery, damage output, and shell probability calculation.
+  - **Hard Mode (Cheating)**: Dynamic behavior states (Aggressive Killer vs Panic Survival), heightened shell intuition (60%), and intelligent item drafting.
+- **Real-Time Multiplayer**:
+  - Powered by Socket.io server with real-time synchronized turn timers, chat system, lobby codes, and authoritative game state.
+
+## 5. Technology Stack
+
+- **Client**: React 19, TypeScript, Vite, Tailwind CSS
+- **3D Graphics**: Three.js, React Three Fiber (@react-three/fiber), React Three Drei (@react-three/drei)
+- **Audio & Post-processing**: Web Audio API, Custom CRT post-processing scanlines & chromatic aberration
+- **Multiplayer Backend**: Node.js, Express, Socket.io
+- **Hosting**: Cloudflare Pages

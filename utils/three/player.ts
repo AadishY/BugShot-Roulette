@@ -1,10 +1,17 @@
 import * as THREE from 'three';
+import { getGraphicsPreset } from '../../types';
 import { clone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { getPreloadedGLB } from './glbPreloader';
 
 type PlayerModelKey = 'DEFAULT' | 'AADISH' | 'ASP' | 'YASH' | 'YUVRAJ';
 
 const SMOOTH_HEAD_MODELS = new Set<PlayerModelKey>(['ASP', 'YUVRAJ', 'AADISH']);
+const isAndroidDevice = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
+
+// Reusable scratch objects to eliminate GC allocations during GLB bounding calculations
+const _scratchBox3 = new THREE.Box3();
+const _scratchSizeVec3 = new THREE.Vector3();
+const _modelCenterVec3 = new THREE.Vector3();
 
 interface PlayerModelConfig {
     path: string;
@@ -64,10 +71,11 @@ const shouldHideByName = (name: string): boolean => {
 const setTextureQuality = (texture: THREE.Texture | null | undefined, isColor = false) => {
     if (!texture) return;
     const tex = texture as THREE.Texture & { colorSpace?: THREE.ColorSpace; encoding?: THREE.TextureEncoding };
-    tex.minFilter = THREE.LinearMipMapLinearFilter;
+    tex.minFilter = tex.generateMipmaps ? THREE.LinearMipMapLinearFilter : THREE.LinearFilter;
     tex.magFilter = THREE.LinearFilter;
     tex.generateMipmaps = true;
-    tex.anisotropy = Math.max(tex.anisotropy || 1, 8);
+    // On Android Adreno/Mali, clamp anisotropy to 1 to eliminate memory bandwidth stalls from 8x over-sampling
+    tex.anisotropy = isAndroidDevice ? 1 : Math.max(tex.anisotropy || 1, 8);
     tex.needsUpdate = true;
     const texAny = tex as any;
     if (isColor) {
@@ -98,9 +106,14 @@ export const createPlayerAvatar = (scene: THREE.Scene, position: THREE.Vector3, 
     avatarGroup.rotation.y = rotationY + Math.PI;
 
     const settings = scene.userData.settings || {};
-    const ultraPerformance = !!settings.ultraPerformance;
-    const balancedPerformance = !!settings.balancedPerformance;
-    const lowPerf = ultraPerformance || balancedPerformance;
+    const preset = getGraphicsPreset(settings);
+    const isPotato = preset === 'potato';
+    const isLow = preset === 'low';
+    const isBalanced = preset === 'balanced';
+    const isHigh = preset === 'high';
+    const isUltra = false;
+    const isMobile = scene.userData.isMobile || false;
+    const shouldCastShadow = (isHigh && !isMobile) || (isBalanced && !isMobile);
     const isSmoothHead = SMOOTH_HEAD_MODELS.has(modelKey);
     const config = PLAYER_MODEL_CONFIGS[modelKey] ?? PLAYER_MODEL_CONFIGS.DEFAULT;
 
@@ -128,13 +141,12 @@ export const createPlayerAvatar = (scene: THREE.Scene, position: THREE.Vector3, 
                 // hiding the main head geometry.
                 if (obj instanceof THREE.Mesh && obj.geometry) {
                     try {
-                        const bbox = new THREE.Box3().setFromObject(obj);
-                        const size = new THREE.Vector3();
-                        bbox.getSize(size);
-                        const isVeryLarge = size.x > 16 || size.y > 16 || size.z > 16;
-                        const isFlatPlane = (size.x > 12 && size.y < 1.5) || (size.z > 12 && size.y < 1.5);
+                        _scratchBox3.setFromObject(obj);
+                        _scratchBox3.getSize(_scratchSizeVec3);
+                        const isVeryLarge = _scratchSizeVec3.x > 16 || _scratchSizeVec3.y > 16 || _scratchSizeVec3.z > 16;
+                        const isFlatPlane = (_scratchSizeVec3.x > 12 && _scratchSizeVec3.y < 1.5) || (_scratchSizeVec3.z > 12 && _scratchSizeVec3.y < 1.5);
                         if ((isVeryLarge || isFlatPlane) && /bg|background|wall|floor|room|stage|backdrop|env|environment|plane/i.test(obj.name)) {
-                            console.warn(`[GLB-HIDE] Player GLB "${config.path}" hiding mesh`, obj.name || '(unnamed)', `size=${size.x.toFixed(2)}x${size.y.toFixed(2)}x${size.z.toFixed(2)}`);
+                            console.warn(`[GLB-HIDE] Player GLB "${config.path}" hiding mesh`, obj.name || '(unnamed)', `size=${_scratchSizeVec3.x.toFixed(2)}x${_scratchSizeVec3.y.toFixed(2)}x${_scratchSizeVec3.z.toFixed(2)}`);
                             obj.visible = false;
                             return;
                         }
@@ -144,8 +156,8 @@ export const createPlayerAvatar = (scene: THREE.Scene, position: THREE.Vector3, 
                 }
 
                 if (obj instanceof THREE.Mesh) {
-                    obj.castShadow = !lowPerf;
-                    obj.receiveShadow = false;
+                    obj.castShadow = shouldCastShadow;
+                    obj.receiveShadow = isUltra;
 
                     if (obj.material) {
                         const mats: THREE.Material[] = Array.isArray(obj.material)
@@ -153,16 +165,24 @@ export const createPlayerAvatar = (scene: THREE.Scene, position: THREE.Vector3, 
                             : [obj.material];
 
                         for (const mat of mats) {
+                            // Ensure cloned material is uniquely disposed on scene teardown,
+                            // while shared textures/geometries remain cached.
+                            if (mat.userData) {
+                                delete mat.userData.isCachedAsset;
+                            }
+
                             const m = mat as THREE.MeshStandardMaterial;
 
-                            setTextureQuality(m.map, true);
-                            setTextureQuality(m.normalMap, false);
-                            setTextureQuality(m.roughnessMap, false);
-                            setTextureQuality((m as any).aoMap, false);
-                            setTextureQuality((m as any).emissiveMap, true);
-                            setTextureQuality((m as any).metalnessMap, false);
-                            setTextureQuality((m as any).bumpMap, false);
-                            setTextureQuality((m as any).displacementMap, false);
+                            if (!isPotato) {
+                                setTextureQuality(m.map, true);
+                                setTextureQuality(m.normalMap, false);
+                                setTextureQuality(m.roughnessMap, false);
+                                setTextureQuality((m as any).aoMap, false);
+                                setTextureQuality((m as any).emissiveMap, true);
+                                setTextureQuality((m as any).metalnessMap, false);
+                                setTextureQuality((m as any).bumpMap, false);
+                                setTextureQuality((m as any).displacementMap, false);
+                            }
 
                             if (m.transparent || m.opacity < 0.9) {
                                 m.depthWrite = false;
@@ -173,18 +193,18 @@ export const createPlayerAvatar = (scene: THREE.Scene, position: THREE.Vector3, 
                                 m.side = THREE.DoubleSide;
                                 m.roughness = m.roughnessMap ? Math.min(m.roughness, 0.85) : 0.68;
                                 m.metalness = 0.0;
-                                m.envMapIntensity = lowPerf ? 0.45 : 1.4;
+                                m.envMapIntensity = isHigh ? 1.4 : (isBalanced ? 0.9 : (isLow ? 0.5 : 0.25));
                                 if (m.emissive) m.emissive.setHex(0x120a08); // subtle warm lift
-                                m.emissiveIntensity = 0.22;
-                                m.fog = false;
+                                m.emissiveIntensity = isPotato ? 0.12 : 0.22;
+                                m.fog = !isPotato;
                                 if (m.color) {
                                     m.color.setHex(0xffffff);
                                 }
                                 if (m.normalScale) {
-                                    m.normalScale.setScalar(lowPerf ? 0 : 0.85);
+                                    m.normalScale.setScalar(isPotato ? 0 : (isLow ? 0.45 : (isBalanced ? 0.65 : 0.95)));
                                 }
 
-                                if (ultraPerformance) {
+                                if (isPotato) {
                                     m.normalMap = null;
                                     m.bumpMap = null;
                                     m.roughnessMap = null;
@@ -192,9 +212,6 @@ export const createPlayerAvatar = (scene: THREE.Scene, position: THREE.Vector3, 
                                     m.aoMap = null;
                                     m.lightMap = null;
                                     m.emissiveMap = null;
-                                } else if (balancedPerformance) {
-                                    m.normalMap = null;
-                                    m.bumpMap = null;
                                 }
 
                                 m.needsUpdate = true;
@@ -211,10 +228,10 @@ export const createPlayerAvatar = (scene: THREE.Scene, position: THREE.Vector3, 
 
             // Match the dealer path: position the model from its bounding box and
             // leave its authored orientation intact. The parent avatar group handles
-            // the seat-facing rotation.
-            const box = new THREE.Box3().setFromObject(model);
-            const center = box.getCenter(new THREE.Vector3());
-            model.position.set(-center.x + config.positionOffset.x, -box.min.y + config.positionOffset.y, -center.z + config.positionOffset.z);
+            // the seat-facing rotation (using pre-allocated scratch objects).
+            _scratchBox3.setFromObject(model);
+            _scratchBox3.getCenter(_modelCenterVec3);
+            model.position.set(-_modelCenterVec3.x + config.positionOffset.x, -_scratchBox3.min.y + config.positionOffset.y, -_modelCenterVec3.z + config.positionOffset.z);
             model.updateMatrixWorld(true);
 
             avatarGroup.remove(placeholderGroup);
@@ -224,85 +241,8 @@ export const createPlayerAvatar = (scene: THREE.Scene, position: THREE.Vector3, 
             console.warn(`[PlayerAvatar] Failed to load GLB "${config.path}":`, error);
         });
 
-    // === HEALTH BAR REMOVED AT USER REQUEST ===
-    /*
-    const hpGroup = new THREE.Group();
-    hpGroup.position.set(0, 10.5, 0);
-
-    const hpBgGeo = new THREE.PlaneGeometry(4, 0.5);
-    const hpBg = new THREE.Mesh(hpBgGeo, new THREE.MeshBasicMaterial({ color: 0x331111, side: THREE.DoubleSide }));
-    hpGroup.add(hpBg);
-
-    const hpWidth = (hp / maxHp) * 3.8;
-    const hpFillGeo = new THREE.PlaneGeometry(hpWidth, 0.4);
-    const hpFill = new THREE.Mesh(hpFillGeo, new THREE.MeshBasicMaterial({ color: 0xff3333, side: THREE.DoubleSide }));
-    hpFill.position.x = (hpWidth - 3.8) / 2;
-    hpFill.position.z = 0.01;
-    hpGroup.add(hpFill);
-
-    avatarGroup.add(hpGroup);
-    avatarGroup.userData.hpGroup = hpGroup;
-    avatarGroup.userData.hpFill = hpFill;
-    avatarGroup.userData.maxHp = maxHp;
-    */
-
-    // === NAME TAG ===
-    // Removed 3D name tag to use clean, crisp native HTML name tag overlay.
-
-    // === CHAT BUBBLE ===
-    const chatGroup = new THREE.Group();
-    chatGroup.position.set(0, 13, 0);
-    avatarGroup.add(chatGroup);
-    avatarGroup.userData.chatGroup = chatGroup;
     avatarGroup.userData.playerName = name;
 
     scene.add(avatarGroup);
     return avatarGroup;
-};
-
-// Helper to update player health bar
-export const updatePlayerHealth = (avatarGroup: THREE.Group, hp: number) => {
-    const hpFill = avatarGroup.userData.hpFill as THREE.Mesh;
-    const maxHp = avatarGroup.userData.maxHp || 4;
-    if (hpFill) {
-        const hpWidth = Math.max(0.1, (hp / maxHp) * 3.8);
-        hpFill.scale.x = hp / maxHp;
-        hpFill.position.x = (hpWidth - 3.8) / 2;
-    }
-};
-
-// Helper to show chat bubble
-export const showChatBubble = (avatarGroup: THREE.Group, message: string) => {
-    const chatGroup = avatarGroup.userData.chatGroup as THREE.Group;
-    if (!chatGroup) return;
-
-    // Clear existing
-    while (chatGroup.children.length) chatGroup.remove(chatGroup.children[0]);
-
-    // Create bubble
-    const canvas = document.createElement('canvas');
-    canvas.width = 512; canvas.height = 128;
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-        ctx.fillStyle = 'rgba(255,255,255,0.9)';
-        ctx.beginPath();
-        ctx.roundRect(0, 0, 512, 100, 20);
-        ctx.fill();
-        ctx.fillStyle = '#000000';
-        ctx.font = 'bold 24px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        const maxLen = 30;
-        const text = message.length > maxLen ? message.substring(0, maxLen) + '...' : message;
-        ctx.fillText(text, 256, 50);
-    }
-    const bubbleTex = new THREE.CanvasTexture(canvas);
-    const bubbleSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: bubbleTex, transparent: true }));
-    bubbleSprite.scale.set(6, 1.5, 1);
-    chatGroup.add(bubbleSprite);
-
-    // Auto-remove after delay
-    setTimeout(() => {
-        if (chatGroup.children.length) chatGroup.remove(bubbleSprite);
-    }, 4000);
 };

@@ -4,13 +4,14 @@ import { wait, randomInt } from '../gameUtils';
 import { MAX_ITEMS } from '../../constants';
 
 export const getCustomWeightedItem = (weights: Record<string, number>): ItemType => {
-    const items = Object.keys(weights) as ItemType[];
-    const totalWeight = items.reduce((sum, item) => sum + (weights[item] || 0), 0);
+    const sanitizedWeights = { ...weights, REMOTE: 0 };
+    const items = Object.keys(sanitizedWeights) as ItemType[];
+    const totalWeight = items.reduce((sum, item) => sum + (sanitizedWeights[item] || 0), 0);
     if (totalWeight <= 0) return 'BEER'; // fallback
     
     let roll = Math.random() * totalWeight;
     for (const item of items) {
-        const weight = weights[item] || 0;
+        const weight = sanitizedWeights[item] || 0;
         if (roll < weight) {
             return item;
         }
@@ -143,7 +144,7 @@ const getDealerCheatingItem = (hp: number): ItemType => {
     if (r < 0.45) return 'INVERTER';    // 20% Inverter
     if (r < 0.60) return 'CHOKE';       // 15% Choke
     if (r < 0.70) return 'CUFFS';       // 10% Cuffs
-    if (r < 0.80) return 'REMOTE';      // 10% Remote
+    if (r < 0.80) return 'BIG_INVERTER'; // 10% Big Inverter (Remote disabled)
     if (r < 0.90) return 'BIG_INVERTER'; // 10% Big Inverter
     if (r < 0.92) return 'ADRENALINE';  // 2% steal
     if (r < 0.96) return 'LUCKYCHARM';  // 4% luck
@@ -191,7 +192,7 @@ export const getMultiplayerDefaultWeights = (playerCount: number): Record<string
         INVERTER: 7,
         ADRENALINE: 7,
         CHOKE: 5,
-        REMOTE: playerCount > 2 ? 3 : 0,
+        REMOTE: 0,
         BIG_INVERTER: 4,
         LUCKYCHARM: 4,
         FLASHBANG: 5,
@@ -234,9 +235,7 @@ export const generateLootBatch = (
                     ? roomSettings.itemWeights
                     : defaultWeights;
                 
-                if (playerCount !== undefined && playerCount <= 2) {
-                    weights = { ...weights, REMOTE: 0 };
-                }
+                weights = { ...weights, REMOTE: 0 };
                 candidate = getCustomWeightedItem(weights);
             } else if (isCharmed) {
                 // Determine curated needed items pool based on HP
@@ -267,10 +266,16 @@ export const generateLootBatch = (
                 candidate = getRandomItem(isHardMode, forDealer);
             }
 
+            // Remote is disabled from in-game loot drops
+            if (candidate === 'REMOTE') {
+                tries++;
+                continue;
+            }
+
             // Only restrict duplicates for unique items (CONTRACT, LUCKYCHARM, TOTEM)
             if (UNIQUE_ITEMS.includes(candidate)) {
                 const currentCount = counts[candidate] || 0;
-                const inventoryCount = existingItems.filter(x => x === candidate).length;
+                const inventoryCount = (existingItems || []).filter(x => x === candidate).length;
                 if (currentCount >= 1 || inventoryCount >= 1) {
                     tries++;
                     continue; // Max 1 of these unique items per batch + inventory
@@ -288,10 +293,14 @@ export const generateLootBatch = (
                 if (forDealer && isHardMode) item = getDealerCheatingItem(dealerHp);
                 else item = getRandomItem(isHardMode, forDealer);
                 fbTries++;
-            } while (UNIQUE_ITEMS.includes(item!) && (existingItems.includes(item!) || batch.includes(item!)) && fbTries < 20);
-            if (!item || (UNIQUE_ITEMS.includes(item) && (existingItems.includes(item) || batch.includes(item)))) {
+            } while ((item === 'REMOTE' || (UNIQUE_ITEMS.includes(item!) && ((existingItems || []).includes(item!) || batch.includes(item!)))) && fbTries < 20);
+            if (!item || item === 'REMOTE' || (UNIQUE_ITEMS.includes(item) && ((existingItems || []).includes(item) || batch.includes(item)))) {
                 item = 'BEER'; // absolute fallback
             }
+        }
+
+        if (item === 'REMOTE') {
+            item = 'BEER';
         }
 
         batch.push(item);
@@ -317,12 +326,20 @@ export const distributeItems = async (
     dealerLuckycharms: number = 0,
     playerHp: number = 4,
     playerMaxHp: number = 4,
-    dealerMaxHp: number = 4
+    dealerMaxHp: number = 4,
+    setPlayer3?: StateSetter<PlayerState>,
+    setPlayer4?: StateSetter<PlayerState>,
+    p3ItemsOverride?: ItemType[],
+    p4ItemsOverride?: ItemType[],
+    player3Items: ItemType[] = [],
+    player4Items: ItemType[] = []
 ) => {
     // If forceClear, ensure items are cleared FIRST before anything else
     if (forceClear) {
         setPlayer(p => ({ ...p, items: [] }));
         setDealer(d => ({ ...d, items: [] }));
+        if (setPlayer3) setPlayer3(p3 => ({ ...p3, items: [] }));
+        if (setPlayer4) setPlayer4(p4 => ({ ...p4, items: [] }));
         await wait(50); // Small delay to ensure state is flushed
     }
 
@@ -379,16 +396,30 @@ export const distributeItems = async (
     // Generate loot pools separately
     const pNew = pItemsOverride || generateLoot(false, forceClear ? [] : playerItems);
     const dNew = dItemsOverride || generateLoot(true, forceClear ? [] : dealerItems);
+    const p3New = setPlayer3 ? (p3ItemsOverride || generateLoot(false, forceClear ? [] : player3Items)) : [];
+    const p4New = setPlayer4 ? (p4ItemsOverride || generateLoot(false, forceClear ? [] : player4Items)) : [];
 
     if (amount === 0) {
         setPlayer(p => {
-            const baseItems = forceClear ? [] : p.items;
+            const baseItems = forceClear ? [] : (p.items || []);
             return { ...p, items: baseItems, luckycharmsUsed: 0 };
         });
         setDealer(d => {
-            const baseItems = forceClear ? [] : d.items;
+            const baseItems = forceClear ? [] : (d.items || []);
             return { ...d, items: baseItems, luckycharmsUsed: 0 };
         });
+        if (setPlayer3) {
+            setPlayer3(p3 => {
+                const baseItems = forceClear ? [] : (p3.items || []);
+                return { ...p3, items: baseItems, luckycharmsUsed: 0 };
+            });
+        }
+        if (setPlayer4) {
+            setPlayer4(p4 => {
+                const baseItems = forceClear ? [] : (p4.items || []);
+                return { ...p4, items: baseItems, luckycharmsUsed: 0 };
+            });
+        }
         return;
     }
 
@@ -410,13 +441,25 @@ export const distributeItems = async (
 
     // Apply items to inventories - player gets pNew, dealer gets dNew
     setPlayer(p => {
-        const baseItems = forceClear ? [] : p.items;
+        const baseItems = forceClear ? [] : (p.items || []);
         return { ...p, items: [...baseItems, ...pNew].slice(0, MAX_ITEMS), luckycharmsUsed: 0 };
     });
     setDealer(d => {
-        const baseItems = forceClear ? [] : d.items;
+        const baseItems = forceClear ? [] : (d.items || []);
         return { ...d, items: [...baseItems, ...dNew].slice(0, MAX_ITEMS), luckycharmsUsed: 0 };
     });
+    if (setPlayer3) {
+        setPlayer3(p3 => {
+            const baseItems = forceClear ? [] : (p3.items || []);
+            return { ...p3, items: [...baseItems, ...p3New].slice(0, MAX_ITEMS), luckycharmsUsed: 0 };
+        });
+    }
+    if (setPlayer4) {
+        setPlayer4(p4 => {
+            const baseItems = forceClear ? [] : (p4.items || []);
+            return { ...p4, items: [...baseItems, ...p4New].slice(0, MAX_ITEMS), luckycharmsUsed: 0 };
+        });
+    }
 
     // Clean up overlay
     setShowLootOverlay(false);
