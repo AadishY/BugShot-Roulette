@@ -642,7 +642,7 @@ export const initThreeScene = (container: HTMLElement, props: any): SceneContext
         localPlayer1Group.visible = isSplitSeatB;
         scene.userData.cachedLocalPlayer1Group = localPlayer1Group;
 
-        if (scene.fog instanceof THREE.FogExp2) scene.fog.density = 0.002;
+        if (scene.fog instanceof THREE.FogExp2) scene.fog.density = 0.014;
 
         // Balanced symmetric face fill for Seat A (+Z) when viewed from Seat B (-Z)
         if (!isPotato) {

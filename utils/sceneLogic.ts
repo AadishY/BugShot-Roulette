@@ -793,12 +793,20 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
     const dealerDamping = 1 - Math.exp(-dealerSpeed * dt);
     dealerGroup.position.y += (dealerTargetY - dealerGroup.position.y) * dealerDamping;
 
-    // Hide demon dealer fog sprites when in Split/MP or looking from Seat B (-Z toward +Z) so they never form a dark wall across the table
+    // Toggle background fog layers behind the *opposite* player so each seat sees dark mist
+    // behind their opponent's silhouette, never sitting in front of the active player's camera
     const cachedDealerFog = scene.userData.cachedDealerFog !== undefined
         ? scene.userData.cachedDealerFog
         : (scene.userData.cachedDealerFog = scene.getObjectByName('ENV_DEALER_FOG') || null);
     if (cachedDealerFog) {
-        cachedDealerFog.visible = !isSplitMode && !gameState?.isMultiplayer && camera.position.z > 0;
+        cachedDealerFog.visible = !gameState?.isMultiplayer && camera.position.z > 0;
+    }
+
+    const cachedPlayer1Fog = scene.userData.cachedPlayer1Fog !== undefined
+        ? scene.userData.cachedPlayer1Fog
+        : (scene.userData.cachedPlayer1Fog = scene.getObjectByName('ENV_PLAYER1_FOG') || null);
+    if (cachedPlayer1Fog) {
+        cachedPlayer1Fog.visible = isSplitMode && camera.position.z < 0;
     }
 
     // Local Split Seat A Avatar (Player 1 sitting at +Z) + Seat Visibility Toggle

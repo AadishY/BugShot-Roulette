@@ -699,8 +699,12 @@ export const createEnvironment = (scene: THREE.Scene, isMobile: boolean = false,
         const clutter2 = new THREE.Mesh(boxGeo, boxMat); clutter2.position.set(12, -6.5, -18); clutter2.rotation.y = -0.3; scene.add(clutter2);
         const clutter3 = new THREE.Mesh(new THREE.BoxGeometry(2, 5, 2), boxMat); clutter3.position.set(10, -5, -19); clutter3.rotation.y = 0.4; scene.add(clutter3);
 
-        // === DEALER LAIR FOG (Only for singleplayer AI demon; skip in Local Split & MP where cameras/avatars sit on -Z/+Z) ===
-        if (profile.fogSpriteCount > 0 && !scene.userData.isLocalSplit && !scene.userData.isMultiplayer) {
+        // === DEALER / SEAT B & SEAT A BACKGROUND FOG (positioned behind each opponent model, toggled per active camera side) ===
+        const effectiveFogSpriteCount = scene.userData.isLocalSplit && !isPotato
+            ? Math.max(profile.fogSpriteCount, 6)
+            : profile.fogSpriteCount;
+
+        if (effectiveFogSpriteCount > 0 && !scene.userData.isMultiplayer) {
             const createDirtySkinTexture = () => {
                 if (_cachedDirtySkinTexture) return _cachedDirtySkinTexture;
                 const canvas = document.createElement('canvas');
@@ -725,9 +729,9 @@ export const createEnvironment = (scene: THREE.Scene, isMobile: boolean = false,
                 if (!_cachedFogSpriteMaterial) {
                     _cachedFogSpriteMaterial = new THREE.SpriteMaterial({
                         map: createDirtySkinTexture(),
-                        color: 0x121212,
+                        color: 0x0b0b0c,
                         transparent: true,
-                        opacity: 0.22,
+                        opacity: 0.34,
                         blending: THREE.NormalBlending,
                         depthWrite: false
                     });
@@ -736,21 +740,33 @@ export const createEnvironment = (scene: THREE.Scene, isMobile: boolean = false,
                 return _cachedFogSpriteMaterial;
             };
 
-            const envFogGroup = new THREE.Group();
-            envFogGroup.name = 'ENV_DEALER_FOG';
-            envFogGroup.position.set(0, 3, -8);
+            const buildOpponentBackFog = (name: string, zCenter: number, initiallyVisible: boolean) => {
+                const group = new THREE.Group();
+                group.name = name;
+                group.position.set(0, 3, zCenter);
+                group.visible = initiallyVisible;
 
-            for (let i = 0; i < profile.fogSpriteCount; i++) {
-                const spr = new THREE.Sprite(getFogSpriteMaterial());
-                spr.position.set(
-                    (Math.random() - 0.5) * 8,
-                    -2 + (Math.random() - 0.5) * 6,
-                    (Math.random() - 0.5) * 6
-                );
-                spr.scale.setScalar(8 + Math.random() * 4);
-                envFogGroup.add(spr);
+                for (let i = 0; i < effectiveFogSpriteCount; i++) {
+                    const spr = new THREE.Sprite(getFogSpriteMaterial());
+                    spr.position.set(
+                        (Math.random() - 0.5) * 14,
+                        -1.5 + (Math.random() - 0.5) * 6,
+                        (Math.random() - 0.5) * 5
+                    );
+                    spr.scale.setScalar(9 + Math.random() * 5);
+                    group.add(spr);
+                }
+                scene.add(group);
+                return group;
+            };
+
+            // Behind Dealer / Seat B (-Z): centered behind z=-8 so it shrouds backWall without ever sitting on table
+            buildOpponentBackFog('ENV_DEALER_FOG', -14.5, true);
+
+            // Behind Seat A Player 1 (+Z): centered just behind z=+8 so Seat B sees the same dark misty backdrop
+            if (scene.userData.isLocalSplit) {
+                buildOpponentBackFog('ENV_PLAYER1_FOG', 14.5, false);
             }
-            scene.add(envFogGroup);
         }
 
         // === LEFT SIDE - ROD CUPBOARD / SHELF ===
@@ -1003,22 +1019,28 @@ export const createEnvironment = (scene: THREE.Scene, isMobile: boolean = false,
                 emissiveIntensity: 0.15
             }));
 
-    // Side Walls - further away for open feel
-    const leftWall = new THREE.Mesh(new THREE.PlaneGeometry(60, 40), brickMat);
-    leftWall.position.set(-20, 5, -12); // Moved out and back (was -15, -5)
+    // Side Walls - symmetric enclosure across -Z and +Z
+    const isSplitEnv = Boolean(scene.userData.isLocalSplit);
+    const sideWallSpan = isSplitEnv ? 68 : 60;
+    const sideWallCenterZ = isSplitEnv ? -1 : -12;
+    const leftWall = new THREE.Mesh(new THREE.PlaneGeometry(sideWallSpan, 40), brickMat);
+    leftWall.position.set(-20, 5, sideWallCenterZ);
     leftWall.rotation.y = Math.PI / 2;
     leftWall.receiveShadow = allowEnvShadows;
     scene.add(leftWall);
 
-    const rightWall = new THREE.Mesh(new THREE.PlaneGeometry(60, 40), brickMat);
-    rightWall.position.set(20, 5, -12); // Moved out and back
+    const rightWall = new THREE.Mesh(new THREE.PlaneGeometry(sideWallSpan, 40), brickMat);
+    rightWall.position.set(20, 5, sideWallCenterZ);
     rightWall.rotation.y = -Math.PI / 2;
     rightWall.receiveShadow = allowEnvShadows;
     scene.add(rightWall);
 
-    // Front Wall (Behind Player) - completes room enclosure at Z = 18
-    const frontWall = new THREE.Mesh(new THREE.PlaneGeometry(80, 50), brickMat);
-    frontWall.position.set(0, 5, 18);
+    // Front Wall (Behind Player 1) - darker & deeper in Split Mode to match -Z atmospheric depth
+    const frontWall = new THREE.Mesh(
+        new THREE.PlaneGeometry(80, 50),
+        isSplitEnv ? backWallMat : brickMat
+    );
+    frontWall.position.set(0, 5, isSplitEnv ? 26 : 18);
     frontWall.rotation.y = Math.PI;
     frontWall.receiveShadow = allowEnvShadows;
     scene.add(frontWall);
