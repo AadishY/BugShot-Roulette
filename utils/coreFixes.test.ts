@@ -10,6 +10,16 @@ import {
 } from './updateGuard.ts';
 import { getGraphicsPresetConfig, detectSoftwareWebGL } from './three/graphicsConfig.ts';
 import { computeDetailedStats, formatDurationCompact } from './statsAnalytics.ts';
+import {
+    easeInOutCubic,
+    easeInOutSine,
+    createIdleSplitCameraTransition,
+    beginSplitCameraTransition,
+    stepSplitCameraTransition,
+    SPLIT_ORBIT_LATERAL_ARC,
+    SPLIT_ORBIT_VERTICAL_LIFT,
+    SPLIT_ORBIT_MAX_BANK_ROLL,
+} from './three/splitCameraTransition.ts';
 
 class MemoryStorage {
     private map = new Map<string, string>();
@@ -391,5 +401,91 @@ test('resolveSplitSetupConfig handles slider bounds and per-option random flags 
     assert.equal(fixed.itemsPerShipment, 6);
     assert.ok(fixed.itemsPerShipment >= SPLIT_ITEMS_MIN && fixed.itemsPerShipment <= SPLIT_ITEMS_MAX);
 });
+
+test('splitCameraTransition easing curves provide smooth S-curve acceleration and deceleration', () => {
+    assert.equal(easeInOutCubic(-0.5), 0);
+    assert.equal(easeInOutCubic(0), 0);
+    assert.equal(easeInOutCubic(0.5), 0.5);
+    assert.equal(easeInOutCubic(1), 1);
+    assert.equal(easeInOutCubic(1.5), 1);
+
+    assert.equal(easeInOutSine(0), 0);
+    assert.ok(Math.abs(easeInOutSine(0.5) - 0.5) < 1e-12);
+    assert.equal(easeInOutSine(1), 1);
+
+    // Symmetry check: f(1 - t) == 1 - f(t)
+    for (const t of [0.1, 0.25, 0.35]) {
+        assert.ok(Math.abs(easeInOutCubic(1 - t) - (1 - easeInOutCubic(t))) < 1e-12);
+        assert.ok(Math.abs(easeInOutSine(1 - t) - (1 - easeInOutSine(t))) < 1e-12);
+    }
+
+    // Smooth ease-in/out: initial 10% delta & final 10% delta are much gentler than mid-arc 10% delta
+    const startDelta = easeInOutCubic(0.1) - easeInOutCubic(0.0);
+    const midDelta = easeInOutCubic(0.55) - easeInOutCubic(0.45);
+    const endDelta = easeInOutCubic(1.0) - easeInOutCubic(0.9);
+    assert.ok(startDelta < midDelta * 0.2, `Expected gentle ease-in (${startDelta} vs ${midDelta})`);
+    assert.ok(endDelta < midDelta * 0.2, `Expected cushioned ease-out (${endDelta} vs ${midDelta})`);
+});
+
+test('stepSplitCameraTransition smoothly orbits from current pose to target seat with zero discontinuity and spike protection', () => {
+    const state = createIdleSplitCameraTransition('A');
+    const outPos: [number, number, number] = [0, 0, 0];
+    const outLook: [number, number, number] = [0, 0, 0];
+
+    // Begin mid-aim from Seat A shoulder offset toward Seat B default POV
+    const fromPos: [number, number, number] = [2.5, 3.0, 9.0];
+    const fromLook: [number, number, number] = [0, 1.5, -14];
+    const targetPos: [number, number, number] = [0, 3.8, -12];
+    const targetLook: [number, number, number] = [0, 1.5, 2];
+
+    beginSplitCameraTransition(state, fromPos, fromLook, 'A', 'B', 1.0);
+    assert.equal(state.active, true);
+
+    // Frame at dt=0 must start seamlessly at exact fromPos & fromLook (no hard cut)
+    const startStep = stepSplitCameraTransition(state, targetPos, targetLook, 0, outPos, outLook);
+    assert.equal(startStep.active, true);
+    assert.deepEqual(outPos, fromPos);
+    assert.deepEqual(outLook, fromLook);
+    assert.equal(startStep.bankRoll, 0);
+
+    // Advance smoothly to midpoint (0.5s in 0.05s increments)
+    let midStep = startStep;
+    for (let i = 0; i < 10; i++) {
+        midStep = stepSplitCameraTransition(state, targetPos, targetLook, 0.05, outPos, outLook);
+    }
+    assert.equal(midStep.active, true);
+    assert.ok(Math.abs(midStep.progress - 0.5) < 1e-9);
+    // At t=0.5, lateral swing (+X) and vertical lift (+Y) peak cleanly around the table
+    assert.ok(
+        Math.abs(outPos[0] - (1.25 + SPLIT_ORBIT_LATERAL_ARC)) < 1e-6,
+        `Unexpected midpoint X: ${outPos[0]}`
+    );
+    assert.ok(
+        Math.abs(outPos[1] - (3.4 + SPLIT_ORBIT_VERTICAL_LIFT)) < 1e-6,
+        `Unexpected midpoint Y: ${outPos[1]}`
+    );
+    assert.ok(Math.abs(midStep.bankRoll + SPLIT_ORBIT_MAX_BANK_ROLL) < 1e-6);
+
+    // Frame spike protection: a huge dt=5.0 gets clamped to 0.1s so it never teleports to finish in 1 frame
+    const spikedStep = stepSplitCameraTransition(state, targetPos, targetLook, 5.0, outPos, outLook);
+    assert.equal(spikedStep.active, true);
+    assert.ok(Math.abs(spikedStep.progress - 0.6) < 1e-9);
+
+    // Advance remaining 0.4s to settle cleanly at Seat B
+    let endStep = spikedStep;
+    for (let i = 0; i < 8; i++) {
+        endStep = stepSplitCameraTransition(state, targetPos, targetLook, 0.05, outPos, outLook);
+    }
+    assert.equal(endStep.active, false);
+    assert.equal(state.fromSeat, 'B');
+    assert.equal(endStep.bankRoll, 0);
+    assert.ok(Math.abs(outPos[0] - targetPos[0]) < 1e-6);
+    assert.ok(Math.abs(outPos[1] - targetPos[1]) < 1e-6);
+    assert.ok(Math.abs(outPos[2] - targetPos[2]) < 1e-6);
+    assert.ok(Math.abs(outLook[0] - targetLook[0]) < 1e-6);
+    assert.ok(Math.abs(outLook[1] - targetLook[1]) < 1e-6);
+    assert.ok(Math.abs(outLook[2] - targetLook[2]) < 1e-6);
+});
+
 
 

@@ -23,6 +23,7 @@ import { MultiplayerSelection } from './components/MultiplayerSelection';
 import { generateLootBatch, resolveJackpotOutcome } from './utils/game/inventory';
 import { randomInt } from './utils/gameUtils';
 import { ShellType, ItemType, TurnOwner, AimTarget, LocalSplitConfig } from './types';
+import { resolveSplitSetupConfig } from './utils/splitMode';
 import { getCurrentUserProfile, UserProfile } from './utils/firebaseService';
 
 const urlParams = new URLSearchParams(window.location.search);
@@ -2030,7 +2031,12 @@ export default function App() {
         setAppState('MENU');
         game.resetGame(true);
       } else if (lastSplitConfigRef.current) {
-        pendingSplitConfigRef.current = lastSplitConfigRef.current;
+        const nextConfig = resolveSplitSetupConfig(
+          lastSplitConfigRef.current,
+          lastSplitConfigRef.current.randomFlags
+        );
+        lastSplitConfigRef.current = nextConfig;
+        pendingSplitConfigRef.current = nextConfig;
         setAppState('LOADING_SP');
       } else {
         setNameTags([]);

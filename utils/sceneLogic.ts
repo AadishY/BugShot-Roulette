@@ -3,9 +3,22 @@ import { SceneContext, SceneProps } from '../types';
 import { audioManager } from './audioManager';
 import { updateItemAnimations, updateBlood, updateSparks, updateBullet, updateShell, updateParticles } from './scene/animations';
 import { performanceMonitor } from './performanceMonitor';
+import {
+    SplitSeat,
+    SplitCameraTransitionState,
+    createIdleSplitCameraTransition,
+    beginSplitCameraTransition,
+    stepSplitCameraTransition,
+} from './three/splitCameraTransition';
 
-// Pre-allocated scratch vectors — reused across frames to avoid GC pressure
+// Pre-allocated scratch vectors & tuples — reused across frames to avoid GC pressure
 const _vKick = new THREE.Vector3();
+const _splitFromPos: [number, number, number] = [0, 0, 0];
+const _splitFromLook: [number, number, number] = [0, 0, 0];
+const _splitTargetPos: [number, number, number] = [0, 0, 0];
+const _splitTargetLook: [number, number, number] = [0, 0, 0];
+const _splitOutPos: [number, number, number] = [0, 0, 0];
+const _splitOutLook: [number, number, number] = [0, 0, 0];
 
 export function updateScene(context: SceneContext, props: SceneProps, time: number, delta?: number) {
     const { gunGroup, camera, dealerGroup, shellCasings, shellVelocities, scene, bulletMesh, bloodParticles, sparkParticles, dustParticles, bulbLight, mouse, renderer, muzzleFlash, baseLights, gunLight, underLight } = context;
@@ -435,22 +448,31 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
     // --- CAMERA POSITIONING ---
     if (!scene.userData._targetCamPos) scene.userData._targetCamPos = new THREE.Vector3();
     const targetCamPos = scene.userData._targetCamPos;
+    if (!scene.userData._curLookAt) {
+        scene.userData._curLookAt = new THREE.Vector3(0, 1.5, isSplitSeatB ? 2 : -2);
+    }
 
-    // Phase change detection for instant snapping to prevent clipping/grey screen/gliding
+    const desiredSplitSeat: SplitSeat = isSplitSeatB ? 'B' : 'A';
+    if (!scene.userData.splitCameraTransition) {
+        scene.userData.splitCameraTransition = createIdleSplitCameraTransition(desiredSplitSeat);
+    }
+
+    // Phase change detection for instant snapping on initial entry (avoid hard cuts mid-match in Split Mode)
     if (scene.userData.lastPhase === undefined) scene.userData.lastPhase = phase;
     if (scene.userData.lastPhase !== phase) {
+        const prevPhase = scene.userData.lastPhase;
         if (phase === 'LOAD' || phase === 'LOOTING') {
-            const snapZ = isSplitSeatB ? -12 : 12;
-            const snapLookZ = isSplitSeatB ? 2 : -2;
-            camera.position.set(0, 3.8, snapZ);
-            targetCamPos.set(0, 3.8, snapZ);
-            if (!scene.userData._curLookAt) {
-                scene.userData._curLookAt = new THREE.Vector3(0, 1.5, snapLookZ);
-            } else {
+            const shouldHardSnap = !isSplitMode || prevPhase === 'INTRO' || prevPhase === 'BOOT';
+            if (shouldHardSnap) {
+                const snapZ = isSplitSeatB ? -12 : 12;
+                const snapLookZ = isSplitSeatB ? 2 : -2;
+                camera.position.set(0, 3.8, snapZ);
+                targetCamPos.set(0, 3.8, snapZ);
                 scene.userData._curLookAt.set(0, 1.5, snapLookZ);
+                camera.rotation.set(0, 0, 0);
+                camera.lookAt(0, 1.5, snapLookZ);
+                scene.userData.splitCameraTransition = createIdleSplitCameraTransition(desiredSplitSeat);
             }
-            camera.rotation.set(0, 0, 0);
-            camera.lookAt(0, 1.5, snapLookZ);
             scene.userData.cameraShake = 0;
             scene.userData.needsRecovery = false;
             scene.userData.hasPlayedDrop = false;
@@ -460,10 +482,30 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
         scene.userData.lastPhase = phase;
     }
 
+    const activeSplitTransition = scene.userData.splitCameraTransition as SplitCameraTransitionState;
+    if (isSplitMode && activeSplitTransition.toSeat !== desiredSplitSeat) {
+        _splitFromPos[0] = camera.position.x;
+        _splitFromPos[1] = camera.position.y;
+        _splitFromPos[2] = camera.position.z;
+        _splitFromLook[0] = scene.userData._curLookAt.x;
+        _splitFromLook[1] = scene.userData._curLookAt.y;
+        _splitFromLook[2] = scene.userData._curLookAt.z;
+        beginSplitCameraTransition(
+            activeSplitTransition,
+            _splitFromPos,
+            _splitFromLook,
+            activeSplitTransition.toSeat,
+            desiredSplitSeat
+        );
+    } else if (!isSplitMode && activeSplitTransition.active) {
+        activeSplitTransition.active = false;
+    }
+
     const pSwayX = Math.sin(time * 0.5) * 0.8;
     const pSwayY = Math.cos(time * 0.3) * 0.3;
+    const isCameraOnCurrentSplitSeat = isSplitSeatB ? camera.position.z < -4 : camera.position.z > 4;
     const activeSelfCameraHit = isSplitMode
-        ? ((turnOwner === 'PLAYER' && animState.playerHit) || (turnOwner === 'DEALER' && animState.dealerHit))
+        ? (!activeSplitTransition.active && isCameraOnCurrentSplitSeat && ((turnOwner === 'PLAYER' && animState.playerHit) || (turnOwner === 'DEALER' && animState.dealerHit)))
         : animState.playerHit;
 
     if (activeSelfCameraHit) {
@@ -514,18 +556,7 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
         }
     }
 
-    // Cinematic swing arc when camera orbits between Seat A (+Z) and Seat B (-Z) in Split Mode
-    if (isSplitMode && !activeSelfCameraHit) {
-        const zDelta = Math.abs(camera.position.z - targetCamPos.z);
-        if (zDelta > 5) {
-            const arcStrength = Math.min(1, (zDelta - 5) / 14);
-            targetCamPos.x += 5.2 * arcStrength;
-            targetCamPos.y += 1.8 * arcStrength;
-        }
-    }
-
-    camera.position.lerp(targetCamPos, 1 - Math.exp(-(isSplitMode ? 3.2 : 5.0) * dt));
-    // Dynamic lookAt with sway
+    // Dynamic lookAt target
     if (!scene.userData._lookAtPosTemp) scene.userData._lookAtPosTemp = new THREE.Vector3(0, 2, -5);
     const lookAtPos = scene.userData._lookAtPosTemp.set(0, 2, isSplitSeatB ? 5 : -5);
     if (activeSelfCameraHit) {
@@ -585,11 +616,43 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
         }
     }
 
-    // Smoothly interpolate where the camera is looking
-    if (!scene.userData._curLookAt) scene.userData._curLookAt = new THREE.Vector3(0, 2, 0);
-    scene.userData._curLookAt.lerp(lookAtPos, 1 - Math.exp(-(isSplitMode ? 3.6 : 3.7) * dt));
-    camera.lookAt(scene.userData._curLookAt);
+    // Apply single unified camera update (eased orbital transition in Split Mode vs smooth damping)
+    const isEasedSplitOrbit = Boolean(isSplitMode && activeSplitTransition.active && !activeSelfCameraHit);
+    let splitTransitionBankRoll = 0;
 
+    if (isEasedSplitOrbit) {
+        _splitTargetPos[0] = targetCamPos.x;
+        _splitTargetPos[1] = targetCamPos.y;
+        _splitTargetPos[2] = targetCamPos.z;
+        _splitTargetLook[0] = lookAtPos.x;
+        _splitTargetLook[1] = lookAtPos.y;
+        _splitTargetLook[2] = lookAtPos.z;
+
+        const transitionDt = Math.max(0.0, Math.min(delta || 0.016, 0.1));
+        const step = stepSplitCameraTransition(
+            activeSplitTransition,
+            _splitTargetPos,
+            _splitTargetLook,
+            transitionDt,
+            _splitOutPos,
+            _splitOutLook
+        );
+        camera.position.set(_splitOutPos[0], _splitOutPos[1], _splitOutPos[2]);
+        scene.userData._curLookAt.set(_splitOutLook[0], _splitOutLook[1], _splitOutLook[2]);
+        splitTransitionBankRoll = step.bankRoll;
+        scene.userData.isSplitCameraTransitioning = step.active;
+    } else {
+        scene.userData.isSplitCameraTransitioning = false;
+        const posSpeed = activeSelfCameraHit ? 8.5 : (isSplitMode ? 5.2 : 5.5);
+        const lookSpeed = activeSelfCameraHit ? 7.0 : (isSplitMode ? 4.8 : 4.2);
+        camera.position.lerp(targetCamPos, 1 - Math.exp(-posSpeed * dt));
+        scene.userData._curLookAt.lerp(lookAtPos, 1 - Math.exp(-lookSpeed * dt));
+    }
+
+    camera.lookAt(scene.userData._curLookAt);
+    if (splitTransitionBankRoll !== 0) {
+        camera.rotation.z += splitTransitionBankRoll;
+    }
 
     if (activeSelfCameraHit) {
         // Falling over - Dramatic Instant Drop
@@ -599,7 +662,6 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
             scene.userData.hasPlayedStand = false;
             scene.userData.recoveryStartTime = null;
         }
-        targetCamPos.set(isSplitSeatB ? -2.8 : 2.8, 0.8, isSplitSeatB ? -10.5 : 10.5); // Hit floor (slumped above table)
         camera.rotation.z = (isSplitSeatB ? 0.7 : -0.7) + (Math.random() * 0.1);
         scene.userData.cameraShake = 0.5;
         scene.userData.needsRecovery = true;
@@ -637,14 +699,8 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
         scene.userData.needsRecovery = false;
     }
 
-    // Camera Lerp - Cinematic and Smooth (3.0 speed)
-    const camDamping = 1 - Math.exp(-3.0 * dt);
-    camera.position.x += (targetCamPos.x - camera.position.x) * camDamping;
-    camera.position.y += (targetCamPos.y - camera.position.y) * camDamping;
-    camera.position.z += (targetCamPos.z - camera.position.z) * camDamping;
-
-    // Breathing - Reduced on Mobile
-    if (aimTarget !== 'SELF' && cameraView !== 'TABLE') {
+    // Breathing - Reduced on Mobile and paused during cinematic Split orbit
+    if (!isEasedSplitOrbit && aimTarget !== 'SELF' && cameraView !== 'TABLE') {
         // Significantly reduced intensity for mobile (0.01 vs 0.05) to allow "some" life but avoid nausea
         const breathAmp = isMobile ? 0.01 : 0.05;
         const breathY = Math.sin(time * 0.5) * breathAmp;

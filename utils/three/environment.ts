@@ -254,10 +254,11 @@ export const createEnvironment = (scene: THREE.Scene, isMobile: boolean = false,
         side?: THREE.Side;
         toneMapped?: boolean;
     }): THREE.Material => {
+        const matSide = opts.side ?? THREE.FrontSide;
         if (isPotato) {
             return new THREE.MeshBasicMaterial({
                 color: opts.emissive ?? opts.color,
-                side: opts.side
+                side: matSide
             });
         }
         if (useLambertEnv) {
@@ -265,7 +266,7 @@ export const createEnvironment = (scene: THREE.Scene, isMobile: boolean = false,
                 color: opts.color,
                 emissive: opts.emissive ?? 0x000000,
                 emissiveIntensity: opts.emissive ? Math.min(opts.emissiveIntensity ?? 1, 1.5) : 0,
-                side: opts.side
+                side: matSide
             });
         }
         return new THREE.MeshStandardMaterial({
@@ -274,7 +275,7 @@ export const createEnvironment = (scene: THREE.Scene, isMobile: boolean = false,
             metalness: opts.metalness ?? 0.1,
             emissive: opts.emissive ?? 0x000000,
             emissiveIntensity: opts.emissive ? (opts.emissiveIntensity ?? 1) : 0,
-            side: opts.side,
+            side: matSide,
             toneMapped: opts.toneMapped ?? true
         });
     };

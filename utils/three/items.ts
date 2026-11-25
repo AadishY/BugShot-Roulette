@@ -1493,7 +1493,7 @@ export const optimizeItemForPreset = (group: THREE.Object3D, preset: GraphicsPre
                         map: mat.map || null,
                         transparent: mat.transparent,
                         opacity: mat.opacity,
-                        side: mat.side,
+                        side: mat.side ?? THREE.FrontSide,
                         fog: false,
                     });
                     replacedMats.set(mat, basic);
@@ -1509,7 +1509,7 @@ export const optimizeItemForPreset = (group: THREE.Object3D, preset: GraphicsPre
                         emissiveIntensity: mat.emissiveIntensity,
                         transparent: mat.transparent,
                         opacity: mat.opacity,
-                        side: mat.side,
+                        side: mat.side ?? THREE.FrontSide,
                     });
                     replacedMats.set(mat, lambert);
                 }

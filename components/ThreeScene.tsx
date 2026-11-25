@@ -489,17 +489,19 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
 
                 let tagCount = 0;
                 if (propsRef.current.gameState.isLocalSplit) {
-                    if (camera.position.z < -6) {
+                    const isOrbiting = Boolean(scene.userData.isSplitCameraTransitioning);
+                    if (!isOrbiting && camera.position.z < -6) {
+                        const localP1Group = scene.userData.cachedLocalPlayer1Group || scene.getObjectByName('LOCAL_PLAYER1');
                         const localP1Head = getCachedHead(scene, 'cachedLocalPlayer1Head', 'LOCAL_PLAYER1');
                         const p1Label = propsRef.current.gameState.player1Name || 'PLAYER 1';
-                        if (localP1Head && projectHeadTag(localP1Head, p1Label, camera, worldPos, bbox3, tagsList[tagCount])) {
+                        if (localP1Group?.visible && localP1Head && projectHeadTag(localP1Head, p1Label, camera, worldPos, bbox3, tagsList[tagCount])) {
                             tagsList[tagCount].x = Math.max(12, Math.min(88, tagsList[tagCount].x));
                             tagsList[tagCount].y = Math.max(21, Math.min(76, tagsList[tagCount].y));
                             tagCount++;
                         }
-                    } else if (camera.position.z > 6) {
+                    } else if (!isOrbiting && camera.position.z > 6) {
                         const p2Label = propsRef.current.gameState.opponentName || 'PLAYER 2';
-                        if (dealerHead && projectHeadTag(dealerHead, p2Label, camera, worldPos, bbox3, tagsList[tagCount])) {
+                        if (dealerGroup.visible && dealerHead && projectHeadTag(dealerHead, p2Label, camera, worldPos, bbox3, tagsList[tagCount])) {
                             tagsList[tagCount].x = Math.max(12, Math.min(88, tagsList[tagCount].x));
                             tagsList[tagCount].y = Math.max(21, Math.min(76, tagsList[tagCount].y));
                             tagCount++;

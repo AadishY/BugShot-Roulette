@@ -172,13 +172,23 @@ export const initThreeScene = (container: HTMLElement, props: any): SceneContext
     const camera = new THREE.PerspectiveCamera(props.settings.fov || defaultFov, width / height, 0.1, 100);
     
     // Position camera instantly at its starting view location to avoid gliding from afar in the grey fog at startup
-    const initialCamPos = new THREE.Vector3(0, 3.8, 12); // Default player view
+    const isSplitMode = Boolean(props.gameState?.isLocalSplit);
+    const isSplitSeatB = isSplitMode && props.turnOwner === 'DEALER';
+    const initialCamPos = new THREE.Vector3(0, 3.8, isSplitSeatB ? -12 : 12);
     const pSwayX = 0;
     const pSwayY = 0;
     if (props.cameraView === 'TABLE') {
-        initialCamPos.set(0, 10, 4);
-    } else if (props.cameraView === 'DEALER_GUN') {
+        initialCamPos.set(0, 10, isSplitSeatB ? -4 : 4);
+    } else if (props.cameraView === 'DEALER_GUN' && !isSplitMode) {
         initialCamPos.set(pSwayX * 0.5 - 4, 3 + pSwayY * 0.2, 5);
+    } else if (isSplitSeatB) {
+        if (props.aimTarget === 'SELF') {
+            initialCamPos.set(0, 2.3, -10.2);
+        } else if (props.aimTarget === 'OPPONENT') {
+            initialCamPos.set(-2.5, 3.0, -9);
+        } else {
+            initialCamPos.set(0, 3.8, -12);
+        }
     } else if (props.turnOwner === 'DEALER') {
         if (props.aimTarget === 'OPPONENT') {
             initialCamPos.set(pSwayX * 0.1, 1.0 + pSwayY * 0.1, 3.5);
@@ -197,11 +207,19 @@ export const initThreeScene = (container: HTMLElement, props: any): SceneContext
     camera.position.copy(initialCamPos);
 
     // Pre-calculate initial look-at coordinates so camera initializes pointing at the correct target immediately
-    const initialLookAt = new THREE.Vector3(0, 2, -5);
+    const initialLookAt = new THREE.Vector3(0, 1.5, isSplitSeatB ? 2 : -2);
     if (props.cameraView === 'TABLE') {
         initialLookAt.set(0, 0, 0);
-    } else if (props.cameraView === 'DEALER_GUN') {
+    } else if (props.cameraView === 'DEALER_GUN' && !isSplitMode) {
         initialLookAt.set(-0.5, 2, -6);
+    } else if (isSplitSeatB) {
+        if (props.aimTarget === 'SELF') {
+            initialLookAt.set(0, 1.8, -8.5);
+        } else if (props.aimTarget === 'OPPONENT') {
+            initialLookAt.set(0, 1.5, 14);
+        } else {
+            initialLookAt.set(0, 1.5, 2);
+        }
     } else if (props.turnOwner === 'DEALER') {
         if (props.aimTarget === 'OPPONENT') {
             initialLookAt.set(-0.5, 2.5, -8);
@@ -593,6 +611,7 @@ export const initThreeScene = (container: HTMLElement, props: any): SceneContext
             'DEFAULT'
         );
         dealerGroup.name = 'DEALER';
+        dealerGroup.visible = !isSplitSeatB;
 
         // Seat A (+Z): Player 1 facing -Z using dealer.glb
         const localPlayer1Group = createPlayerAvatar(
@@ -605,7 +624,7 @@ export const initThreeScene = (container: HTMLElement, props: any): SceneContext
             'DEFAULT'
         );
         localPlayer1Group.name = 'LOCAL_PLAYER1';
-        localPlayer1Group.visible = false; // Hidden initially while camera is on Seat A side
+        localPlayer1Group.visible = isSplitSeatB;
         scene.userData.cachedLocalPlayer1Group = localPlayer1Group;
 
         if (scene.fog instanceof THREE.FogExp2) scene.fog.density = 0.003;
