@@ -1,3 +1,5 @@
+import { saveUserStatsToFirebase, syncPendingStatsToFirebase } from './firebaseService';
+
 export interface GameStats {
     wins: number;
     losses: number;
@@ -34,6 +36,14 @@ export interface MatchStats {
 }
 
 const STORAGE_KEY = 'aadish_roulette_stats_v1';
+
+const safeSetLocalStorage = (key: string, value: string) => {
+    try {
+        localStorage.setItem(key, value);
+    } catch {
+        // Guard against QuotaExceededError / private browsing storage restrictions
+    }
+};
 
 export const emptyStats = (): GameStats => ({
     wins: 0,
@@ -81,7 +91,7 @@ export const getActiveUsername = (): string | null => {
             const parsed = JSON.parse(session);
             if (parsed?.username) return parsed.username.toLowerCase();
         }
-    } catch (e) {}
+    } catch {}
     return null;
 };
 
@@ -92,9 +102,11 @@ export const getUserStatsKey = (username?: string | null): string => {
 
 export const setUserActiveStats = (username: string, stats: GameStats) => {
     const key = getUserStatsKey(username);
-    localStorage.setItem(key, JSON.stringify(stats));
-    // Clean out shared generic key to prevent cross-contamination
-    localStorage.removeItem(STORAGE_KEY);
+    safeSetLocalStorage(key, JSON.stringify(stats));
+    try {
+        // Clean out shared generic key to prevent cross-contamination
+        localStorage.removeItem(STORAGE_KEY);
+    } catch {}
 };
 
 export const clearActiveStatsSession = () => {
@@ -104,7 +116,7 @@ export const clearActiveStatsSession = () => {
         localStorage.removeItem('aadish_roulette_stats_guest');
         localStorage.removeItem('aadish_roulette_stats');
         localStorage.removeItem('bugshot_stats');
-    } catch (e) {}
+    } catch {}
 };
 
 export const getStoredStats = (username?: string): GameStats => {
@@ -130,7 +142,7 @@ export const getStoredStats = (username?: string): GameStats => {
                 const parsedUser = JSON.parse(session);
                 if (parsedUser?.username?.toLowerCase() === activeUser.toLowerCase() && parsedUser.stats) {
                     const stats = parsedUser.stats;
-                    localStorage.setItem(userKey, JSON.stringify(stats));
+                    safeSetLocalStorage(userKey, JSON.stringify(stats));
                     return stats;
                 }
             }
@@ -171,8 +183,6 @@ export const calculateMatchScore = (stats: MatchStats): number => {
 
     return score;
 };
-
-import { saveUserStatsToFirebase, syncPendingStatsToFirebase } from './firebaseService';
 
 export const syncPendingStats = async (): Promise<void> => {
     return syncPendingStatsToFirebase();
@@ -275,7 +285,7 @@ export const saveGameStats = async (matchStats: MatchStats): Promise<GameStats> 
 
     // Save strictly to user-scoped key
     const userKey = getUserStatsKey(activeUsername);
-    localStorage.setItem(userKey, JSON.stringify(current));
+    safeSetLocalStorage(userKey, JSON.stringify(current));
 
     // Instantly sync to Firebase if user is logged in
     if (activeUsername) {

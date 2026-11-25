@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { SceneContext, SceneProps } from '../types';
 import { audioManager } from './audioManager';
-import { updateItemAnimations, updateBlood, updateSparks, updateBullet, updateShell } from './scene/animations';
+import { updateItemAnimations, updateBlood, updateSparks, updateBullet, updateShell, updateParticles } from './scene/animations';
 import { performanceMonitor } from './performanceMonitor';
 
 // Pre-allocated scratch vectors — reused across frames to avoid GC pressure
@@ -36,16 +36,12 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
     const MAX_DT = 0.05;
     const dt = Math.max(0.0, Math.min(delta || 0.016, MAX_DT)); // Clamp DT to prevent huge jumps/skips and negative values
 
-    // --- BRIGHTNESS & FOV ---
+    // --- BRIGHTNESS & EXPOSURE ---
     const brightnessMult = settings.brightness || 1.0;
-    const targetFov = settings.fov || 85;
-    if (camera.fov !== targetFov) {
-        camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, 1 - Math.exp(-6.3 * dt));
-        camera.updateProjectionMatrix();
-    }
+    const baseExposure = scene.userData.baseExposure ?? 1.62;
 
-    // Smoothly update toneMapping exposure based on brightness setting
-    renderer.toneMappingExposure = THREE.MathUtils.lerp(renderer.toneMappingExposure, 1.8 * brightnessMult, 1 - Math.exp(-6.3 * dt));
+    // Smoothly update toneMapping exposure based on preset baseExposure and brightness setting
+    renderer.toneMappingExposure = THREE.MathUtils.lerp(renderer.toneMappingExposure, baseExposure * brightnessMult, 1 - Math.exp(-6.3 * dt));
 
     // Apply brightness to all static lights - Optimization: use cached array length
     const lenLights = baseLights.length;
@@ -93,7 +89,7 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
     }
 
     // FOV & Heartbeat Handling
-    let targetCameraFOV = settings.fov || 70;
+    let targetCameraFOV = settings.fov || 85;
     
     // Heartbeat pulse calculation for self-aim (150 BPM)
     let heartbeatPulse = 0;
@@ -113,8 +109,8 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
         targetCameraFOV *= 0.9;
     }
 
-    if (Math.abs(camera.fov - targetCameraFOV) > 0.1) {
-        camera.fov = THREE.MathUtils.lerp(camera.fov, targetCameraFOV, 1 - Math.exp(-3 * dt));
+    if (Math.abs(camera.fov - targetCameraFOV) > 0.05) {
+        camera.fov = THREE.MathUtils.lerp(camera.fov, targetCameraFOV, 1 - Math.exp(-4.5 * dt));
         camera.updateProjectionMatrix();
     }
 
@@ -295,13 +291,13 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
         context.roomRedLight.intensity = THREE.MathUtils.lerp(context.roomRedLight.intensity, targetIntensity, 1 - Math.exp(-6.3 * dt));
 
         if (bulbLight) {
-            const baseBulb = 45.0 * brightnessMult;
+            const baseBulb = bulbBase * brightnessMult;
             bulbLight.intensity = THREE.MathUtils.lerp(bulbLight.intensity, baseBulb * (1.0 - heartbeat * 0.2), 1 - Math.exp(-6.3 * dt));
         }
     } else if (context.roomRedLight) {
         context.roomRedLight.intensity = THREE.MathUtils.lerp(context.roomRedLight.intensity, 0, 1 - Math.exp(-3.1 * dt));
         if (bulbLight) {
-            const baseBulb = 45.0 * brightnessMult;
+            const baseBulb = bulbBase * brightnessMult;
             bulbLight.intensity = THREE.MathUtils.lerp(bulbLight.intensity, baseBulb, 1 - Math.exp(-3.1 * dt));
         }
     }
@@ -764,7 +760,7 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
         }
     }
 
-    if (underLight) {
+    if (underLight && underLight.parent) {
         const flicker = Math.random() > 0.95 ? Math.random() * 2.0 : 2.0;
         underLight.intensity = THREE.MathUtils.lerp(underLight.intensity, flicker, 1 - Math.exp(-3.1 * dt)) * brightnessMult;
     }
@@ -874,6 +870,10 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
 
     if (animState.playerHit || animState.dealerHit || animState.player3Hit) {
         bloodParticles.visible = true;
+    }
+
+    if (dustParticles && shouldUpdateHeavyEffects && !reduceEffects) {
+        updateParticles(dustParticles, 15, dt);
     }
 
     if (shouldUpdateHeavyEffects) {

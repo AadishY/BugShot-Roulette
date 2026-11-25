@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { GraphicsPresetTier } from '../../types';
 
 // Shared Geometries Cache
 let beerBodyGeo: THREE.CylinderGeometry;
@@ -1450,6 +1451,86 @@ export const createJackpotMachine = (): THREE.Group => {
     group.scale.setScalar(4.2);
 
     return group;
+};
+
+/**
+ * Tunes an item group's materials, shadows, and local lights for the active graphics preset
+ * so Potato/Low avoid expensive PBR shader stalls while Balanced/High get specular reflections.
+ */
+export const optimizeItemForPreset = (group: THREE.Object3D, preset: GraphicsPresetTier): void => {
+    const isPotato = preset === 'potato';
+    const isLow = preset === 'low';
+    const isBalanced = preset === 'balanced';
+    const isHigh = preset === 'high';
+    const replacedMats = new Map<THREE.Material, THREE.Material>();
+
+    group.traverse((obj) => {
+        if (obj instanceof THREE.Light) {
+            if (isPotato) {
+                obj.visible = false;
+                obj.intensity = 0;
+            }
+            return;
+        }
+        if (!(obj instanceof THREE.Mesh)) return;
+
+        obj.castShadow = isHigh || isBalanced;
+        obj.receiveShadow = isHigh;
+
+        if (!obj.material) return;
+        const isArray = Array.isArray(obj.material);
+        const mats = isArray ? obj.material : [obj.material];
+
+        for (let i = 0; i < mats.length; i++) {
+            const mat = mats[i];
+            if (!(mat instanceof THREE.MeshStandardMaterial)) continue;
+
+            if (isPotato) {
+                let basic = replacedMats.get(mat);
+                if (!basic) {
+                    basic = new THREE.MeshBasicMaterial({
+                        color: mat.color.clone(),
+                        map: mat.map || null,
+                        transparent: mat.transparent,
+                        opacity: mat.opacity,
+                        side: mat.side,
+                        fog: false,
+                    });
+                    replacedMats.set(mat, basic);
+                }
+                mats[i] = basic;
+            } else if (isLow) {
+                let lambert = replacedMats.get(mat);
+                if (!lambert) {
+                    lambert = new THREE.MeshLambertMaterial({
+                        color: mat.color.clone(),
+                        map: mat.map || null,
+                        emissive: mat.emissive.clone(),
+                        emissiveIntensity: mat.emissiveIntensity,
+                        transparent: mat.transparent,
+                        opacity: mat.opacity,
+                        side: mat.side,
+                    });
+                    replacedMats.set(mat, lambert);
+                }
+                mats[i] = lambert;
+            } else {
+                mat.envMapIntensity = isHigh ? Math.max(mat.envMapIntensity || 1.15, 1.15) : Math.max(mat.envMapIntensity || 0.75, 0.75);
+                mat.needsUpdate = true;
+            }
+        }
+
+        if (!isArray && mats[0]) {
+            obj.material = mats[0];
+        }
+    });
+
+    // Dispose replaced MeshStandardMaterials so they don't linger in GPU memory
+    replacedMats.forEach((_replacement, oldMat) => {
+        try {
+            oldMat.dispose();
+        } catch (e) {}
+    });
 };
 
 

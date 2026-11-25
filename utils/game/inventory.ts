@@ -144,8 +144,7 @@ const getDealerCheatingItem = (hp: number): ItemType => {
     if (r < 0.45) return 'INVERTER';    // 20% Inverter
     if (r < 0.60) return 'CHOKE';       // 15% Choke
     if (r < 0.70) return 'CUFFS';       // 10% Cuffs
-    if (r < 0.80) return 'BIG_INVERTER'; // 10% Big Inverter (Remote disabled)
-    if (r < 0.90) return 'BIG_INVERTER'; // 10% Big Inverter
+    if (r < 0.90) return 'BIG_INVERTER'; // 20% Big Inverter (Remote disabled)
     if (r < 0.92) return 'ADRENALINE';  // 2% steal
     if (r < 0.96) return 'LUCKYCHARM';  // 4% luck
     return 'GLASS';                     // 4% glass
@@ -229,15 +228,7 @@ export const generateLootBatch = (
 
             const isCharmed = luckycharmsUsed > 0 && Math.random() < (1 - Math.pow(0.4, luckycharmsUsed));
 
-            if (roomSettings) {
-                const defaultWeights = getMultiplayerDefaultWeights(playerCount || 2);
-                let weights = roomSettings.isAdvanced && roomSettings.itemWeights
-                    ? roomSettings.itemWeights
-                    : defaultWeights;
-                
-                weights = { ...weights, REMOTE: 0 };
-                candidate = getCustomWeightedItem(weights);
-            } else if (isCharmed) {
+            if (isCharmed) {
                 // Determine curated needed items pool based on HP
                 if (userHp <= 2) {
                     // Critical health: Cigs (45% weight), Cuffs (25%), Glass (15%), Inverter (15%)
@@ -258,6 +249,18 @@ export const generateLootBatch = (
                     else if (roll < 90) candidate = 'INVERTER';
                     else candidate = 'GLASS';
                 }
+                // Respect custom disabled weights in advanced multiplayer rooms
+                if (roomSettings?.isAdvanced && roomSettings.itemWeights && (roomSettings.itemWeights[candidate] ?? 1) <= 0) {
+                    candidate = getCustomWeightedItem(roomSettings.itemWeights);
+                }
+            } else if (roomSettings) {
+                const defaultWeights = getMultiplayerDefaultWeights(playerCount || 2);
+                let weights = roomSettings.isAdvanced && roomSettings.itemWeights
+                    ? roomSettings.itemWeights
+                    : defaultWeights;
+                
+                weights = { ...weights, REMOTE: 0 };
+                candidate = getCustomWeightedItem(weights);
             } else if (forDealer && isHardMode) {
                 // CHEATING LOGIC FOR DEALER IN HARD MODE
                 candidate = getDealerCheatingItem(dealerHp);

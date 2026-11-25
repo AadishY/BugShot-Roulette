@@ -345,13 +345,25 @@ canvas,
     .lobby-three-cols-container {
         padding: 0px !important;
     }
+
+    .lobby-three-cols-container > div {
+        flex-direction: column !important;
+    }
     
     .lobby-main-view {
         width: 100% !important;
+        flex: 1 1 auto !important;
+        min-height: 0 !important;
     }
 
     .lobby-chat-view {
         width: 100% !important;
+        height: 36dvh !important;
+        min-height: 165px !important;
+        max-height: 250px !important;
+        flex-shrink: 0 !important;
+        border-left: none !important;
+        border-top: 1px solid rgb(28 25 23) !important;
     }
 
     /* Enforce comfortable touch targets on touch devices */
@@ -360,12 +372,32 @@ canvas,
     }
 }
 
-/* Landscape Mode on Mobile (< 500px height) */
-@media (max-height: 500px) {
+/* Landscape Mode on Mobile (< 540px height) */
+@media (max-height: 540px) {
+    /* Side-by-side Lobby + Compact Chat on landscape phones */
+    .lobby-three-cols-container > div {
+        flex-direction: row !important;
+    }
+
+    .lobby-main-view {
+        flex: 1 1 0% !important;
+        width: auto !important;
+        height: 100% !important;
+    }
+
+    .lobby-chat-view {
+        width: 230px !important;
+        height: 100% !important;
+        min-height: 0 !important;
+        max-height: none !important;
+        border-top: none !important;
+        border-left: 1px solid rgb(28 25 23) !important;
+    }
+
     /* Compact vertical margins to maximize screen estate in landscape */
     .lobby-settings-column,
     .lobby-players-column {
-        max-height: calc(100vh - 90px);
+        max-height: none;
     }
 
     .custom-scrollbar {

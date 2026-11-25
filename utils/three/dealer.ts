@@ -151,9 +151,9 @@ export const createDealerModel = (scene: THREE.Scene, debugHeadModel: DebugHeadM
     const isLow = preset === 'low';
     const isBalanced = preset === 'balanced';
     const isHigh = preset === 'high';
-    const isUltra = false;
     const isMobile = scene.userData.isMobile || false;
-    const shouldCastShadow = (isHigh && !isMobile) || (isBalanced && !isMobile);
+    const isAndroid = scene.userData.isAndroid || false;
+    const shouldCastShadow = isHigh || (isBalanced && !isMobile) || (isLow && !isAndroid && !isMobile);
     const isCustomModel = debugHeadModel !== 'DEFAULT';
     const isSmoothHead = SMOOTH_HEAD_MODELS.has(debugHeadModel);
 
@@ -168,6 +168,7 @@ export const createDealerModel = (scene: THREE.Scene, debugHeadModel: DebugHeadM
     // Load the selected GLB from cache asynchronously
     getPreloadedGLB(resolveAssetPath(config.path))
         .then((gltf) => {
+            if (scene.userData._disposed) return;
             const model = clone(gltf.scene) as THREE.Group;
 
             dealerGroup.remove(dummyHead);
@@ -205,19 +206,21 @@ export const createDealerModel = (scene: THREE.Scene, debugHeadModel: DebugHeadM
 
                 if (obj instanceof THREE.Mesh) {
                     obj.castShadow = shouldCastShadow;
-                    obj.receiveShadow = isUltra;
+                    obj.receiveShadow = false;
 
                     if (obj.material) {
                         const mats: THREE.Material[] = Array.isArray(obj.material)
                             ? obj.material
                             : [obj.material];
+                        const clonedMats: THREE.Material[] = new Array(mats.length);
 
-                        for (const mat of mats) {
-                            // Ensure cloned material is uniquely disposed on scene teardown,
-                            // while shared textures/geometries remain cached.
+                        for (let mi = 0; mi < mats.length; mi++) {
+                            // Clone material per scene instance so preset mutations never corrupt shared GLB cache
+                            const mat = mats[mi].clone();
                             if (mat.userData) {
                                 delete mat.userData.isCachedAsset;
                             }
+                            clonedMats[mi] = mat;
 
                             const m = mat as THREE.MeshStandardMaterial;
                             const isDefaultHead = !isCustomModel;
@@ -242,9 +245,9 @@ export const createDealerModel = (scene: THREE.Scene, debugHeadModel: DebugHeadM
                                 m.side = THREE.DoubleSide;
                                 m.roughness = m.roughnessMap ? Math.min(m.roughness, 0.85) : 0.68;
                                 m.metalness = 0.0;
-                                m.envMapIntensity = isHigh ? 1.2 : (isBalanced ? 0.8 : (isLow ? 0.45 : 0.15));
+                                m.envMapIntensity = isHigh ? 1.2 : (isBalanced ? 0.85 : (isLow ? 0.45 : 0.15));
                                 if (m.emissive) m.emissive.setHex(0x0a0704);
-                                m.emissiveIntensity = isPotato ? 0.1 : 0.18;
+                                m.emissiveIntensity = isPotato ? 0.14 : 0.18;
                                 m.fog = !isPotato;
                                 if (m.color) {
                                     m.color.setHex(0xffffff);
@@ -253,7 +256,7 @@ export const createDealerModel = (scene: THREE.Scene, debugHeadModel: DebugHeadM
                                     m.normalScale.setScalar(isPotato ? 0 : (isLow ? 0.45 : (isBalanced ? 0.65 : 0.95)));
                                 }
                                 if (isDefaultHead && !isPotato) {
-                                    configureDealerMaterialEffects(m, { pixelate: true, blur: true });
+                                    configureDealerMaterialEffects(m, { pixelate: true, blur: !isLow });
                                 }
 
                                 if (isPotato) {
@@ -269,6 +272,7 @@ export const createDealerModel = (scene: THREE.Scene, debugHeadModel: DebugHeadM
                                 m.needsUpdate = true;
                             }
                         }
+                        obj.material = Array.isArray(obj.material) ? clonedMats : clonedMats[0];
                     }
                 }
             });

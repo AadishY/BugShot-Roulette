@@ -1,9 +1,9 @@
 import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
-import { CameraView, TurnOwner, AimTarget, AnimationState, GameSettings, SceneContext, PlayerState, GameState, PlayerModelKey, getGraphicsPreset, isUltraPerf, isLowPerf, isBalancedPerf, isHighPerf } from '../types';
+import { CameraView, TurnOwner, AimTarget, AnimationState, GameSettings, SceneContext, PlayerState, GameState, PlayerModelKey, getGraphicsPreset } from '../types';
 
 import { updateScene } from '../utils/sceneLogic';
-import { initThreeScene, cleanScene } from '../utils/three/sceneSetup';
+import { initThreeScene, cleanScene, getPresetPixelScale, getPresetMaxPixelRatio } from '../utils/three/sceneSetup';
 
 interface ThreeSceneProps {
     isSawed: boolean;
@@ -81,37 +81,6 @@ const projectHeadTag = (
     return true;
 };
 
-const calculatePixelScale = (settings: GameSettings, width: number) => {
-    const ua = navigator.userAgent.toLowerCase();
-    const isMobileUA = /android|webos|iphone|ipod|blackberry|iemobile|opera mini/i.test(ua);
-    const isTabletUA = /ipad|tablet|playbook|silk/i.test(ua) || (ua.includes('macintosh') && 'ontouchend' in document);
-
-    let isMob = false;
-    let isTab = false;
-
-    if (isTabletUA || (width >= 768 && width <= 1024 && ('ontouchstart' in window || navigator.maxTouchPoints > 0))) {
-        isTab = true;
-    } else if (isMobileUA || (width < 768 && ('ontouchstart' in window || navigator.maxTouchPoints > 0))) {
-        isMob = true;
-    }
-
-    const preset = getGraphicsPreset(settings);
-    let mobilePixelScale = 2;
-    if (isMob) {
-        mobilePixelScale = preset === 'potato' ? 4.8 : (preset === 'low' ? 3.2 : (preset === 'balanced' ? 2.4 : 1.6));
-    } else if (isTab) {
-        mobilePixelScale = preset === 'potato' ? 3.6 : (preset === 'low' ? 2.6 : (preset === 'balanced' ? 2.0 : 1.4));
-    }
-    mobilePixelScale = Math.max(mobilePixelScale, settings.pixelScale || 0);
-
-    const desktopProfileMin = preset === 'potato' ? 4.2 : (preset === 'low' ? 3.0 : (preset === 'balanced' ? 2.4 : 1.8));
-    const desktopPixelScale = settings.pixelScale || 2.4;
-    const desktopBaseScale = desktopProfileMin > 0 ? Math.max(desktopProfileMin, desktopPixelScale) : desktopPixelScale;
-
-    const baseScale = (isMob || isTab) ? mobilePixelScale : desktopBaseScale;
-    return Math.max(1.0, baseScale * 0.45);
-};
-
 const syncResolution = (container: HTMLDivElement, sceneContext: SceneContext, settings: GameSettings) => {
     const width = container.clientWidth;
     const height = container.clientHeight;
@@ -127,42 +96,15 @@ const syncResolution = (container: HTMLDivElement, sceneContext: SceneContext, s
     const preset = getGraphicsPreset(settings);
     const nativeDpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
 
-    const pxScale = calculatePixelScale(settings, width);
-
-    // Clamped DPR per preset (Android-aware to prevent GPU fillrate thermal throttling):
-    const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
-    let maxPixelRatio = 1.0;
-    if (isAndroid) {
-        switch (preset) {
-            case 'potato':
-                maxPixelRatio = Math.min(nativeDpr, 0.75);
-                break;
-            case 'low':
-                maxPixelRatio = Math.min(nativeDpr, 0.88);
-                break;
-            case 'balanced':
-                maxPixelRatio = Math.min(nativeDpr, 1.0);
-                break;
-            case 'high':
-                maxPixelRatio = Math.min(nativeDpr, 1.25);
-                break;
-        }
-    } else {
-        switch (preset) {
-            case 'potato':
-                maxPixelRatio = Math.min(nativeDpr, 0.85);
-                break;
-            case 'low':
-                maxPixelRatio = Math.min(nativeDpr, 0.95);
-                break;
-            case 'balanced':
-                maxPixelRatio = Math.min(nativeDpr, 1.1);
-                break;
-            case 'high':
-                maxPixelRatio = Math.min(nativeDpr, 1.6);
-                break;
-        }
+    if (scene.userData._lastResolutionPreset !== preset) {
+        scene.userData._lastResolutionPreset = preset;
+        scene.userData.dynamicPixelRatioScale = 1.0;
+        scene.userData.performanceMode = false;
     }
+
+    const pxScale = getPresetPixelScale(settings, width);
+    const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
+    const maxPixelRatio = getPresetMaxPixelRatio(preset, nativeDpr, isAndroid);
 
     scene.userData.basePixelRatio = maxPixelRatio;
     const dynamicScale = scene.userData.dynamicPixelRatioScale ?? 1.0;
@@ -299,8 +241,10 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
 
                 // Precompile shaders and render an initial warmup frame while loading overlay is active
                 try {
-                    context.renderer.compile(context.scene, context.camera);
-                    context.renderer.render(context.scene, context.camera);
+                    if (!context.renderer.getContext().isContextLost()) {
+                        context.renderer.compile(context.scene, context.camera);
+                        context.renderer.render(context.scene, context.camera);
+                    }
                 } catch (e) {
                     console.warn('WebGL precompile warning:', e);
                 }
@@ -366,8 +310,8 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
         const animate = (currentTime: number = performance.now()) => {
             frameId = requestAnimationFrame(animate);
             if (!sceneRef.current) return;
-            // Skip/pause 3D render loop when window is hidden or when 2D overlays (like full-screen menus) completely obscure the scene
-            if (propsRef.current.isPaused || !isTabVisible || document.hidden || document.visibilityState !== 'visible' || sceneRef.current.scene.userData?.isContextLost) {
+            // Skip/pause 3D render loop when window is hidden, paused, or WebGL context is lost
+            if (propsRef.current.isPaused || !isTabVisible || document.hidden || document.visibilityState !== 'visible' || sceneRef.current.scene.userData?.isContextLost || sceneRef.current.renderer.getContext().isContextLost()) {
                 lastTime = currentTime; 
                 lastFrameTime = currentTime; 
                 fpsTimeStart = currentTime;
@@ -437,7 +381,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
                 frameDeltaCount++;
             }
 
-            // Dynamic FPS monitoring and adaptive pixel ratio scaling
+            // Dynamic FPS monitoring and adaptive pixel ratio scaling (protects Android thermals & High preset FPS)
             if (frameDeltaCount >= FRAME_DELTA_HISTORY_SIZE && (currentTime - lastAdaptiveScaleTime > 1500)) {
                 let sumDelta = 0;
                 for (let i = 0; i < FRAME_DELTA_HISTORY_SIZE; i++) {
@@ -445,17 +389,22 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
                 }
                 const avgFrameTimeSec = sumDelta / FRAME_DELTA_HISTORY_SIZE;
                 const dynamicFps = avgFrameTimeSec > 0 ? (1 / avgFrameTimeSec) : 60;
-                const isTargetMobileOrLow = isMobile || isLowEndMobile || isAndroid || preset === 'potato';
+                const shouldAdaptFps = isMobile || isLowEndMobile || isAndroid || preset === 'potato' || preset === 'high';
 
-                if (isTargetMobileOrLow && sceneRef.current) {
+                if (shouldAdaptFps && sceneRef.current) {
                     const scene = sceneRef.current.scene;
                     const renderer = sceneRef.current.renderer;
                     const baseRatio = (scene.userData.basePixelRatio as number) || 1.0;
-                    const minScale = isAndroid ? (preset === 'potato' ? 0.55 : 0.70) : (preset === 'potato' ? 0.60 : 0.75);
-                    const minRatio = isAndroid ? 0.55 : 0.60;
+                    const minScale = isAndroid ? (preset === 'potato' ? 0.55 : 0.62) : (preset === 'potato' ? 0.60 : 0.68);
+                    const minRatio = isAndroid ? 0.55 : 0.62;
+                    const downThreshold = preset === 'high' ? 44 : 34;
 
-                    // If average frame rate drops below 30 FPS on mobile/low-end devices, adaptively lower pixel ratio
-                    if (dynamicFps < 30) {
+                    // Sync local tracker if syncResolution reset it on preset switch
+                    if (scene.userData.dynamicPixelRatioScale === 1.0 && dynamicPixelRatioScale !== 1.0 && (currentTime - lastAdaptiveScaleTime > 2000)) {
+                        dynamicPixelRatioScale = 1.0;
+                    }
+
+                    if (dynamicFps < downThreshold && !isInMenu) {
                         if (dynamicPixelRatioScale > minScale) {
                             dynamicPixelRatioScale = Math.max(minScale, dynamicPixelRatioScale - 0.08);
                             scene.userData.dynamicPixelRatioScale = dynamicPixelRatioScale;
@@ -464,22 +413,22 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
                             const adaptedRatio = Math.max(minRatio, Math.min(baseRatio, baseRatio * dynamicPixelRatioScale));
                             renderer.setPixelRatio(adaptedRatio);
                             if (containerRef.current && containerRef.current.clientWidth > 0 && containerRef.current.clientHeight > 0) {
-                                const pxScale = calculatePixelScale(propsRef.current.settings, containerRef.current.clientWidth);
+                                const pxScale = getPresetPixelScale(propsRef.current.settings, containerRef.current.clientWidth);
                                 renderer.setSize(containerRef.current.clientWidth / pxScale, containerRef.current.clientHeight / pxScale, false);
                             }
                             scene.userData.dynamicPixelRatio = adaptedRatio;
                             scene.userData.performanceMode = true;
                         }
-                    } else if (dynamicFps >= 55 && dynamicPixelRatioScale < 1.0 && (currentTime - lastAdaptiveScaleTime > 5000)) {
-                        // Frame rate has recovered and stabilized, smoothly recover pixel ratio
-                        dynamicPixelRatioScale = Math.min(1.0, dynamicPixelRatioScale + 0.05);
+                    } else if (dynamicFps >= 56 && dynamicPixelRatioScale < 1.0 && (currentTime - lastAdaptiveScaleTime > 6000)) {
+                        // Frame rate has stabilized well above target; smoothly recover pixel ratio without thermal ping-pong
+                        dynamicPixelRatioScale = Math.min(1.0, dynamicPixelRatioScale + 0.04);
                         scene.userData.dynamicPixelRatioScale = dynamicPixelRatioScale;
                         lastAdaptiveScaleTime = currentTime;
 
                         const adaptedRatio = Math.max(minRatio, Math.min(baseRatio, baseRatio * dynamicPixelRatioScale));
                         renderer.setPixelRatio(adaptedRatio);
                         if (containerRef.current && containerRef.current.clientWidth > 0 && containerRef.current.clientHeight > 0) {
-                            const pxScale = calculatePixelScale(propsRef.current.settings, containerRef.current.clientWidth);
+                            const pxScale = getPresetPixelScale(propsRef.current.settings, containerRef.current.clientWidth);
                             renderer.setSize(containerRef.current.clientWidth / pxScale, containerRef.current.clientHeight / pxScale, false);
                         }
                         scene.userData.dynamicPixelRatio = adaptedRatio;
@@ -903,14 +852,14 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
         if (animState.muzzleFlashIntensity > 0) {
             if (animState.isLiveShot) {
                 muzzleFlash.visible = true;
-                muzzleFlash.children.forEach((child) => {
-                    const mesh = child as THREE.Mesh;
-                    const mat = mesh.material as THREE.MeshBasicMaterial;
+                for (let i = 0; i < muzzleFlash.children.length; i++) {
+                    const child = muzzleFlash.children[i];
+                    const mat = (child as THREE.Mesh | THREE.Sprite).material as THREE.MeshBasicMaterial | THREE.SpriteMaterial;
                     if (mat) {
-                        mat.opacity = 1;
-                        if (mat.color) mat.color.setHex(0xff5500);
+                        mat.opacity = child.userData?.isMuzzleGlow ? 0.78 : 1;
+                        if (!child.userData?.isMuzzleGlow && mat.color) mat.color.setHex(0xff5500);
                     }
-                });
+                }
 
                 muzzleFlash.rotation.z = Math.random() * Math.PI * 2;
                 muzzleLight.color.setHex(0xffaa00);
@@ -937,10 +886,10 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
                 }
                 sparkParticles.geometry.attributes.position.needsUpdate = true;
             } else {
-                muzzleFlash.children.forEach((child) => {
-                    const mesh = child as THREE.Mesh;
-                    if (mesh.material) (mesh.material as THREE.Material).opacity = 0;
-                });
+                for (let i = 0; i < muzzleFlash.children.length; i++) {
+                    const child = muzzleFlash.children[i] as THREE.Mesh | THREE.Sprite;
+                    if (child.material) (child.material as THREE.Material).opacity = 0;
+                }
                 muzzleFlash.visible = false;
                 muzzleLight.intensity = 0;
                 // Maintain ambient red glow
@@ -948,14 +897,14 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
             }
         } else {
             let isVis = false;
-            muzzleFlash.children.forEach((child) => {
-                const mesh = child as THREE.Mesh;
-                const mat = mesh.material as THREE.Material;
+            for (let i = 0; i < muzzleFlash.children.length; i++) {
+                const child = muzzleFlash.children[i] as THREE.Mesh | THREE.Sprite;
+                const mat = child.material as THREE.Material;
                 if (mat && mat.opacity > 0) {
-                    mat.opacity -= 0.15;
-                    isVis = true;
+                    mat.opacity = Math.max(0, mat.opacity - 0.15);
+                    if (mat.opacity > 0) isVis = true;
                 }
-            });
+            }
 
             if (animState.muzzleFlashIntensity === 0) {
                 isVis = false;

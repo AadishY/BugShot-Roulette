@@ -17,48 +17,81 @@ import {
     writeBatch
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from './firebase';
-import { UserProfile, findUserByUsernameOrEmail, getPlayerId, getLocalUsersCache } from './firebaseService';
-import { getDicebearUrl } from './dicebear';
+import {
+    UserProfile,
+    findUserByUsernameOrEmail,
+    getUsersByUsernames,
+    getCachedUserSync,
+    getCurrentUserProfile,
+    getPlayerId
+} from './firebaseService';
+import {
+    DicebearStyle,
+    DEV_AVATAR_URL,
+    DEFAULT_FALLBACK_AVATAR,
+    resolveCanonicalAvatar
+} from './dicebear';
+import { presenceClient } from './presenceService';
 
-// Robust Player Avatar Resolver
+// Unified Player Avatar Resolver across Profile, Main Menu, Leaderboard, DMs, Presence & ChatBox
 export const resolvePlayerAvatar = (user?: {
     username?: string;
+    displayName?: string;
     avatarUrl?: string;
     avatarStyle?: any;
     avatarSeed?: string;
     isDeveloper?: boolean;
     role?: string;
 } | null): string => {
-    if (!user || typeof user !== 'object') return '/image/favicon/android-chrome-192x192.png';
+    if (!user || typeof user !== 'object') return DEFAULT_FALLBACK_AVATAR;
     const clean = (typeof user.username === 'string' ? user.username : '').toLowerCase().trim();
+    const displayClean = (typeof user.displayName === 'string' ? user.displayName : '').toLowerCase().trim();
+
     if (clean === 'bugshot' || clean === 'system') {
-        return '/image/favicon/android-chrome-192x192.png';
+        return DEFAULT_FALLBACK_AVATAR;
     }
     const isDev = clean === 'aadish' || Boolean(user.isDeveloper || user.role === 'developer');
     if (isDev) {
-        return 'https://avatars.githubusercontent.com/u/101470733';
+        return DEV_AVATAR_URL;
     }
-    if (user.avatarUrl && typeof user.avatarUrl === 'string' && user.avatarUrl.trim() !== '') {
-        const url = user.avatarUrl.trim();
-        if (!url.startsWith('data:image/svg+xml') && (url.startsWith('http') || url.startsWith('/') || url.startsWith('data:image/png')) && !url.includes('undefined')) {
-            return url;
-        }
-    }
-    // Check if we have this user cached in local cache
-    try {
-        const cache = getLocalUsersCache();
-        const cached = cache[clean];
-        if (cached?.avatarUrl && typeof cached.avatarUrl === 'string' && !cached.avatarUrl.startsWith('data:image/svg+xml') && !cached.avatarUrl.includes('undefined')) {
-            return cached.avatarUrl;
-        }
-        if (cached?.avatarStyle && cached?.avatarSeed) {
-            return getDicebearUrl(cached.avatarStyle, cached.avatarSeed);
-        }
-    } catch (e) {}
 
-    const style = user.avatarStyle || 'thumbs';
-    const seed = user.avatarSeed || user.username || 'operator';
-    return getDicebearUrl(style, seed);
+    // 1. Always reflect the active session user's latest saved avatar immediately
+    const sessionUser = getCurrentUserProfile();
+    if (sessionUser?.username) {
+        const sessName = sessionUser.username.toLowerCase().trim();
+        const sessDisplay = (sessionUser.displayName || '').toLowerCase().trim();
+        if ((clean && clean === sessName) || (!clean && displayClean && (displayClean === sessName || displayClean === sessDisplay))) {
+            return resolveCanonicalAvatar(sessionUser);
+        }
+    }
+
+    // 2. If caller passed an explicit style + seed (e.g., UserProfile / LeaderboardEntry / live FriendUser), use canonical resolver directly
+    if (user.avatarStyle && user.avatarSeed && String(user.avatarSeed).trim() !== '') {
+        return resolveCanonicalAvatar(user);
+    }
+
+    // 3. Otherwise (partial message/request/chat sender object), prefer freshest live presence or cached profile
+    const lookupKey = clean || displayClean;
+    if (lookupKey) {
+        const livePresence = presenceClient.getPresenceByNameOrUsername(lookupKey);
+        if (livePresence && (livePresence.avatarUrl || livePresence.avatarStyle || livePresence.avatarSeed)) {
+            return resolveCanonicalAvatar({
+                username: livePresence.username || clean,
+                displayName: livePresence.displayName || user.displayName,
+                avatarUrl: livePresence.avatarUrl,
+                avatarStyle: livePresence.avatarStyle,
+                avatarSeed: livePresence.avatarSeed,
+                isDeveloper: livePresence.isDeveloper
+            });
+        }
+
+        const cachedProfile = getCachedUserSync(lookupKey);
+        if (cachedProfile) {
+            return resolveCanonicalAvatar(cachedProfile);
+        }
+    }
+
+    return resolveCanonicalAvatar(user);
 };
 
 // 30 Days in milliseconds for direct message retention
@@ -95,6 +128,8 @@ export interface FriendUser {
     username: string;
     displayName: string;
     avatarUrl: string;
+    avatarStyle?: DicebearStyle;
+    avatarSeed?: string;
     playerId: string;
     isDeveloper?: boolean;
 }
@@ -184,13 +219,47 @@ export const subscribeToFriends = (
         return () => {};
     }
 
+    let isActive = true;
+    let lastFriendKey: string | null = null;
+    let lastResolvedAt = 0;
+    let lastFriendProfiles: FriendUser[] = [];
+
+    const safeCallback = (list: FriendUser[]) => {
+        if (isActive) callback(list);
+    };
+
     const handleLocalFriends = (e: any) => {
         if (e.detail && Array.isArray(e.detail)) {
-            callback(e.detail);
+            safeCallback(e.detail);
         }
     };
+
+    const handleProfileUpdated = (e: any) => {
+        if (!isActive || lastFriendProfiles.length === 0) return;
+        const updatedUser = (e?.detail?.username || '').trim().toLowerCase();
+        if (!updatedUser) return;
+        const idx = lastFriendProfiles.findIndex(f => f.username.toLowerCase() === updatedUser);
+        if (idx !== -1) {
+            const detail = e.detail;
+            const next = [...lastFriendProfiles];
+            const prev = next[idx];
+            const merged = {
+                ...prev,
+                displayName: detail.displayName || prev.displayName,
+                avatarStyle: detail.avatarStyle || prev.avatarStyle,
+                avatarSeed: detail.avatarSeed || prev.avatarSeed,
+                avatarUrl: detail.avatarUrl || prev.avatarUrl
+            };
+            merged.avatarUrl = resolvePlayerAvatar(merged);
+            next[idx] = merged;
+            lastFriendProfiles = next;
+            safeCallback(next);
+        }
+    };
+
     if (typeof window !== 'undefined') {
         window.addEventListener(`bugshot_friends_${clean}`, handleLocalFriends);
+        window.addEventListener('bugshot_profile_updated', handleProfileUpdated);
     }
 
     let unsubscribeFirestore = () => {};
@@ -199,69 +268,87 @@ export const subscribeToFriends = (
         try {
             const userDocRef = doc(db, 'users', clean);
             unsubscribeFirestore = onSnapshot(userDocRef, async (docSnap) => {
+                if (!isActive) return;
                 try {
                     if (docSnap.exists()) {
                         const data = docSnap.data();
                         const friendUsernames: string[] = Array.isArray(data?.friends) ? data.friends : [];
-                        
+
                         if (friendUsernames.length === 0) {
-                            callback([]);
+                            lastFriendKey = '';
+                            lastFriendProfiles = [];
+                            try {
+                                localStorage.setItem(`${LS_FRIENDS_KEY}_${clean}`, JSON.stringify([]));
+                            } catch (e) {}
+                            safeCallback([]);
                             return;
                         }
 
-                        // Resolve friends details
-                        const friendProfiles: FriendUser[] = [];
-                        for (const fName of friendUsernames) {
-                            const cleanFName = (fName || '').trim().toLowerCase();
-                            if (!cleanFName) continue;
-                            try {
-                                const fUser = await findUserByUsernameOrEmail(cleanFName);
-                                if (fUser) {
-                                    friendProfiles.push({
-                                        username: fUser.username,
-                                        displayName: fUser.displayName || fUser.username,
-                                        avatarUrl: resolvePlayerAvatar(fUser),
-                                        playerId: fUser.playerId || getPlayerId(fUser),
-                                        isDeveloper: Boolean(fUser.isDeveloper || fUser.role === 'developer' || fUser.username === 'aadish')
-                                    });
-                                } else {
-                                    friendProfiles.push({
-                                        username: cleanFName,
-                                        displayName: cleanFName,
-                                        avatarUrl: resolvePlayerAvatar({ username: cleanFName }),
-                                        playerId: `@${cleanFName}#1000`,
-                                        isDeveloper: cleanFName === 'aadish'
-                                    });
-                                }
-                            } catch (err) {
-                                console.warn("Failed resolving friend profile:", cleanFName, err);
-                                friendProfiles.push({
-                                    username: cleanFName,
-                                    displayName: cleanFName,
-                                    avatarUrl: resolvePlayerAvatar({ username: cleanFName }),
-                                    playerId: `@${cleanFName}#1000`,
-                                    isDeveloper: cleanFName === 'aadish'
-                                });
-                            }
+                        const normalizedNames = Array.from(
+                            new Set(friendUsernames.map(f => (f || '').trim().toLowerCase()).filter(Boolean))
+                        );
+                        const friendKey = normalizedNames.slice().sort().join(',');
+
+                        // Skip redundant Firestore batch reads when only lastSeenAt changed within TTL
+                        if (lastFriendKey === friendKey && (Date.now() - lastResolvedAt) < 30000 && lastFriendProfiles.length > 0) {
+                            const refreshed = lastFriendProfiles.map(f => ({
+                                ...f,
+                                avatarUrl: resolvePlayerAvatar(f)
+                            }));
+                            safeCallback(refreshed);
+                            return;
                         }
+
+                        const profilesMap = await getUsersByUsernames(normalizedNames, { forceRemote: true });
+                        if (!isActive) return;
+
+                        const friendProfiles: FriendUser[] = normalizedNames.map((cleanFName) => {
+                            const fUser = profilesMap[cleanFName];
+                            if (fUser) {
+                                return {
+                                    username: fUser.username,
+                                    displayName: fUser.displayName || fUser.username,
+                                    avatarUrl: resolvePlayerAvatar(fUser),
+                                    avatarStyle: fUser.avatarStyle,
+                                    avatarSeed: fUser.avatarSeed,
+                                    playerId: fUser.playerId || getPlayerId(fUser),
+                                    isDeveloper: Boolean(fUser.isDeveloper || fUser.role === 'developer' || fUser.username === 'aadish')
+                                };
+                            }
+                            return {
+                                username: cleanFName,
+                                displayName: cleanFName,
+                                avatarUrl: resolvePlayerAvatar({ username: cleanFName }),
+                                playerId: getPlayerId({ username: cleanFName }),
+                                isDeveloper: cleanFName === 'aadish'
+                            };
+                        });
+
+                        lastFriendKey = friendKey;
+                        lastResolvedAt = Date.now();
+                        lastFriendProfiles = friendProfiles;
 
                         try {
                             localStorage.setItem(`${LS_FRIENDS_KEY}_${clean}`, JSON.stringify(friendProfiles));
                         } catch (e) {}
 
-                        callback(friendProfiles);
+                        safeCallback(friendProfiles);
                     } else {
-                        callback([]);
+                        lastFriendProfiles = [];
+                        safeCallback([]);
                     }
                 } catch (snapshotErr) {
                     console.warn("[Firebase] Friend resolve snapshot error:", snapshotErr);
                 }
             }, (error) => {
+                if (!isActive) return;
                 console.warn("[Firebase] Friends listener warning:", error);
-                // Fallback to local storage
                 try {
                     const raw = localStorage.getItem(`${LS_FRIENDS_KEY}_${clean}`);
-                    if (raw) callback(JSON.parse(raw));
+                    if (raw) {
+                        const parsed: FriendUser[] = JSON.parse(raw);
+                        safeCallback(parsed.map(f => ({ ...f, avatarUrl: resolvePlayerAvatar(f) })));
+                    }
                 } catch (e) {}
             });
         } catch (e) {
@@ -269,16 +356,23 @@ export const subscribeToFriends = (
         }
     }
 
-    // Local storage fallback
+    // Local storage fallback for instant initial paint
     try {
         const raw = localStorage.getItem(`${LS_FRIENDS_KEY}_${clean}`);
-        if (raw) callback(JSON.parse(raw));
+        if (raw) {
+            const parsed: FriendUser[] = JSON.parse(raw);
+            const resolved = parsed.map(f => ({ ...f, avatarUrl: resolvePlayerAvatar(f) }));
+            lastFriendProfiles = resolved;
+            safeCallback(resolved);
+        }
     } catch (e) {}
 
     return () => {
+        isActive = false;
         if (unsubscribeFirestore) unsubscribeFirestore();
         if (typeof window !== 'undefined') {
             window.removeEventListener(`bugshot_friends_${clean}`, handleLocalFriends);
+            window.removeEventListener('bugshot_profile_updated', handleProfileUpdated);
         }
     };
 };
@@ -304,15 +398,20 @@ export const subscribeToFriendRequests = (
     username: string,
     callback: (requests: FriendRequest[]) => void
 ): (() => void) => {
-    const clean = username.trim().toLowerCase();
+    const clean = (username || '').trim().toLowerCase();
     if (!clean) {
         callback([]);
         return () => {};
     }
 
+    let isActive = true;
+    const safeCallback = (list: FriendRequest[]) => {
+        if (isActive) callback(list);
+    };
+
     const handleLocalRequests = (e: any) => {
         if (e.detail && Array.isArray(e.detail)) {
-            callback(e.detail);
+            safeCallback(e.detail);
         }
     };
     if (typeof window !== 'undefined') {
@@ -330,6 +429,7 @@ export const subscribeToFriendRequests = (
             );
 
             unsubscribeFirestore = onSnapshot(q, (snapshot) => {
+                if (!isActive) return;
                 try {
                     const requests: FriendRequest[] = [];
                     snapshot.forEach((docSnap) => {
@@ -354,15 +454,16 @@ export const subscribeToFriendRequests = (
                         localStorage.setItem(`${LS_REQUESTS_KEY}_${clean}`, JSON.stringify(requests));
                     } catch (e) {}
 
-                    callback(requests);
+                    safeCallback(requests);
                 } catch (snapshotErr) {
                     console.warn("[Firebase] Friend requests snapshot parsing error:", snapshotErr);
                 }
             }, (err) => {
+                if (!isActive) return;
                 console.warn("[Firebase] Friend requests listener warning:", err);
                 try {
                     const raw = localStorage.getItem(`${LS_REQUESTS_KEY}_${clean}`);
-                    if (raw) callback(JSON.parse(raw));
+                    if (raw) safeCallback(JSON.parse(raw));
                 } catch (e) {}
             });
         } catch (e) {
@@ -372,10 +473,11 @@ export const subscribeToFriendRequests = (
 
     try {
         const raw = localStorage.getItem(`${LS_REQUESTS_KEY}_${clean}`);
-        if (raw) callback(JSON.parse(raw));
+        if (raw) safeCallback(JSON.parse(raw));
     } catch (e) {}
 
     return () => {
+        isActive = false;
         if (unsubscribeFirestore) unsubscribeFirestore();
         if (typeof window !== 'undefined') {
             window.removeEventListener(`bugshot_requests_${clean}`, handleLocalRequests);
@@ -600,10 +702,15 @@ export const subscribeToDirectMessages = (
     const convId = getConversationId(userA, userB);
     const cutoffTimestamp = Date.now() - DIRECT_MESSAGE_RETENTION_MS;
 
+    let isActive = true;
+    const safeCallback = (list: ChatMessage[]) => {
+        if (isActive) callback(list);
+    };
+
     // Local event listener for instant local sync
     const handleLocalUpdate = (e: any) => {
         if (e.detail && Array.isArray(e.detail)) {
-            callback(e.detail);
+            safeCallback(e.detail);
         }
     };
     if (typeof window !== 'undefined') {
@@ -621,6 +728,7 @@ export const subscribeToDirectMessages = (
             );
 
             unsubscribeFirestore = onSnapshot(q, (snapshot) => {
+                if (!isActive) return;
                 try {
                     const messages: ChatMessage[] = [];
                     snapshot.forEach((docSnap) => {
@@ -651,15 +759,16 @@ export const subscribeToDirectMessages = (
                         localStorage.setItem(`${LS_MESSAGES_KEY}_${convId}`, JSON.stringify(messages));
                     } catch (e) {}
 
-                    callback(messages);
+                    safeCallback(messages);
                 } catch (snapshotErr) {
                     console.warn("[Firebase] DM snapshot parsing error:", snapshotErr);
                 }
             }, (error) => {
+                if (!isActive) return;
                 console.warn("[Firebase] DM listener warning, using local cache:", error);
                 try {
                     const raw = localStorage.getItem(`${LS_MESSAGES_KEY}_${convId}`);
-                    if (raw) callback(JSON.parse(raw));
+                    if (raw) safeCallback(JSON.parse(raw));
                 } catch (e) {}
             });
         } catch (e) {
@@ -669,10 +778,11 @@ export const subscribeToDirectMessages = (
 
     try {
         const raw = localStorage.getItem(`${LS_MESSAGES_KEY}_${convId}`);
-        if (raw) callback(JSON.parse(raw));
+        if (raw) safeCallback(JSON.parse(raw));
     } catch (e) {}
 
     return () => {
+        isActive = false;
         if (unsubscribeFirestore) unsubscribeFirestore();
         if (typeof window !== 'undefined') {
             window.removeEventListener(`bugshot_dm_${convId}`, handleLocalUpdate);
@@ -816,10 +926,15 @@ const saveLocalBroadcast = (bcast: ChatMessage) => {
 export const subscribeToBroadcasts = (
     callback: (broadcasts: ChatMessage[]) => void
 ): (() => void) => {
+    let isActive = true;
+    const safeCallback = (list: ChatMessage[]) => {
+        if (isActive) callback(list);
+    };
+
     // Local event listener for instant local sync
     const handleLocalUpdate = (e: any) => {
         if (e.detail && Array.isArray(e.detail)) {
-            callback(e.detail);
+            safeCallback(e.detail);
         }
     };
     if (typeof window !== 'undefined') {
@@ -837,6 +952,7 @@ export const subscribeToBroadcasts = (
             );
 
             unsubscribeFirestore = onSnapshot(q, (snapshot) => {
+                if (!isActive) return;
                 try {
                     const broadcasts: ChatMessage[] = [];
                     snapshot.forEach((docSnap) => {
@@ -865,7 +981,7 @@ export const subscribeToBroadcasts = (
                             conversationId: 'global_broadcast',
                             sender: 'BUGSHOT',
                             senderDisplayName: 'BUGSHOT // MAINFRAME',
-                            senderAvatarUrl: 'https://avatars.githubusercontent.com/u/101470733',
+                            senderAvatarUrl: DEV_AVATAR_URL,
                             recipient: 'all',
                             title: 'SYSTEM ACTIVATION',
                             text: 'Welcome to BugShot Roulette Cloud Mainframe. All combat operators are connected on secure channels. Stay alert, preserve your soul, and respect the live round.',
@@ -880,15 +996,16 @@ export const subscribeToBroadcasts = (
                         localStorage.setItem(LS_BROADCASTS_KEY, JSON.stringify(broadcasts));
                     } catch (e) {}
 
-                    callback(broadcasts);
+                    safeCallback(broadcasts);
                 } catch (snapshotErr) {
                     console.warn("[Firebase] Broadcasts snapshot parsing error:", snapshotErr);
                 }
             }, (error) => {
+                if (!isActive) return;
                 console.warn("[Firebase] Broadcasts listener warning:", error);
                 try {
                     const raw = localStorage.getItem(LS_BROADCASTS_KEY);
-                    if (raw) callback(JSON.parse(raw));
+                    if (raw) safeCallback(JSON.parse(raw));
                 } catch (e) {}
             });
         } catch (e) {
@@ -898,10 +1015,11 @@ export const subscribeToBroadcasts = (
 
     try {
         const raw = localStorage.getItem(LS_BROADCASTS_KEY);
-        if (raw) callback(JSON.parse(raw));
+        if (raw) safeCallback(JSON.parse(raw));
     } catch (e) {}
 
     return () => {
+        isActive = false;
         if (unsubscribeFirestore) unsubscribeFirestore();
         if (typeof window !== 'undefined') {
             window.removeEventListener('bugshot_broadcasts_updated', handleLocalUpdate);
@@ -1051,15 +1169,23 @@ export const subscribeToNotifications = (
         return () => {};
     }
 
+    let isActive = true;
     let pendingRequests = 0;
     let unreadDMs = 0;
     let unreadBySender: Record<string, number> = {};
+    let lastEmitKey = '';
 
     const emit = () => {
+        if (!isActive) return;
+        const nextTotal = pendingRequests + unreadDMs;
+        const senderKey = Object.keys(unreadBySender).sort().map(k => `${k}:${unreadBySender[k]}`).join(',');
+        const emitKey = `${unreadDMs}|${pendingRequests}|${senderKey}`;
+        if (emitKey === lastEmitKey) return;
+        lastEmitKey = emitKey;
         callback({
             unreadDMs,
             pendingRequests,
-            total: pendingRequests + unreadDMs,
+            total: nextTotal,
             unreadBySender
         });
     };
@@ -1077,10 +1203,12 @@ export const subscribeToNotifications = (
             // Query only by recipient field (No composite index required!)
             const q = query(
                 collection(db, 'direct_messages'),
-                where('recipient', '==', clean)
+                where('recipient', '==', clean),
+                limit(250)
             );
 
             unsubDMs = onSnapshot(q, (snapshot) => {
+                if (!isActive) return;
                 try {
                     const cutoffTimestamp = Date.now() - DIRECT_MESSAGE_RETENTION_MS;
                     let count = 0;
@@ -1114,12 +1242,16 @@ export const subscribeToNotifications = (
     }
 
     // Local storage event listener for instant local updates
-    const handleLocalNotifs = () => emit();
+    const handleLocalNotifs = () => {
+        lastEmitKey = '';
+        emit();
+    };
     if (typeof window !== 'undefined') {
         window.addEventListener('bugshot_notifications_changed', handleLocalNotifs);
     }
 
     return () => {
+        isActive = false;
         unsubRequests();
         unsubDMs();
         if (typeof window !== 'undefined') {
@@ -1275,9 +1407,14 @@ export const sendFeedback = async (
 export const subscribeToFeedbacks = (
     callback: (feedbacks: FeedbackMessage[]) => void
 ): (() => void) => {
+    let isActive = true;
+    const safeCallback = (list: FeedbackMessage[]) => {
+        if (isActive) callback(list);
+    };
+
     const handleLocalUpdate = (e: any) => {
         if (e.detail && Array.isArray(e.detail)) {
-            callback(e.detail);
+            safeCallback(e.detail);
         }
     };
     if (typeof window !== 'undefined') {
@@ -1295,6 +1432,7 @@ export const subscribeToFeedbacks = (
             );
 
             unsubscribeFirestore = onSnapshot(q, (snapshot) => {
+                if (!isActive) return;
                 try {
                     const list: FeedbackMessage[] = [];
                     snapshot.forEach(docSnap => {
@@ -1304,7 +1442,7 @@ export const subscribeToFeedbacks = (
                             id: docSnap.id,
                             sender: data.sender || 'Anonymous',
                             senderDisplayName: data.senderDisplayName || data.sender || 'Anonymous',
-                            senderAvatarUrl: data.senderAvatarUrl || resolvePlayerAvatar({ username: data.sender }),
+                            senderAvatarUrl: resolvePlayerAvatar({ username: data.sender, avatarUrl: data.senderAvatarUrl }),
                             senderPlayerId: data.senderPlayerId || `@${data.sender || 'operative'}#1000`,
                             category: data.category || 'Feedback',
                             text: data.text || '',
@@ -1317,15 +1455,16 @@ export const subscribeToFeedbacks = (
                         localStorage.setItem(LS_FEEDBACKS_KEY, JSON.stringify(list));
                     } catch (e) {}
 
-                    callback(list);
+                    safeCallback(list);
                 } catch (snapshotErr) {
                     console.warn("[Firebase] Feedbacks snapshot parsing error:", snapshotErr);
                 }
             }, (error) => {
+                if (!isActive) return;
                 console.warn("[Firebase] Feedbacks listener warning:", error);
                 try {
                     const raw = localStorage.getItem(LS_FEEDBACKS_KEY);
-                    if (raw) callback(JSON.parse(raw));
+                    if (raw) safeCallback(JSON.parse(raw));
                 } catch (e) {}
             });
         } catch (e) {
@@ -1335,10 +1474,11 @@ export const subscribeToFeedbacks = (
 
     try {
         const raw = localStorage.getItem(LS_FEEDBACKS_KEY);
-        if (raw) callback(JSON.parse(raw));
+        if (raw) safeCallback(JSON.parse(raw));
     } catch (e) {}
 
     return () => {
+        isActive = false;
         if (unsubscribeFirestore) unsubscribeFirestore();
         if (typeof window !== 'undefined') {
             window.removeEventListener('bugshot_feedbacks_updated', handleLocalUpdate);

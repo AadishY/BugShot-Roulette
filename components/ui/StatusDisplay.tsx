@@ -10,11 +10,13 @@ interface StatusDisplayProps {
     playerName: string;
     gameState: GameState;
     settings?: GameSettings;
+    isCompact?: boolean;
 }
 
-const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, player3, player4, playerName, gameState, settings }) => {
+const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, player3, player4, playerName, gameState, settings, isCompact: isCompactProp }) => {
     const isBalanced = !!settings?.balancedPerformance || !!settings?.ultraPerformance;
     const isPotato = !!settings?.ultraPerformance;
+    const isCompact = isCompactProp ?? (typeof window !== 'undefined' && (window.innerWidth < 768 || window.innerHeight < 540));
 
     const getPlayer3Name = () => {
         if (!gameState.multiplayerState?.players) return 'OPPONENT 2';
@@ -42,30 +44,40 @@ const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, 
     };
 
     const renderItems = (items: import('../../types').ItemType[]) => {
+        if (!items || items.length === 0) return null;
         return (
-            <div className="flex gap-1 flex-wrap justify-end max-w-[150px] md:max-w-[200px] mt-1.5">
+            <div className={isCompact
+                ? "flex gap-0.5 flex-wrap justify-end max-w-[118px] sm:max-w-[164px] mt-0.5"
+                : "flex gap-1 flex-wrap justify-end max-w-[150px] md:max-w-[200px] mt-1.5"
+            }>
                 {items.map((item, i) => (
-                    <div key={i} className="w-3.5 h-3.5 md:w-8 md:h-8 bg-stone-900/60 backdrop-blur-sm border border-stone-800 group hover:border-white/20 transition-all rounded flex items-center justify-center p-0.5 shadow-inner overflow-hidden">
-                        <div className="transform transition-transform group-hover:scale-110">
-                            {item === 'BEER' && <Icons.Beer size={16} className="w-2 md:w-4 text-amber-500/80" />}
-                            {item === 'CIGS' && <Icons.Cigs size={16} className="w-2 md:w-4 text-red-500/80" />}
-                            {item === 'GLASS' && <Icons.Glass size={16} className="w-2 md:w-4 text-cyan-500/80" />}
-                            {item === 'CUFFS' && <Icons.Cuffs size={16} className="w-2 md:w-4 text-stone-400" />}
-                            {item === 'SAW' && <Icons.Saw size={16} className="w-2 md:w-4 text-orange-600/80" />}
-                            {item === 'PHONE' && <Icons.Phone size={16} className="w-2 md:w-4 text-blue-300/80" />}
-                            {item === 'INVERTER' && <Icons.Inverter size={16} className="w-2 md:w-4 text-green-400/80" />}
-                            {item === 'ADRENALINE' && <Icons.Adrenaline size={16} className="w-2 md:w-4 text-pink-500/80" />}
-                            {item === 'CHOKE' && <Icons.Choke size={16} className="w-2 md:w-4 text-stone-300" />}
-                            {item === 'REMOTE' && <Icons.Remote size={16} className="w-2 md:w-4 text-red-500/80" />}
-                            {item === 'BIG_INVERTER' && <Icons.BigInverter size={16} className="w-2 md:w-4 text-orange-500/80" />}
-                            {item === 'CONTRACT' && <Icons.Contract size={16} className="w-2 md:w-4 text-red-750/80" />}
-                            {item === 'LUCKYCHARM' && <Icons.Luckycharm size={16} className="w-2 md:w-4 text-emerald-500/80" />}
-                            {item === 'FLASHBANG' && <Icons.Flashbang size={16} className="w-2 md:w-4 text-zinc-300" />}
-                            {item === 'CRUSHER' && <Icons.Crusher size={16} className="w-2 md:w-4 text-amber-600/80" />}
-                            {item === 'TOTEM' && <Icons.Totem size={16} className="w-2 md:w-4 text-amber-500/80 animate-pulse" />}
-                            {item === 'MIRROR' && <Icons.Mirror size={16} className="w-2 md:w-4 text-indigo-400" />}
-                            {item === 'DECK_CARD' && <Icons.DeckCard size={16} className="w-2 md:w-4 text-purple-400" />}
-                            {item === 'JACKPOT' && <Icons.Jackpot size={16} className="w-2 md:w-4 text-yellow-500/80" />}
+                    <div
+                        key={i}
+                        className={isCompact
+                            ? "w-4 h-4 bg-black/55 border border-white/10 rounded flex items-center justify-center p-0.5 overflow-hidden"
+                            : "w-3.5 h-3.5 md:w-8 md:h-8 bg-stone-900/60 backdrop-blur-sm border border-stone-800 group hover:border-white/20 transition-all rounded flex items-center justify-center p-0.5 shadow-inner overflow-hidden"
+                        }
+                    >
+                        <div className="transform transition-transform group-hover:scale-110 flex items-center justify-center">
+                            {item === 'BEER' && <Icons.Beer size={16} className={isCompact ? "w-2.5 h-2.5 text-amber-500/90" : "w-2 md:w-4 text-amber-500/80"} />}
+                            {item === 'CIGS' && <Icons.Cigs size={16} className={isCompact ? "w-2.5 h-2.5 text-red-500/90" : "w-2 md:w-4 text-red-500/80"} />}
+                            {item === 'GLASS' && <Icons.Glass size={16} className={isCompact ? "w-2.5 h-2.5 text-cyan-500/90" : "w-2 md:w-4 text-cyan-500/80"} />}
+                            {item === 'CUFFS' && <Icons.Cuffs size={16} className={isCompact ? "w-2.5 h-2.5 text-stone-300" : "w-2 md:w-4 text-stone-400"} />}
+                            {item === 'SAW' && <Icons.Saw size={16} className={isCompact ? "w-2.5 h-2.5 text-orange-500/90" : "w-2 md:w-4 text-orange-600/80"} />}
+                            {item === 'PHONE' && <Icons.Phone size={16} className={isCompact ? "w-2.5 h-2.5 text-blue-300/90" : "w-2 md:w-4 text-blue-300/80"} />}
+                            {item === 'INVERTER' && <Icons.Inverter size={16} className={isCompact ? "w-2.5 h-2.5 text-green-400/90" : "w-2 md:w-4 text-green-400/80"} />}
+                            {item === 'ADRENALINE' && <Icons.Adrenaline size={16} className={isCompact ? "w-2.5 h-2.5 text-pink-500/90" : "w-2 md:w-4 text-pink-500/80"} />}
+                            {item === 'CHOKE' && <Icons.Choke size={16} className={isCompact ? "w-2.5 h-2.5 text-stone-300" : "w-2 md:w-4 text-stone-300"} />}
+                            {item === 'REMOTE' && <Icons.Remote size={16} className={isCompact ? "w-2.5 h-2.5 text-red-500/90" : "w-2 md:w-4 text-red-500/80"} />}
+                            {item === 'BIG_INVERTER' && <Icons.BigInverter size={16} className={isCompact ? "w-2.5 h-2.5 text-orange-400/90" : "w-2 md:w-4 text-orange-500/80"} />}
+                            {item === 'CONTRACT' && <Icons.Contract size={16} className={isCompact ? "w-2.5 h-2.5 text-red-500/90" : "w-2 md:w-4 text-red-750/80"} />}
+                            {item === 'LUCKYCHARM' && <Icons.Luckycharm size={16} className={isCompact ? "w-2.5 h-2.5 text-emerald-400/90" : "w-2 md:w-4 text-emerald-500/80"} />}
+                            {item === 'FLASHBANG' && <Icons.Flashbang size={16} className={isCompact ? "w-2.5 h-2.5 text-zinc-200" : "w-2 md:w-4 text-zinc-300"} />}
+                            {item === 'CRUSHER' && <Icons.Crusher size={16} className={isCompact ? "w-2.5 h-2.5 text-amber-500/90" : "w-2 md:w-4 text-amber-600/80"} />}
+                            {item === 'TOTEM' && <Icons.Totem size={16} className={isCompact ? "w-2.5 h-2.5 text-amber-400" : "w-2 md:w-4 text-amber-500/80 animate-pulse"} />}
+                            {item === 'MIRROR' && <Icons.Mirror size={16} className={isCompact ? "w-2.5 h-2.5 text-indigo-400" : "w-2 md:w-4 text-indigo-400"} />}
+                            {item === 'DECK_CARD' && <Icons.DeckCard size={16} className={isCompact ? "w-2.5 h-2.5 text-purple-400" : "w-2 md:w-4 text-purple-400"} />}
+                            {item === 'JACKPOT' && <Icons.Jackpot size={16} className={isCompact ? "w-2.5 h-2.5 text-yellow-400" : "w-2 md:w-4 text-yellow-500/80"} />}
                         </div>
                     </div>
                 ))}
@@ -73,12 +85,150 @@ const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, 
         );
     };
 
+    const renderEnemyHpBars = (target: PlayerState, barClassName: string) => (
+        <div className={isCompact ? "flex gap-0.5" : "flex gap-1 md:gap-2"}>
+            {[...Array(target.maxHp)].map((_, i) => {
+                const isActive = i < target.hp;
+                let hpClass = '';
+                if (isActive) {
+                    hpClass = isPotato
+                        ? 'bg-red-650 border-red-750'
+                        : `bg-gradient-to-t from-red-950/80 via-red-600/60 to-red-500/40 border-red-500/60 ${isBalanced ? '' : 'shadow-[0_0_20px_rgba(239,68,68,0.25)]'}`;
+                } else {
+                    hpClass = isPotato
+                        ? 'bg-neutral-900 border-neutral-850 opacity-20'
+                        : 'bg-stone-950 border-stone-800/40 opacity-15';
+                }
+
+                return (
+                    <div key={i} className={`relative group border rounded-[2px] transition-all duration-700 ${barClassName} ${hpClass}`}>
+                        {isActive && !isPotato && !isCompact && (
+                            <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_0%,rgba(255,255,255,0.1)_50%,transparent_100%)] animate-[scanline_3s_linear_infinite]" />
+                        )}
+                    </div>
+                );
+            })}
+        </div>
+    );
+
+    const turnLabel = gameState.turnOwner === 'PLAYER'
+        ? 'YOUR TURN'
+        : (gameState.turnOwner === 'PLAYER3'
+            ? `${getPlayer3Name().toUpperCase()}'S TURN`
+            : (gameState.turnOwner === 'PLAYER4'
+                ? `${getPlayer4Name().toUpperCase()}'S TURN`
+                : `${(gameState.opponentName?.toUpperCase() || 'DEALER')}'S TURN`));
+
+    if (isCompact) {
+        return (
+            <div className="flex justify-between items-start gap-1.5 w-full pointer-events-none px-0.5 py-0.5 min-w-0">
+                {/* Player Side (Ultra-Compact) */}
+                <div className="flex flex-col items-start min-w-0 max-w-[34%] bg-black/45 border border-white/10 rounded-lg px-2 py-1">
+                    <div className="flex items-center gap-1 min-w-0 w-full">
+                        <span className="text-[9px] sm:text-[10px] font-black tracking-wider text-stone-200 uppercase truncate">
+                            {playerName || 'OPERATOR'}
+                        </span>
+                        {player.isFlashbanged && <span className="text-red-500 text-[9px] font-black shrink-0" title="Blinded">⚡</span>}
+                        {gameState.isHardMode && gameState.hardModeState && (
+                            <span className="text-[8px] font-black text-red-400 bg-red-950/60 border border-red-800/50 px-1 rounded leading-tight shrink-0">
+                                P{gameState.hardModeState.round}/3
+                            </span>
+                        )}
+                        {!gameState.isMultiplayer && !gameState.isHardMode && gameState.normalModeState && (
+                            <span className="text-[8px] font-black text-stone-300 bg-stone-800/80 border border-white/10 px-1 rounded leading-tight shrink-0">
+                                R{gameState.normalModeState.round}/2
+                            </span>
+                        )}
+                    </div>
+                    <div className="flex items-center gap-1 mt-0.5">
+                        <div className="flex items-center gap-0.5">
+                            {[...Array(player.maxHp)].map((_, i) => {
+                                const isActive = i < player.hp;
+                                const isLowHp = player.hp <= 1;
+                                const hpClass = isActive
+                                    ? (isPotato
+                                        ? 'bg-green-600 border-green-700'
+                                        : `bg-gradient-to-t from-green-900 via-green-500/70 to-green-400/50 border-green-400/70 ${isLowHp && !isBalanced ? 'animate-pulse' : ''}`)
+                                    : 'bg-stone-950 border-stone-800/50 opacity-20';
+                                return <div key={i} className={`w-2.5 h-3 border rounded-[2px] ${hpClass}`} />;
+                            })}
+                        </div>
+                        <span className="text-[9px] font-mono font-bold text-green-400 tabular-nums leading-none">
+                            {player.hp}/{player.maxHp}
+                        </span>
+                        {player.jackpotImmunityShots !== undefined && player.jackpotImmunityShots > 0 && (
+                            <span className="text-[8px] font-black text-yellow-400 bg-yellow-950/70 border border-yellow-500/40 px-1 rounded leading-tight">
+                                ★{player.jackpotImmunityShots}
+                            </span>
+                        )}
+                    </div>
+                </div>
+
+                {/* Center Turn & Shell Pill */}
+                <div className="flex flex-wrap items-center justify-center gap-1 pt-0.5 min-w-0 shrink">
+                    <div className={`px-2 py-0.5 rounded-full border text-[9px] sm:text-[10px] font-black tracking-wider uppercase italic whitespace-nowrap max-w-[130px] truncate ${
+                        gameState.turnOwner === 'PLAYER'
+                            ? 'bg-green-950/60 border-green-500/40 text-green-400'
+                            : 'bg-red-950/60 border-red-500/40 text-red-400'
+                    }`}>
+                        {turnLabel}
+                    </div>
+                    <div className="flex items-center gap-1 bg-black/55 px-2 py-0.5 rounded-full border border-white/10">
+                        <Icons.Shell size={11} className="text-stone-300 shrink-0" />
+                        <span className="text-stone-100 font-black text-[9px] sm:text-[10px] tabular-nums leading-none">
+                            {gameState.liveCount + gameState.blankCount}
+                        </span>
+                    </div>
+                </div>
+
+                {/* Dealer / Opponents Side (Compact) */}
+                <div className="flex flex-col items-end min-w-0 max-w-[36%]">
+                    <div className="flex flex-col items-end bg-black/45 border border-white/10 rounded-lg px-2 py-1 max-w-full">
+                        <div className="flex items-center gap-1 max-w-full">
+                            {dealer.isFlashbanged && <span className="text-red-500 text-[9px] font-black shrink-0" title="Blinded">⚡</span>}
+                            <span className="text-[9px] sm:text-[10px] font-black tracking-wider text-stone-200 uppercase truncate">
+                                {gameState.isMultiplayer ? (gameState.opponentName || 'OPPONENT') : 'DEALER'}
+                            </span>
+                        </div>
+                        <div className="flex items-center gap-1 mt-0.5">
+                            <span className="text-[9px] font-mono font-bold text-red-400 tabular-nums leading-none">
+                                {dealer.hp}/{dealer.maxHp}
+                            </span>
+                            {renderEnemyHpBars(dealer, 'w-2.5 h-3')}
+                        </div>
+                        {renderItems(dealer.items)}
+                    </div>
+
+                    {/* Compact 3P/4P Extra Opponent Chips */}
+                    {((gameState.isThreePlayer || gameState.isFourPlayer) && (player3 || player4)) && (
+                        <div className="flex flex-wrap justify-end gap-1 mt-0.5 max-w-full">
+                            {(gameState.isThreePlayer || gameState.isFourPlayer) && player3 && (
+                                <div className="flex items-center gap-1 bg-black/50 border border-amber-500/25 rounded px-1.5 py-0.5 text-[8px]">
+                                    <span className="font-black text-amber-300 uppercase truncate max-w-[52px]">{getPlayer3Name()}</span>
+                                    <span className="font-mono font-bold text-red-400 tabular-nums">{player3.hp}/{player3.maxHp}</span>
+                                    {player3.items.length > 0 && <span className="text-stone-400">({player3.items.length})</span>}
+                                </div>
+                            )}
+                            {gameState.isFourPlayer && player4 && (
+                                <div className="flex items-center gap-1 bg-black/50 border border-purple-500/25 rounded px-1.5 py-0.5 text-[8px]">
+                                    <span className="font-black text-purple-300 uppercase truncate max-w-[52px]">{getPlayer4Name()}</span>
+                                    <span className="font-mono font-bold text-red-400 tabular-nums">{player4.hp}/{player4.maxHp}</span>
+                                    {player4.items.length > 0 && <span className="text-stone-400">({player4.items.length})</span>}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="flex justify-between items-start w-full pointer-events-none px-1 md:px-2 py-2 md:py-4">
             {/* Player Side */}
             <div className="flex flex-col items-start min-w-[80px] md:w-1/3 animate-in slide-in-from-left duration-700">
                 <div className="flex flex-col mb-4">
-                    <span className="text-[10px] md:text-sm font-black tracking-[0.2em] md:tracking-[0.4em] text-stone-300 mb-1 uppercase truncate max-w-[105px] xs:max-w-[135px] md:max-w-full flex items-center gap-1">
+                    <span className="text-[10px] md:text-sm font-black tracking-[0.2em] md:tracking-[0.4em] text-stone-300 mb-1 uppercase truncate max-w-[135px] md:max-w-full flex items-center gap-1">
                         {playerName || 'OPERATOR'}
                         {player.isFlashbanged && <span className="text-red-500 animate-pulse text-[8px] md:text-xs font-black">⚡ BLINDED</span>}
                     </span>
@@ -152,11 +302,11 @@ const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, 
                             }`} />
                     )}
 
-                    <div className={`text-[10px] xs:text-xs md:text-3xl font-black tracking-[0.1em] md:tracking-[0.4em] transition-all duration-500 whitespace-nowrap uppercase italic ${gameState.turnOwner === 'PLAYER'
+                    <div className={`text-xs md:text-3xl font-black tracking-[0.1em] md:tracking-[0.4em] transition-all duration-500 whitespace-nowrap uppercase italic ${gameState.turnOwner === 'PLAYER'
                         ? `text-green-500 ${isBalanced ? '' : 'drop-shadow-[0_0_15px_rgba(34,197,94,0.5)]'}`
                         : `text-red-600 ${isBalanced ? '' : 'drop-shadow-[0_0_15px_rgba(220,38,38,0.5)]'}`
                         } ${gameState.isHardMode && gameState.turnOwner === 'DEALER' && !isPotato ? 'animate-[chromatic_0.2s_infinite]' : ''}`}>
-                        {gameState.turnOwner === 'PLAYER' ? 'YOUR TURN' : (gameState.turnOwner === 'PLAYER3' ? getPlayer3Name().toUpperCase() + "'S TURN" : (gameState.turnOwner === 'PLAYER4' ? getPlayer4Name().toUpperCase() + "'S TURN" : (gameState.opponentName?.toUpperCase() || "DEALER") + "'S TURN"))}
+                        {turnLabel}
                     </div>
                 </div>
 
@@ -182,34 +332,7 @@ const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, 
                             {gameState.isMultiplayer ? (gameState.opponentName || 'OPPONENT') : 'DEALER'}
                             {dealer.isFlashbanged && <span className="text-red-500 animate-pulse text-[8px] md:text-xs font-black">⚡ BLINDED</span>}
                         </span>
-                        <div className="flex gap-1 md:gap-2">
-                            {[...Array(dealer.maxHp)].map((_, i) => {
-                                const isActive = i < dealer.hp;
-                                
-                                let hpClass = '';
-                                if (isActive) {
-                                    if (isPotato) {
-                                        hpClass = 'bg-red-650 border-red-750';
-                                    } else {
-                                        hpClass = `bg-gradient-to-t from-red-950/80 via-red-600/60 to-red-500/40 border-red-500/50 ${isBalanced ? '' : 'shadow-[0_0_25px_rgba(239,68,68,0.3)]'}`;
-                                    }
-                                } else {
-                                    if (isPotato) {
-                                        hpClass = 'bg-neutral-900 border-neutral-850 opacity-20';
-                                    } else {
-                                        hpClass = 'bg-stone-950 border-stone-800/40 opacity-10';
-                                    }
-                                }
-
-                                return (
-                                    <div key={i} className={`relative group w-1.5 h-4 md:w-5 md:h-12 border rounded-sm transition-all duration-1000 ${hpClass}`}>
-                                        {isActive && !isPotato && (
-                                            <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_0%,rgba(255,255,255,0.1)_50%,transparent_100%)] animate-[scanline_3s_linear_infinite]" />
-                                        )}
-                                    </div>
-                                );
-                            })}
-                        </div>
+                        {renderEnemyHpBars(dealer, 'w-1.5 h-4 md:w-5 md:h-12 rounded-sm')}
                     </div>
                     {renderItems(dealer.items)}
                 </div>
@@ -222,34 +345,7 @@ const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, 
                                 {getPlayer3Name()}
                                 {player3.isFlashbanged && <span className="text-red-500 animate-pulse text-[8px] md:text-xs font-black">⚡ BLINDED</span>}
                             </span>
-                            <div className="flex gap-1 md:gap-2">
-                                {[...Array(player3.maxHp)].map((_, i) => {
-                                    const isActive = i < player3.hp;
-                                    
-                                    let hpClass = '';
-                                    if (isActive) {
-                                        if (isPotato) {
-                                            hpClass = 'bg-red-650 border-red-750';
-                                        } else {
-                                            hpClass = `bg-gradient-to-t from-red-950/80 via-red-600/60 to-red-500/40 border-red-500/50 ${isBalanced ? '' : 'shadow-[0_0_25px_rgba(239,68,68,0.3)]'}`;
-                                        }
-                                    } else {
-                                        if (isPotato) {
-                                            hpClass = 'bg-neutral-900 border-neutral-850 opacity-20';
-                                        } else {
-                                            hpClass = 'bg-stone-950 border-stone-800/40 opacity-10';
-                                        }
-                                    }
-
-                                    return (
-                                        <div key={i} className={`relative group w-1.5 h-4 md:w-5 md:h-12 border rounded-sm transition-all duration-1000 ${hpClass}`}>
-                                            {isActive && !isPotato && (
-                                                <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_0%,rgba(255,255,255,0.1)_50%,transparent_100%)] animate-[scanline_3s_linear_infinite]" />
-                                            )}
-                                        </div>
-                                    );
-                                })}
-                            </div>
+                            {renderEnemyHpBars(player3, 'w-1.5 h-4 md:w-5 md:h-12 rounded-sm')}
                         </div>
                         {renderItems(player3.items)}
                     </div>
@@ -263,34 +359,7 @@ const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, 
                                 {getPlayer4Name()}
                                 {player4.isFlashbanged && <span className="text-red-500 animate-pulse text-[8px] md:text-xs font-black">⚡ BLINDED</span>}
                             </span>
-                            <div className="flex gap-1 md:gap-2">
-                                {[...Array(player4.maxHp)].map((_, i) => {
-                                    const isActive = i < player4.hp;
-                                    
-                                    let hpClass = '';
-                                    if (isActive) {
-                                        if (isPotato) {
-                                            hpClass = 'bg-red-650 border-red-750';
-                                        } else {
-                                            hpClass = `bg-gradient-to-t from-red-950/80 via-red-600/60 to-red-500/40 border-red-500/50 ${isBalanced ? '' : 'shadow-[0_0_25px_rgba(239,68,68,0.3)]'}`;
-                                        }
-                                    } else {
-                                        if (isPotato) {
-                                            hpClass = 'bg-neutral-900 border-neutral-850 opacity-20';
-                                        } else {
-                                            hpClass = 'bg-stone-950 border-stone-800/40 opacity-10';
-                                        }
-                                    }
-
-                                    return (
-                                        <div key={i} className={`relative group w-1.5 h-4 md:w-5 md:h-12 border rounded-sm transition-all duration-1000 ${hpClass}`}>
-                                            {isActive && !isPotato && (
-                                                <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_0%,rgba(255,255,255,0.1)_50%,transparent_100%)] animate-[scanline_3s_linear_infinite]" />
-                                            )}
-                                        </div>
-                                    );
-                                })}
-                            </div>
+                            {renderEnemyHpBars(player4, 'w-1.5 h-4 md:w-5 md:h-12 rounded-sm')}
                         </div>
                         {renderItems(player4.items)}
                     </div>

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { GameSettings } from '../types';
 import { X, Monitor, Scaling, Eye, RotateCcw, LogOut, Volume2, VolumeX, Sun, Sparkles, Smartphone, Laptop } from 'lucide-react';
 import { audioManager } from '../utils/audioManager';
-import { isMobileOrNarrowScreen } from '../constants';
+import { isMobileOrNarrowScreen, getGraphicsPreset, GraphicsPresetTier } from '../constants';
 
 interface SettingsMenuProps {
     settings: GameSettings;
@@ -119,9 +119,7 @@ const CustomSlider: React.FC<{
 
 export const SettingsMenu: React.FC<SettingsMenuProps> = ({ settings, onUpdateSettings, onClose, onResetDefaults, onExitToMenu, showExitToMenu, isMultiplayer }) => {
     const isMobileDevice = useMemo(() => isMobileOrNarrowScreen(), []);
-    const currentGraphicsMode: 'ultra' | 'high' | 'balanced' | 'low' | 'potato' =
-        settings.graphicsMode ||
-        (settings.ultraPerformance ? 'potato' : (isMobileDevice ? 'low' : 'balanced'));
+    const currentGraphicsMode: GraphicsPresetTier = getGraphicsPreset(settings);
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -279,53 +277,53 @@ export const SettingsMenu: React.FC<SettingsMenuProps> = ({ settings, onUpdateSe
                                 {/* HIGH */}
                                 <button
                                     type="button"
-                                    title="Rich PBR materials, 1024 PCFSoft shadows, volumetric atmosphere, smooth particles"
+                                    title="ACESFilmic tone mapping, warm/cool rim lighting, crisp shadows, volumetric dust & muzzle glow, smooth reflections"
                                     onClick={() => handleChange('graphicsMode', 'high')}
-                                    className={`flex flex-col items-center justify-center min-h-[46px] gap-1 py-2.5 px-2 text-[8px] sm:text-[9.5px] font-black tracking-widest uppercase transition-all rounded-xl border active:scale-95 cursor-pointer touch-manipulation ${currentGraphicsMode === 'high' || currentGraphicsMode === 'ultra' ? 'bg-sky-955/40 text-sky-300 border-sky-500/80 shadow-[0_0_16px_rgba(56,189,248,0.25)]' : 'bg-stone-900/40 text-stone-400 border-stone-800/60 hover:bg-stone-900/80 hover:text-stone-300'}`}
+                                    className={`flex flex-col items-center justify-center min-h-[46px] gap-1 py-2.5 px-2 text-[8px] sm:text-[9.5px] font-black tracking-widest uppercase transition-all rounded-xl border active:scale-95 cursor-pointer touch-manipulation ${currentGraphicsMode === 'high' ? 'bg-sky-950/50 text-sky-300 border-sky-500/80 shadow-[0_0_16px_rgba(56,189,248,0.25)]' : 'bg-stone-900/40 text-stone-400 border-stone-800/60 hover:bg-stone-900/80 hover:text-stone-300'}`}
                                 >
                                     <span className="text-base leading-none">🌟</span>
                                     <span>HIGH</span>
-                                    <span className="text-[7px] font-semibold opacity-75 normal-case tracking-normal">Full PBR + Shadows</span>
+                                    <span className="text-[7px] font-semibold opacity-75 normal-case tracking-normal">Cinematic PBR + Glow</span>
                                 </button>
                                 {/* BALANCED */}
                                 <button
                                     type="button"
-                                    title="Crisp, cleanly lit, 512 PCF shadows, solid 60fps performance"
+                                    title="Rich 60fps default with sharp key/fill balance, smooth PCF shadows, and specular metal/wood response"
                                     onClick={() => handleChange('graphicsMode', 'balanced')}
-                                    className={`flex flex-col items-center justify-center min-h-[46px] gap-1 py-2.5 px-2 text-[8px] sm:text-[9.5px] font-black tracking-widest uppercase transition-all rounded-xl border active:scale-95 cursor-pointer touch-manipulation ${currentGraphicsMode === 'balanced' ? 'bg-green-955/40 text-green-300 border-green-500/80 shadow-[0_0_16px_rgba(74,222,128,0.25)]' : 'bg-stone-900/40 text-stone-400 border-stone-800/60 hover:bg-stone-900/80 hover:text-stone-300'}`}
+                                    className={`flex flex-col items-center justify-center min-h-[46px] gap-1 py-2.5 px-2 text-[8px] sm:text-[9.5px] font-black tracking-widest uppercase transition-all rounded-xl border active:scale-95 cursor-pointer touch-manipulation ${currentGraphicsMode === 'balanced' ? 'bg-green-950/50 text-green-300 border-green-500/80 shadow-[0_0_16px_rgba(74,222,128,0.25)]' : 'bg-stone-900/40 text-stone-400 border-stone-800/60 hover:bg-stone-900/80 hover:text-stone-300'}`}
                                 >
                                     <span className="text-base leading-none">⚖️</span>
                                     <span className="flex items-center gap-1">BALANCED {!isMobileDevice && <span className="text-[6px] text-green-400 bg-green-950/50 px-1 py-0.2 rounded border border-green-800/60">PC</span>}</span>
-                                    <span className="text-[7px] font-semibold opacity-75 normal-case tracking-normal">Solid 60 FPS</span>
+                                    <span className="text-[7px] font-semibold opacity-75 normal-case tracking-normal">60 FPS + Specular</span>
                                 </button>
                                 {/* LOW */}
                                 <button
                                     type="button"
-                                    title="Fast & smooth with preserved processing: ACES tone mapping, fog, subtle lights & materials"
+                                    title="Atmospheric bunker fog, subtle contrast & readable shadows/highlights tuned for fast Android GPU performance"
                                     onClick={() => handleChange('graphicsMode', 'low')}
-                                    className={`flex flex-col items-center justify-center min-h-[46px] gap-1 py-2.5 px-2 text-[8px] sm:text-[9.5px] font-black tracking-widest uppercase transition-all rounded-xl border active:scale-95 cursor-pointer touch-manipulation ${currentGraphicsMode === 'low' ? 'bg-orange-955/40 text-orange-300 border-orange-500/80 shadow-[0_0_16px_rgba(249,115,22,0.25)]' : 'bg-stone-900/40 text-stone-400 border-stone-800/60 hover:bg-stone-900/80 hover:text-stone-300'}`}
+                                    className={`flex flex-col items-center justify-center min-h-[46px] gap-1 py-2.5 px-2 text-[8px] sm:text-[9.5px] font-black tracking-widest uppercase transition-all rounded-xl border active:scale-95 cursor-pointer touch-manipulation ${currentGraphicsMode === 'low' ? 'bg-orange-950/50 text-orange-300 border-orange-500/80 shadow-[0_0_16px_rgba(249,115,22,0.25)]' : 'bg-stone-900/40 text-stone-400 border-stone-800/60 hover:bg-stone-900/80 hover:text-stone-300'}`}
                                 >
                                     <span className="text-base leading-none">⚡</span>
                                     <span className="flex items-center gap-1">LOW {isMobileDevice && <span className="text-[6px] text-orange-400 bg-orange-950/50 px-1 py-0.2 rounded border border-orange-800/60">PHONE</span>}</span>
-                                    <span className="text-[7px] font-semibold opacity-75 normal-case tracking-normal">Fast + Preserved FX</span>
+                                    <span className="text-[7px] font-semibold opacity-75 normal-case tracking-normal">Atmospheric + Fast</span>
                                 </button>
                                 {/* POTATO */}
                                 <button
                                     type="button"
-                                    title="Maximum possible FPS, flat shading, zero shadows, linear lighting, minimal fillrate"
+                                    title="Ultra-fast barebones playable mode with minimal draw overhead, crisp readability, and zero shader stalls"
                                     onClick={() => handleChange('graphicsMode', 'potato')}
                                     className={`flex flex-col items-center justify-center min-h-[46px] gap-1 py-2.5 px-2 text-[8px] sm:text-[9.5px] font-black tracking-widest uppercase transition-all rounded-xl border active:scale-95 cursor-pointer touch-manipulation ${currentGraphicsMode === 'potato' ? 'bg-red-955/40 text-red-300 border-red-500/80 shadow-[0_0_16px_rgba(239,68,68,0.25)]' : 'bg-stone-900/40 text-stone-400 border-stone-800/60 hover:bg-stone-900/80 hover:text-stone-300'}`}
                                 >
                                     <span className="text-base leading-none">🥔</span>
                                     <span>POTATO</span>
-                                    <span className="text-[7px] font-semibold opacity-75 normal-case tracking-normal">Bare Minimum / Max FPS</span>
+                                    <span className="text-[7px] font-semibold opacity-75 normal-case tracking-normal">Barebones / Max FPS</span>
                                 </button>
                             </div>
                             <p className="text-[7.5px] sm:text-[8px] text-stone-500 uppercase tracking-widest leading-relaxed">
-                                {(currentGraphicsMode === 'high' || currentGraphicsMode === 'ultra') && "🌟 High: Clamped DPR <= 1.5, 1024 PCFSoft shadows, full lighting & reflections, smooth particles."}
-                                {currentGraphicsMode === 'balanced' && "⚖️ Balanced: Clamped DPR <= 1.0, 512 PCF shadows, selective lighting, solid 60fps performance."}
-                                {currentGraphicsMode === 'low' && "⚡ Low: Clamped DPR <= 0.95, preserved ACES tone mapping & fog, subtle lighting, fast performance without potato flat visuals."}
-                                {currentGraphicsMode === 'potato' && "🥔 Potato: Clamped DPR <= 0.85, zero shadows, flat shading, linear lighting, minimal fillrate."}
+                                {currentGraphicsMode === 'high' && "🌟 High: ACESFilmic tone mapping, warm/cool rim separation, crisp shadows, volumetric dust & muzzle glow, smooth reflections with FPS protection."}
+                                {currentGraphicsMode === 'balanced' && "⚖️ Balanced: Rich 60fps default with sharp key/fill balance, smooth PCF shadows, and specular metal/wood response."}
+                                {currentGraphicsMode === 'low' && "⚡ Low: Atmospheric lighting, bunker fog, subtle contrast & readable highlights tuned for fast Android GPUs."}
+                                {currentGraphicsMode === 'potato' && "🥔 Potato: Ultra-fast barebones playable mode with minimal draw overhead, crisp readability, and zero shader stalls."}
                             </p>
                         </div>
 

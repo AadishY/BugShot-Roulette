@@ -1,6 +1,7 @@
 import { io, Socket } from 'socket.io-client';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import type { UserProfile } from './firebaseService';
+import { resolveCanonicalAvatar } from './dicebear';
 
 export interface UserPresence {
     username: string;
@@ -8,6 +9,7 @@ export interface UserPresence {
     displayName?: string;
     avatarUrl?: string;
     avatarStyle?: string;
+    avatarSeed?: string;
     status: 'online' | 'in_lobby' | 'in_match' | 'offline';
     roomId?: string | null;
     matchInfo?: {
@@ -134,31 +136,58 @@ class PresenceClient {
     private isConnected = false;
     private heartbeatTimer: any = null;
     private visibilityListenerAdded = false;
+    private onlineHandler: (() => void) | null = null;
+    private visibilityHandler: (() => void) | null = null;
+    private profileUpdatedHandler: ((e: any) => void) | null = null;
 
     constructor() {
         if (typeof window !== 'undefined') {
             this.initSocket();
             this.initVisibilityListener();
             this.initNetworkListener();
+            this.initProfileListener();
         }
     }
 
+    private initProfileListener() {
+        if (typeof window === 'undefined' || this.profileUpdatedHandler) return;
+        this.profileUpdatedHandler = (e: any) => {
+            const detail = e?.detail;
+            if (!detail) return;
+            const targetUser = detail.profile || detail;
+            const uname = (targetUser.username || this.currentUser?.username || '').trim().toLowerCase();
+            if (!uname) return;
+            if (this.currentUser && this.currentUser.username.trim().toLowerCase() === uname) {
+                const updated: UserProfile = {
+                    ...this.currentUser,
+                    ...(targetUser.displayName ? { displayName: targetUser.displayName } : {}),
+                    ...(targetUser.avatarUrl ? { avatarUrl: targetUser.avatarUrl } : {}),
+                    ...(targetUser.avatarStyle ? { avatarStyle: targetUser.avatarStyle } : {}),
+                    ...(targetUser.avatarSeed ? { avatarSeed: targetUser.avatarSeed } : {})
+                };
+                this.updateProfile(updated);
+            }
+        };
+        window.addEventListener('bugshot_profile_updated', this.profileUpdatedHandler);
+    }
+
     private initNetworkListener() {
-        if (typeof window === 'undefined') return;
-        window.addEventListener('online', () => {
+        if (typeof window === 'undefined' || this.onlineHandler) return;
+        this.onlineHandler = () => {
             if (this.socket && !this.socket.connected) {
                 this.socket.connect();
             }
             if (this.currentUser) {
                 this.socket?.emit('presence:request_all');
             }
-        });
+        };
+        window.addEventListener('online', this.onlineHandler);
     }
 
     private initVisibilityListener() {
         if (this.visibilityListenerAdded || typeof document === 'undefined') return;
         this.visibilityListenerAdded = true;
-        document.addEventListener('visibilitychange', () => {
+        this.visibilityHandler = () => {
             if (document.visibilityState === 'visible') {
                 if (this.socket && !this.socket.connected) {
                     this.socket.connect();
@@ -168,7 +197,38 @@ class PresenceClient {
                     this.socket?.emit('presence:request_all');
                 }
             }
-        });
+        };
+        document.addEventListener('visibilitychange', this.visibilityHandler);
+    }
+
+    public destroy() {
+        this.stopHeartbeat();
+        if (typeof window !== 'undefined') {
+            if (this.onlineHandler) {
+                window.removeEventListener('online', this.onlineHandler);
+                this.onlineHandler = null;
+            }
+            if (this.profileUpdatedHandler) {
+                window.removeEventListener('bugshot_profile_updated', this.profileUpdatedHandler);
+                this.profileUpdatedHandler = null;
+            }
+        }
+        if (typeof document !== 'undefined' && this.visibilityHandler) {
+            document.removeEventListener('visibilitychange', this.visibilityHandler);
+            this.visibilityHandler = null;
+            this.visibilityListenerAdded = false;
+        }
+        if (this.socket) {
+            try {
+                this.socket.removeAllListeners();
+                this.socket.disconnect();
+            } catch (e) {}
+            this.socket = null;
+        }
+        this.listeners.clear();
+        this.broadcastListeners.clear();
+        this.dmListeners.clear();
+        this.clearBroadcastListeners.clear();
     }
 
     private startHeartbeat() {
@@ -285,12 +345,14 @@ class PresenceClient {
         this.startHeartbeat();
 
         const clean = user.username.trim().toLowerCase();
+        const canonicalAvatarUrl = resolveCanonicalAvatar(user);
         this.presenceMap.set(clean, {
             username: user.username,
             playerId: user.playerId,
             displayName: user.displayName || user.username,
-            avatarUrl: user.avatarUrl,
+            avatarUrl: canonicalAvatarUrl,
             avatarStyle: user.avatarStyle,
+            avatarSeed: user.avatarSeed,
             status,
             matchInfo,
             connectedAt: Date.now(),
@@ -304,13 +366,18 @@ class PresenceClient {
                 username: user.username,
                 playerId: user.playerId,
                 displayName: user.displayName || user.username,
-                avatarUrl: user.avatarUrl,
+                avatarUrl: canonicalAvatarUrl,
                 avatarStyle: user.avatarStyle,
+                avatarSeed: user.avatarSeed,
                 status,
                 matchInfo,
                 isDeveloper: user.username?.toLowerCase() === 'aadish' || Boolean(user.isDeveloper)
             });
         }
+    }
+
+    public updateProfile(user: UserProfile) {
+        this.identify(user, this.currentStatus, this.currentMatchInfo);
     }
 
     public updateStatus(status: 'online' | 'in_lobby' | 'in_match', matchInfo: any = null, roomId: string | null = null) {
@@ -320,10 +387,14 @@ class PresenceClient {
         if (this.currentUser) {
             const clean = this.currentUser.username.trim().toLowerCase();
             const existing = this.presenceMap.get(clean);
+            const canonicalAvatarUrl = resolveCanonicalAvatar(this.currentUser);
             if (existing) {
                 existing.status = status;
                 existing.matchInfo = matchInfo;
                 existing.roomId = roomId;
+                existing.avatarUrl = canonicalAvatarUrl;
+                existing.avatarStyle = this.currentUser.avatarStyle;
+                existing.avatarSeed = this.currentUser.avatarSeed;
                 existing.lastSeen = Date.now();
                 this.presenceMap.set(clean, existing);
             } else {
@@ -331,8 +402,9 @@ class PresenceClient {
                     username: this.currentUser.username,
                     playerId: this.currentUser.playerId,
                     displayName: this.currentUser.displayName || this.currentUser.username,
-                    avatarUrl: this.currentUser.avatarUrl,
+                    avatarUrl: canonicalAvatarUrl,
                     avatarStyle: this.currentUser.avatarStyle,
+                    avatarSeed: this.currentUser.avatarSeed,
                     status,
                     matchInfo,
                     roomId,
@@ -356,6 +428,27 @@ class PresenceClient {
     public getPresence(username: string): UserPresence | null {
         if (!username) return null;
         return this.presenceMap.get(username.trim().toLowerCase()) || null;
+    }
+
+    public getPresenceByNameOrUsername(nameOrUsername: string): UserPresence | null {
+        if (!nameOrUsername) return null;
+        const clean = nameOrUsername.trim().toLowerCase();
+        const direct = this.presenceMap.get(clean);
+        if (direct) return direct;
+
+        // Also match without disambiguation suffix like "player(2)" or by displayName
+        const stripped = clean.replace(/\(\d+\)$/, '').trim();
+        if (stripped !== clean) {
+            const byStripped = this.presenceMap.get(stripped);
+            if (byStripped) return byStripped;
+        }
+        for (const p of this.presenceMap.values()) {
+            const dn = (p.displayName || '').trim().toLowerCase();
+            if (dn && (dn === clean || dn === stripped)) {
+                return p;
+            }
+        }
+        return null;
     }
 
     public getAllPresences(): Map<string, UserPresence> {
@@ -388,132 +481,139 @@ class PresenceClient {
         });
     }
 
-    // Admin commands
-    public async fetchAdminOverview(): Promise<AdminOverviewData | null> {
+    private emitAdminCommand<T = { success: boolean; error?: string }>(
+        event: string,
+        payload: any,
+        timeoutMs: number,
+        fallbackResult: T,
+        mapAck: (res: any) => T
+    ): Promise<T> {
         return new Promise((resolve) => {
             if (!this.socket || !this.socket.connected) {
-                // Fallback to HTTP
-                const authUser = (this.currentUser?.username || '').toLowerCase();
-                const endpoint = `${getSocketConfig().socketUrl}/api/admin/overview?auth=${authUser}`;
-                fetch(endpoint)
-                    .then(res => res.json())
-                    .then(data => resolve(data))
-                    .catch(() => resolve(null));
+                resolve(fallbackResult);
                 return;
             }
-
-            this.socket.emit('admin:get_overview', (res: any) => {
-                if (res?.success && res.data) {
-                    resolve(res.data);
-                } else {
-                    resolve(null);
+            let settled = false;
+            const timer = setTimeout(() => {
+                if (!settled) {
+                    settled = true;
+                    resolve(fallbackResult);
                 }
-            });
+            }, timeoutMs);
 
-            setTimeout(() => resolve(null), 6000);
+            const handleAck = (res: any) => {
+                if (!settled) {
+                    settled = true;
+                    clearTimeout(timer);
+                    resolve(mapAck(res));
+                }
+            };
+
+            if (payload === undefined) {
+                this.socket.emit(event, handleAck);
+            } else {
+                this.socket.emit(event, payload, handleAck);
+            }
         });
+    }
+
+    // Admin commands
+    public async fetchAdminOverview(): Promise<AdminOverviewData | null> {
+        if (!this.socket || !this.socket.connected) {
+            const authUser = (this.currentUser?.username || '').toLowerCase();
+            const endpoint = `${getSocketConfig().socketUrl}/api/admin/overview?auth=${authUser}`;
+            try {
+                const res = await fetch(endpoint);
+                return await res.json();
+            } catch {
+                return null;
+            }
+        }
+        return this.emitAdminCommand<AdminOverviewData | null>(
+            'admin:get_overview',
+            undefined,
+            6000,
+            null,
+            (res) => (res?.success && res.data ? res.data : null)
+        );
     }
 
     public async sendAdminBroadcast(title: string, text: string): Promise<{ success: boolean; error?: string }> {
-        return new Promise((resolve) => {
-            if (!this.socket || !this.socket.connected) {
-                resolve({ success: false, error: 'Socket disconnected' });
-                return;
-            }
-            this.socket.emit('admin:broadcast_message', { title, text }, (res: any) => {
-                if (res?.success) {
-                    resolve({ success: true });
-                } else {
-                    resolve({ success: false, error: res?.error || 'Broadcast failed' });
-                }
-            });
-            setTimeout(() => resolve({ success: false, error: 'Timeout waiting for server confirmation' }), 6000);
-        });
+        if (!this.socket || !this.socket.connected) {
+            return { success: false, error: 'Socket disconnected' };
+        }
+        return this.emitAdminCommand(
+            'admin:broadcast_message',
+            { title, text },
+            6000,
+            { success: false, error: 'Timeout waiting for server confirmation' },
+            (res) => (res?.success ? { success: true } : { success: false, error: res?.error || 'Broadcast failed' })
+        );
     }
 
     public async clearAdminBroadcast(): Promise<{ success: boolean; error?: string }> {
-        return new Promise((resolve) => {
-            if (!this.socket || !this.socket.connected) {
-                resolve({ success: false, error: 'Socket disconnected' });
-                return;
-            }
-            this.socket.emit('admin:clear_broadcast', (res: any) => {
-                if (res?.success) {
-                    resolve({ success: true });
-                } else {
-                    resolve({ success: false, error: res?.error || 'Failed to clear broadcast' });
-                }
-            });
-            setTimeout(() => resolve({ success: true }), 3000);
-        });
+        if (!this.socket || !this.socket.connected) {
+            return { success: false, error: 'Socket disconnected' };
+        }
+        return this.emitAdminCommand(
+            'admin:clear_broadcast',
+            undefined,
+            3000,
+            { success: true },
+            (res) => (res?.success ? { success: true } : { success: false, error: res?.error || 'Failed to clear broadcast' })
+        );
     }
 
     public async sendAdminDM(targetUsername: string, text: string): Promise<{ success: boolean; count?: number; error?: string }> {
-        return new Promise((resolve) => {
-            if (!this.socket || !this.socket.connected) {
-                resolve({ success: false, error: 'Socket disconnected' });
-                return;
-            }
-            this.socket.emit('admin:send_dm', { targetUsername, text }, (res: any) => {
-                if (res?.success) {
-                    resolve({ success: true, count: res.count });
-                } else {
-                    resolve({ success: false, error: res?.error || 'Direct transmission failed' });
-                }
-            });
-            setTimeout(() => resolve({ success: false, error: 'Timeout waiting for server confirmation' }), 6000);
-        });
+        if (!this.socket || !this.socket.connected) {
+            return { success: false, error: 'Socket disconnected' };
+        }
+        return this.emitAdminCommand(
+            'admin:send_dm',
+            { targetUsername, text },
+            6000,
+            { success: false, error: 'Timeout waiting for server confirmation' },
+            (res) => (res?.success ? { success: true, count: res.count } : { success: false, error: res?.error || 'Direct transmission failed' })
+        );
     }
 
     public async kickPlayer(roomId: string, targetPlayerId?: string, targetUsername?: string): Promise<{ success: boolean; error?: string }> {
-        return new Promise((resolve) => {
-            if (!this.socket || !this.socket.connected) {
-                resolve({ success: false, error: 'Socket disconnected' });
-                return;
-            }
-            this.socket.emit('admin:kick_player', { roomId, targetPlayerId, targetUsername }, (res: any) => {
-                if (res?.success) {
-                    resolve({ success: true });
-                } else {
-                    resolve({ success: false, error: res?.error || 'Kick command failed' });
-                }
-            });
-            setTimeout(() => resolve({ success: false, error: 'Timeout waiting for server confirmation' }), 6000);
-        });
+        if (!this.socket || !this.socket.connected) {
+            return { success: false, error: 'Socket disconnected' };
+        }
+        return this.emitAdminCommand(
+            'admin:kick_player',
+            { roomId, targetPlayerId, targetUsername },
+            6000,
+            { success: false, error: 'Timeout waiting for server confirmation' },
+            (res) => (res?.success ? { success: true } : { success: false, error: res?.error || 'Kick command failed' })
+        );
     }
 
     public async mutePlayer(targetUsername: string, durationMs: number = 30 * 60 * 1000): Promise<{ success: boolean; error?: string }> {
-        return new Promise((resolve) => {
-            if (!this.socket || !this.socket.connected) {
-                resolve({ success: false, error: 'Socket disconnected' });
-                return;
-            }
-            this.socket.emit('admin:mute_player', { targetUsername, durationMs }, (res: any) => {
-                if (res?.success) {
-                    resolve({ success: true });
-                } else {
-                    resolve({ success: false, error: res?.error || 'Mute command failed' });
-                }
-            });
-            setTimeout(() => resolve({ success: false, error: 'Timeout waiting for server confirmation' }), 6000);
-        });
+        if (!this.socket || !this.socket.connected) {
+            return { success: false, error: 'Socket disconnected' };
+        }
+        return this.emitAdminCommand(
+            'admin:mute_player',
+            { targetUsername, durationMs },
+            6000,
+            { success: false, error: 'Timeout waiting for server confirmation' },
+            (res) => (res?.success ? { success: true } : { success: false, error: res?.error || 'Mute command failed' })
+        );
     }
 
     public async unmutePlayer(targetUsername: string): Promise<{ success: boolean; error?: string }> {
-        return new Promise((resolve) => {
-            if (!this.socket || !this.socket.connected) {
-                resolve({ success: false, error: 'Socket disconnected' });
-                return;
-            }
-            this.socket.emit('admin:unmute_player', { targetUsername }, (res: any) => {
-                if (res?.success) {
-                    resolve({ success: true });
-                } else {
-                    resolve({ success: false, error: res?.error || 'Unmute command failed' });
-                }
-            });
-            setTimeout(() => resolve({ success: false, error: 'Timeout waiting for server confirmation' }), 6000);
-        });
+        if (!this.socket || !this.socket.connected) {
+            return { success: false, error: 'Socket disconnected' };
+        }
+        return this.emitAdminCommand(
+            'admin:unmute_player',
+            { targetUsername },
+            6000,
+            { success: false, error: 'Timeout waiting for server confirmation' },
+            (res) => (res?.success ? { success: true } : { success: false, error: res?.error || 'Unmute command failed' })
+        );
     }
 
     public async checkRoomStatus(roomId: string): Promise<{
@@ -562,7 +662,7 @@ export const presenceClient = new PresenceClient();
 
 // React Hook for seamless real-time UI integration
 export function usePresence(currentUser: UserProfile | null = null) {
-    const [, setTick] = useState(0);
+    const [tick, setTick] = useState(0);
     const [broadcastMsg, setBroadcastMsg] = useState<BroadcastNotification | null>(null);
     const [dmMsg, setDmMsg] = useState<DirectMessageNotification | null>(null);
 
@@ -570,7 +670,14 @@ export function usePresence(currentUser: UserProfile | null = null) {
         if (currentUser) {
             presenceClient.identify(currentUser, 'online');
         }
-    }, [currentUser]);
+    }, [
+        currentUser?.username,
+        currentUser?.displayName,
+        currentUser?.avatarUrl,
+        currentUser?.avatarStyle,
+        currentUser?.avatarSeed,
+        currentUser?.isDeveloper
+    ]);
 
     useEffect(() => {
         const unsubscribePresence = presenceClient.subscribe(() => {
@@ -599,29 +706,33 @@ export function usePresence(currentUser: UserProfile | null = null) {
 
     const getUserPresence = useCallback((username: string): UserPresence | null => {
         return presenceClient.getPresence(username);
-    }, []);
+    }, [tick]);
 
     const updateMyPresence = useCallback((status: 'online' | 'in_lobby' | 'in_match', matchInfo: any = null, roomId: string | null = null) => {
         presenceClient.updateStatus(status, matchInfo, roomId);
     }, []);
 
+    const allPresences = useMemo(() => presenceClient.getAllPresences(), [tick]);
+
+    const adminAPI = useMemo(() => ({
+        fetchOverview: () => presenceClient.fetchAdminOverview(),
+        broadcast: (title: string, text: string) => presenceClient.sendAdminBroadcast(title, text),
+        clearBroadcast: () => presenceClient.clearAdminBroadcast(),
+        dm: (targetUsername: string, text: string) => presenceClient.sendAdminDM(targetUsername, text),
+        kickPlayer: (roomId: string, targetPlayerId?: string, targetUsername?: string) => presenceClient.kickPlayer(roomId, targetPlayerId, targetUsername),
+        mutePlayer: (targetUsername: string, durationMs?: number) => presenceClient.mutePlayer(targetUsername, durationMs),
+        unmutePlayer: (targetUsername: string) => presenceClient.unmutePlayer(targetUsername)
+    }), []);
+
     return {
         getUserPresence,
         updateMyPresence,
-        allPresences: presenceClient.getAllPresences(),
+        allPresences,
         broadcastMsg,
         clearBroadcast: () => setBroadcastMsg(null),
         clearAdminBroadcast: () => presenceClient.clearAdminBroadcast(),
         dmMsg,
         clearDM: () => setDmMsg(null),
-        adminAPI: {
-            fetchOverview: () => presenceClient.fetchAdminOverview(),
-            broadcast: (title: string, text: string) => presenceClient.sendAdminBroadcast(title, text),
-            clearBroadcast: () => presenceClient.clearAdminBroadcast(),
-            dm: (targetUsername: string, text: string) => presenceClient.sendAdminDM(targetUsername, text),
-            kickPlayer: (roomId: string, targetPlayerId?: string, targetUsername?: string) => presenceClient.kickPlayer(roomId, targetPlayerId, targetUsername),
-            mutePlayer: (targetUsername: string, durationMs?: number) => presenceClient.mutePlayer(targetUsername, durationMs),
-            unmutePlayer: (targetUsername: string) => presenceClient.unmutePlayer(targetUsername)
-        }
+        adminAPI
     };
 }

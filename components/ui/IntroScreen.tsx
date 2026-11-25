@@ -1,10 +1,34 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Scoreboard } from './Scoreboard';
 import { ChangelogModal } from './ChangelogModal';
 import { AnnouncementModal } from './AnnouncementModal';
 import { LeaderboardModal } from '../LeaderboardModal';
-import { Settings as SettingsIcon, HelpCircle, Trophy, ShieldAlert, Lock, User, Mail, Terminal, BookOpen, Crown, Shield, Skull, X, Crosshair, Swords, Activity, Award, Bell, LogOut, RotateCw, Flame, AlertTriangle, Check, Key, Eye, EyeOff, Radio, MessageSquare, Download, ChevronDown, ChevronUp, Users, Heart } from 'lucide-react';
+import {
+    Settings as SettingsIcon,
+    HelpCircle,
+    Trophy,
+    ShieldAlert,
+    Lock,
+    User,
+    Mail,
+    Terminal,
+    BookOpen,
+    Crown,
+    Skull,
+    X,
+    Crosshair,
+    Swords,
+    Bell,
+    RotateCw,
+    AlertTriangle,
+    Key,
+    Eye,
+    EyeOff,
+    MessageSquare,
+    Download,
+    ChevronDown,
+    ChevronUp
+} from 'lucide-react';
 import { audioManager } from '../../utils/audioManager';
 import {
     UserProfile,
@@ -14,7 +38,6 @@ import {
     signInWithGoogle,
     sendPasswordReset,
     getLeaderboard,
-    saveUserStatsToFirebase,
     getCurrentUserProfile,
     findUserByUsernameOrEmail,
     logoutUserFromFirebase,
@@ -27,10 +50,10 @@ import { MigrationModal } from './MigrationModal';
 import { AdminDashboardModal } from './AdminDashboardModal';
 import { MessagesModal } from './MessagesModal';
 import { subscribeToNotifications, NotificationCounts, subscribeToFriends, FriendUser, resolvePlayerAvatar } from '../../utils/messagingService';
-import { usePresence } from '../../utils/presenceService';
+import { presenceClient, UserPresence } from '../../utils/presenceService';
 import { getDicebearUrl } from '../../utils/dicebear';
 import { GAME_VERSION, ANNOUNCEMENT_VERSION } from '../../constants';
-import { getStoredStats, setUserActiveStats, clearActiveStatsSession, emptyStats } from '../../utils/statsManager';
+import { setUserActiveStats, clearActiveStatsSession, emptyStats } from '../../utils/statsManager';
 import { useOnlineStatus } from '../../hooks/useOnlineStatus';
 import { showAlert } from '../../utils/modalService';
 
@@ -48,25 +71,25 @@ const AUTH_QUOTES = [
     "The dealer knows your name. The machine knows your future."
 ];
 
-// Thematic codename pools for match history display
-const NORMAL_CODENAMES = [
-    'VIPER', 'BLACKOUT', 'WRAITH', 'KINGPIN', 'PHANTOM',
-    'SHADOW OPS', 'NIGHTFALL', 'DEADLOCK', 'SERPENT', 'CRIMSON TIDE',
-    'IRON WOLF', 'GHOST WIRE', 'COLD FRONT', 'REAPER', 'OBSIDIAN',
-    'THUNDERCLAP', 'DARK PULSE', 'STEEL RAIN', 'VOID WALKER', 'ECLIPSE'
-];
+// Module-level throttle for lastSeen Firestore updates across menu remounts
+const LAST_SEEN_THROTTLE_MS = 45000;
+const lastSeenSentAt = new Map<string, number>();
 
-const HARD_CODENAMES = [
-    'IRON FANG', 'DARK HARVEST', 'SCORCHED EARTH', 'BLOOD MERIDIAN',
-    'DEAD RECKONING', 'HELLFIRE', 'OMEGA PURGE', 'SKULL CIRCUIT',
-    'DEATH WARRANT', 'BLACK HORIZON', 'ENDGAME', 'FINAL PROTOCOL',
-    'LAST RITES', 'EXTINCTION', 'DOOMSDAY ARC', 'VOID COLLAPSE',
-    'INFERNO GATE', 'CARNAGE PRIME', 'ANNIHILATION', 'TERMINUS'
-];
-
-const getMatchCodename = (index: number, isHardMode: boolean): string => {
-    const pool = isHardMode ? HARD_CODENAMES : NORMAL_CODENAMES;
-    return pool[index % pool.length];
+const readIsLowPerfSetting = (): boolean => {
+    if (typeof window === 'undefined') return false;
+    try {
+        const raw = localStorage.getItem('aadish_roulette_settings');
+        if (raw) {
+            const s = JSON.parse(raw);
+            if (s?.ultraPerformance || s?.graphicsMode === 'potato' || s?.graphicsMode === 'low') {
+                return true;
+            }
+        }
+    } catch {}
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        return true;
+    }
+    return false;
 };
 
 interface IntroScreenProps {
@@ -80,7 +103,556 @@ interface IntroScreenProps {
     onStartMultiplayer: (name: string, roomId?: string) => void;
 }
 
-export const IntroScreen: React.FC<IntroScreenProps> = ({
+interface BindSoulOverlayProps {
+    isBindingSoul: boolean;
+    isMobile: boolean;
+    isTouchDevice: boolean;
+    reduceEffects: boolean;
+    onBindSoul: () => void;
+}
+
+const BindSoulOverlay: React.FC<BindSoulOverlayProps> = React.memo(({
+    isBindingSoul,
+    isMobile,
+    isTouchDevice,
+    reduceEffects,
+    onBindSoul
+}) => (
+    <div
+        className="fixed inset-0 z-50 flex flex-col items-center justify-center overflow-hidden pointer-events-auto bg-black font-mono cursor-pointer animate-in fade-in duration-700 select-none"
+        onClick={onBindSoul}
+        role="button"
+        tabIndex={0}
+        aria-label="Bind soul to enter BugShot Roulette"
+    >
+        {/* Subtle dark ambient red glow - gate continuous pulse on low-perf/touch */}
+        <div
+            className={`absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(220,38,38,${isBindingSoul ? '0.22' : '0.07'})_0%,transparent_70%)] ${
+                isBindingSoul || reduceEffects ? 'animate-none' : 'animate-pulse'
+            } transition-all duration-200 pointer-events-none`}
+        />
+
+        <div className={`text-center relative z-10 p-4 max-w-xl mx-auto flex flex-col items-center transition-transform duration-200 ${isBindingSoul ? 'scale-[1.02]' : 'scale-100'}`}>
+            <h1 className={`text-6xl sm:text-8xl md:text-9xl font-black text-stone-100 mb-8 sm:mb-10 tracking-tighter leading-none ${
+                reduceEffects ? '' : 'drop-shadow-[0_0_25px_rgba(255,255,255,0.2)]'
+            }`}>
+                <span className="block animate-in slide-in-from-top duration-700">BUGSHOT</span>
+                <span className="block text-red-650 animate-[text-pop_0.5s_ease-out] relative">
+                    ROULETTE
+                    {!isMobile && !reduceEffects && (
+                        <span className="absolute -inset-1 text-red-400 opacity-20 blur-sm animate-glitch pointer-events-none">ROULETTE</span>
+                    )}
+                </span>
+            </h1>
+
+            <div className="text-stone-400 text-xs sm:text-sm md:text-base tracking-[0.45em] sm:tracking-[0.55em] font-bold uppercase transition-all duration-300 group hover:text-stone-100 flex flex-col items-center gap-3">
+                <div className={`mb-1 transition-all duration-150 ${
+                    isBindingSoul
+                        ? `text-red-500 scale-105 font-black ${reduceEffects ? '' : 'drop-shadow-[0_0_15px_rgba(239,68,68,0.8)]'}`
+                        : (reduceEffects ? 'text-stone-300' : 'animate-pulse')
+                }`}>
+                    {isBindingSoul
+                        ? '[ CONTRACT SEALED ]'
+                        : `[ ${isTouchDevice ? 'TAP TO BIND SOUL' : 'CLICK TO BIND SOUL'} ]`
+                    }
+                </div>
+                <div className="text-[8.5px] sm:text-[10px] text-stone-600 group-hover:text-red-900/80 tracking-[0.3em] font-mono transition-colors">
+                    BY ENTERING, YOU WAIVE ALL RIGHTS TO PHYSICAL CONTINUITY
+                </div>
+                {!isTouchDevice && !isBindingSoul && (
+                    <div className="text-[7.5px] text-stone-600 tracking-[0.25em] font-mono uppercase mt-1">
+                        PRESS SPACE OR CLICK TO INITIATE
+                    </div>
+                )}
+            </div>
+        </div>
+
+        {/* Subtle scanline overlay (desktop high/balanced only) */}
+        {!isMobile && !reduceEffects && <div className="scan-line !opacity-15 pointer-events-none" />}
+    </div>
+));
+BindSoulOverlay.displayName = 'BindSoulOverlay';
+
+interface DesktopCommsPanelProps {
+    currentUser: UserProfile | null;
+    isOnline: boolean;
+    reduceEffects: boolean;
+    notificationCounts: NotificationCounts;
+    friends: FriendUser[];
+    onOpenMessages: (targetUsername: string | null) => void;
+    onRequireLogin: () => void;
+    onOfflineToast: (msg: string) => void;
+}
+
+const DesktopCommsPanel: React.FC<DesktopCommsPanelProps> = React.memo(({
+    currentUser,
+    isOnline,
+    reduceEffects,
+    notificationCounts,
+    friends,
+    onOpenMessages,
+    onRequireLogin,
+    onOfflineToast
+}) => {
+    const [isFriendsExpanded, setIsFriendsExpanded] = useState(false);
+    const [, setFriendsPresenceTick] = useState(0);
+    const lastSigRef = useRef('');
+
+    // Subscribe to presence ONLY to detect status changes among the user's own friends
+    useEffect(() => {
+        if (!currentUser || !isOnline || friends.length === 0) {
+            lastSigRef.current = '';
+            return;
+        }
+        const computeSignature = () =>
+            friends
+                .map((f) => `${f.username}:${presenceClient.getPresence(f.username)?.status || 'offline'}`)
+                .join('|');
+
+        lastSigRef.current = computeSignature();
+        const unsubscribe = presenceClient.subscribe(() => {
+            const nextSig = computeSignature();
+            if (nextSig !== lastSigRef.current) {
+                lastSigRef.current = nextSig;
+                setFriendsPresenceTick((t) => t + 1);
+            }
+        });
+        return unsubscribe;
+    }, [currentUser?.username, isOnline, friends]);
+
+    const onlineFriends = useMemo(() => {
+        if (!currentUser || !friends.length) return [];
+        return friends.filter((f) => {
+            const p = presenceClient.getPresence(f.username);
+            return p && p.status && p.status !== 'offline';
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentUser, friends, lastSigRef.current]);
+
+    const blurXl = reduceEffects ? '' : 'backdrop-blur-xl';
+
+    return (
+        <div className="absolute top-4 left-4 sm:top-6 sm:left-6 z-[60] hidden sm:flex flex-col items-start gap-2.5 pointer-events-auto">
+            <button
+                onClick={() => {
+                    audioManager.playSound('click');
+                    if (!isOnline) {
+                        onOfflineToast('OFFLINE PROTOCOL: Encrypted comms require an active internet connection.');
+                        return;
+                    }
+                    if (!currentUser) {
+                        onRequireLogin();
+                        return;
+                    }
+                    onOpenMessages(null);
+                }}
+                className={`group/msg flex items-center gap-2.5 bg-stone-950/90 hover:bg-stone-900/95 border border-stone-800 hover:border-cyan-500/60 py-2 px-3.5 rounded-2xl ${blurXl} hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer text-left shadow-[0_8px_30px_rgba(0,0,0,0.6)] ${
+                    !isOnline ? 'opacity-50 grayscale' : ''
+                }`}
+                title={!isOnline ? "Offline - Internet required for comms" : "Direct Messages & Encrypted Comms"}
+            >
+                <div className="relative">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center p-0.5 transition-all ${
+                        notificationCounts.total > 0
+                            ? 'bg-red-955/60 ring-2 ring-red-500 shadow-[0_0_15px_rgba(239,68,68,0.5)]'
+                            : 'bg-cyan-955/30 ring-1 ring-cyan-700/40 group-hover/msg:ring-cyan-400 group-hover/msg:bg-cyan-955/60 shadow-[0_0_12px_rgba(6,182,212,0.15)]'
+                    }`}>
+                        <Mail className={`w-4 h-4 transition-transform ${
+                            notificationCounts.total > 0
+                                ? 'text-red-400 group-hover/msg:scale-110'
+                                : 'text-cyan-400 group-hover/msg:scale-110'
+                        }`} />
+                    </div>
+                    {notificationCounts.total > 0 ? (
+                        <span className={`absolute -top-1.5 -right-1.5 px-1.5 py-0.2 bg-red-600 border border-red-300 text-white text-[9px] font-black rounded-full shadow-[0_0_12px_rgba(220,38,38,0.9)] ${reduceEffects ? '' : 'animate-pulse'} flex items-center justify-center min-w-[18px]`}>
+                            {notificationCounts.total > 9 ? '9+' : notificationCounts.total}
+                        </span>
+                    ) : !isOnline ? (
+                        <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-red-500 border-2 border-stone-950 shadow-sm" />
+                    ) : (
+                        <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-cyan-400 border-2 border-stone-950 shadow-sm ${reduceEffects ? '' : 'animate-pulse'}`} />
+                    )}
+                </div>
+                <div className="flex flex-col">
+                    <span className={`text-[12px] font-mono font-bold tracking-wider leading-tight transition-colors ${
+                        notificationCounts.total > 0 ? 'text-red-300 group-hover/msg:text-white' : 'text-stone-200 group-hover/msg:text-cyan-300'
+                    }`}>
+                        Messages {!isOnline && <span className="text-[7.5px] text-red-400 uppercase font-mono tracking-widest">[OFF]</span>}
+                    </span>
+                    {notificationCounts.total > 0 && isOnline && (
+                        <span className="text-[8px] font-mono font-bold text-red-400 tracking-wider">
+                            {notificationCounts.unreadDMs > 0 && `${notificationCounts.unreadDMs} New DM`}
+                            {notificationCounts.unreadDMs > 0 && notificationCounts.pendingRequests > 0 && ' • '}
+                            {notificationCounts.pendingRequests > 0 && `${notificationCounts.pendingRequests} Request`}
+                        </span>
+                    )}
+                </div>
+            </button>
+
+            {currentUser && isOnline && (
+                <div className={`w-56 bg-stone-950/90 hover:bg-stone-900/90 border border-stone-800 rounded-2xl p-2.5 ${blurXl} shadow-[0_8px_30px_rgba(0,0,0,0.6)] transition-all animate-in fade-in duration-200`}>
+                    <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-stone-850 px-1">
+                        <div className="flex items-center gap-1.5">
+                            <span className={`w-2 h-2 rounded-full ${onlineFriends.length > 0 ? `bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] ${reduceEffects ? '' : 'animate-pulse'}` : 'bg-stone-500'}`} />
+                            <span className="text-[9px] font-mono font-bold tracking-wider text-stone-300 uppercase">
+                                ONLINE FRIENDS
+                            </span>
+                        </div>
+                        <span className="text-[9px] font-mono font-black text-cyan-400 bg-cyan-955/40 px-1.5 py-0.2 rounded border border-cyan-800/40">
+                            {onlineFriends.length}
+                        </span>
+                    </div>
+
+                    {onlineFriends.length === 0 ? (
+                        <div className="py-1.5 px-1 text-center">
+                            <p className="text-[8.5px] font-mono text-stone-500 uppercase tracking-wider">
+                                {friends.length === 0 ? 'NO FRIENDS ADDED' : 'NO FRIENDS ONLINE'}
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="flex flex-col gap-1 max-h-56 overflow-y-auto pr-0.5 custom-scrollbar">
+                            {(isFriendsExpanded ? onlineFriends : onlineFriends.slice(0, 4)).map((friend) => {
+                                const presence = presenceClient.getPresence(friend.username);
+                                const status = presence?.status || 'online';
+                                const isMatch = status === 'in_match';
+                                const isLobby = status === 'in_lobby';
+                                const statusLabel = isMatch ? 'In Match' : isLobby ? 'In Lobby' : 'Online';
+                                const dotColor = isMatch
+                                    ? 'bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.6)]'
+                                    : isLobby
+                                    ? 'bg-cyan-400 shadow-[0_0_6px_rgba(34,211,238,0.6)]'
+                                    : 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)]';
+                                const statusTextColor = isMatch ? 'text-amber-400' : isLobby ? 'text-cyan-400' : 'text-emerald-400';
+
+                                return (
+                                    <button
+                                        key={friend.username}
+                                        onClick={() => {
+                                            audioManager.playSound('click');
+                                            onOpenMessages(friend.username);
+                                        }}
+                                        className="group/f flex items-center gap-2 p-1.5 rounded-xl hover:bg-white/5 border border-transparent hover:border-white/10 transition-all text-left cursor-pointer w-full"
+                                        title={`Direct message @${friend.displayName || friend.username} (${statusLabel})`}
+                                    >
+                                        <div className="relative shrink-0">
+                                            <img
+                                                src={resolvePlayerAvatar(friend)}
+                                                alt={friend.displayName || friend.username}
+                                                loading="lazy"
+                                                decoding="async"
+                                                className="w-6 h-6 rounded-full object-cover bg-stone-900 border border-white/10"
+                                                onError={(e) => {
+                                                    (e.target as HTMLImageElement).src = '/image/favicon/android-chrome-192x192.png';
+                                                }}
+                                            />
+                                            <span className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-stone-950 ${dotColor}`} />
+                                        </div>
+                                        <div className="flex flex-col min-w-0 flex-1">
+                                            <span className="text-[10px] font-mono font-bold text-stone-200 group-hover/f:text-white truncate">
+                                                {friend.displayName || friend.username}
+                                            </span>
+                                            <span className={`text-[7.5px] font-mono font-medium ${statusTextColor} tracking-wide truncate`}>
+                                                {statusLabel}
+                                            </span>
+                                        </div>
+                                        <MessageSquare className="w-3 h-3 text-stone-500 group-hover/f:text-cyan-400 opacity-0 group-hover/f:opacity-100 transition-opacity shrink-0 mr-0.5" />
+                                    </button>
+                                );
+                            })}
+
+                            {onlineFriends.length > 4 && (
+                                <button
+                                    onClick={() => {
+                                        audioManager.playSound('click');
+                                        setIsFriendsExpanded((prev) => !prev);
+                                    }}
+                                    className="flex items-center justify-center gap-1 py-1 px-2 mt-0.5 rounded-lg bg-white/5 hover:bg-white/10 text-[8px] font-mono font-bold text-stone-400 hover:text-white transition-all cursor-pointer border border-white/5"
+                                >
+                                    <span>{isFriendsExpanded ? 'COLLAPSE' : `+${onlineFriends.length - 4} MORE`}</span>
+                                    {isFriendsExpanded ? <ChevronUp className="w-2.5 h-2.5" /> : <ChevronDown className="w-2.5 h-2.5" />}
+                                </button>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+});
+DesktopCommsPanel.displayName = 'DesktopCommsPanel';
+
+interface DesktopProfileBadgeProps {
+    currentUser: UserProfile | null;
+    isDeveloper: boolean;
+    reduceEffects: boolean;
+    onOpenAdmin: () => void;
+    onOpenProfile: () => void;
+    onOpenLogin: () => void;
+}
+
+const DesktopProfileBadge: React.FC<DesktopProfileBadgeProps> = React.memo(({
+    currentUser,
+    isDeveloper,
+    reduceEffects,
+    onOpenAdmin,
+    onOpenProfile,
+    onOpenLogin
+}) => {
+    const blurXl = reduceEffects ? '' : 'backdrop-blur-xl';
+    const blurMd = reduceEffects ? '' : 'backdrop-blur-md';
+
+    return (
+        <div className="absolute top-4 right-4 sm:top-6 sm:right-6 z-[60] hidden sm:flex items-center gap-2.5">
+            {currentUser ? (
+                <div className="flex items-center gap-2">
+                    {isDeveloper && (
+                        <button
+                            onClick={() => {
+                                audioManager.playSound('click');
+                                onOpenAdmin();
+                            }}
+                            className={`group/admin flex items-center gap-2.5 bg-gradient-to-r from-red-955/95 via-stone-900 to-red-955/95 hover:from-red-900 hover:to-red-950 border border-red-600/80 hover:border-red-400 p-1.5 pl-3 pr-3.5 rounded-2xl ${blurXl} shadow-[0_0_22px_rgba(220,38,38,0.45)] hover:shadow-[0_0_35px_rgba(220,38,38,0.7)] hover:scale-[1.03] active:scale-[0.98] transition-all cursor-pointer text-left`}
+                            title="Developer System Admin Control Center"
+                        >
+                            <div className="relative">
+                                <div className="w-8 h-8 rounded-full bg-red-955 border border-red-600/70 flex items-center justify-center text-red-400 group-hover/admin:text-white transition-colors">
+                                    <ShieldAlert size={16} className="group-hover/admin:rotate-12 transition-transform duration-300" />
+                                </div>
+                                <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2">
+                                    {!reduceEffects && (
+                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                                    )}
+                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
+                                </span>
+                            </div>
+                            <div className="flex flex-col text-left">
+                                <div className="flex items-center gap-1.5">
+                                    <span className="text-[11px] text-red-200 font-mono font-black uppercase tracking-wider leading-none">
+                                        ADMIN
+                                    </span>
+                                    <span className="px-1 py-0.2 bg-red-650 text-white text-[6.5px] font-black tracking-widest rounded uppercase">
+                                        ROOT
+                                    </span>
+                                </div>
+                                <span className="text-[7.5px] text-red-400 font-mono tracking-wider font-semibold mt-0.5">
+                                    DEV CONSOLE
+                                </span>
+                            </div>
+                        </button>
+                    )}
+                    <button
+                        onClick={() => {
+                            audioManager.playSound('click');
+                            onOpenProfile();
+                        }}
+                        className={`group/profile flex items-center gap-3 bg-stone-950/95 hover:bg-stone-900 border border-stone-800 hover:border-stone-700 p-1.5 pl-2.5 pr-4 rounded-2xl ${blurXl} shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer text-left`}
+                        title="View and Edit Profile"
+                    >
+                        <div className="relative">
+                            <div className="w-9 h-9 rounded-full overflow-hidden bg-stone-900 ring-1 ring-stone-700 p-0.5">
+                                <img
+                                    src={resolvePlayerAvatar(currentUser)}
+                                    alt={currentUser.username}
+                                    loading="lazy"
+                                    decoding="async"
+                                    className="w-full h-full object-cover rounded-full group-hover/profile:scale-105 transition-transform"
+                                />
+                            </div>
+                            <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-stone-950 shadow-sm ${
+                                isLegacyUpstashUser(currentUser) ? `bg-amber-400 ${reduceEffects ? '' : 'animate-ping'}` : 'bg-emerald-500'
+                            }`} />
+                        </div>
+                        <div className="flex flex-col text-left">
+                            <div className="flex items-center gap-1.5">
+                                <span className="text-[11px] text-stone-200 font-mono font-bold uppercase tracking-wider leading-none">
+                                    {currentUser.displayName || currentUser.username}
+                                </span>
+                                {isLegacyUpstashUser(currentUser) ? (
+                                    <span className={`px-1.5 py-0.2 bg-amber-955 border border-amber-600 text-amber-300 text-[6.5px] font-black rounded uppercase ${reduceEffects ? '' : 'animate-pulse'}`}>
+                                        LINK GMAIL
+                                    </span>
+                                ) : currentUser.isDeveloper ? (
+                                    <span className="px-1.5 py-0.2 bg-red-955 border border-red-800 text-red-400 text-[7px] font-bold tracking-widest rounded uppercase">
+                                        DEV
+                                    </span>
+                                ) : (
+                                    <span className="px-1 py-0.2 bg-stone-900 border border-stone-800 text-stone-400 text-[6.5px] font-bold rounded uppercase">
+                                        PLAYER
+                                    </span>
+                                )}
+                            </div>
+                            <div className="flex items-center gap-1.5 mt-1">
+                                <span className="text-[8.5px] text-stone-400 font-bold uppercase tracking-wider leading-none font-mono">
+                                    {getPlayerId(currentUser)}
+                                </span>
+                            </div>
+                        </div>
+                    </button>
+                </div>
+            ) : (
+                <button
+                    onClick={() => {
+                        audioManager.playSound('click');
+                        onOpenLogin();
+                    }}
+                    className={`group/signin px-4 py-2 sm:px-5 sm:py-2.5 bg-gradient-to-r from-red-955/80 to-stone-950/90 border border-red-700/50 text-red-400 hover:text-white hover:border-red-500 font-mono font-black text-[9px] sm:text-[10px] tracking-[0.2em] rounded-xl ${blurMd} transition-all shadow-[0_0_25px_rgba(220,38,38,0.15)] hover:shadow-[0_0_40px_rgba(220,38,38,0.3)] hover:scale-105 active:scale-95 uppercase flex items-center gap-2 cursor-pointer small-btn`}
+                >
+                    <span className="relative flex h-1.5 w-1.5 sm:h-2 sm:w-2">
+                        {!reduceEffects && (
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75" />
+                        )}
+                        <span className="relative inline-flex rounded-full h-1.5 w-1.5 sm:h-2 sm:w-2 bg-red-650" />
+                    </span>
+                    Sign In / Register
+                </button>
+            )}
+        </div>
+    );
+});
+DesktopProfileBadge.displayName = 'DesktopProfileBadge';
+
+interface MobileStatusRowProps {
+    currentUser: UserProfile | null;
+    isOnline: boolean;
+    isDeveloper: boolean;
+    reduceEffects: boolean;
+    notificationCounts: NotificationCounts;
+    onOpenMessages: () => void;
+    onOpenProfileOrMigration: () => void;
+    onOpenLogin: () => void;
+    onOpenAdmin: () => void;
+    onOfflineToast: (msg: string) => void;
+}
+
+const MobileStatusRow: React.FC<MobileStatusRowProps> = React.memo(({
+    currentUser,
+    isOnline,
+    isDeveloper,
+    reduceEffects,
+    notificationCounts,
+    onOpenMessages,
+    onOpenProfileOrMigration,
+    onOpenLogin,
+    onOpenAdmin,
+    onOfflineToast
+}) => (
+    <div className="sm:hidden mb-3 flex justify-center items-center gap-2 shrink-0 flex-wrap">
+        <button
+            onClick={() => {
+                audioManager.playSound('click');
+                if (!isOnline) {
+                    onOfflineToast('OFFLINE PROTOCOL: Encrypted comms require an active internet connection.');
+                    return;
+                }
+                if (!currentUser) {
+                    onOpenLogin();
+                    return;
+                }
+                onOpenMessages();
+            }}
+            className={`flex items-center gap-2 bg-stone-950/90 border min-h-[44px] py-1.5 px-3 rounded-xl shadow-md cursor-pointer transition-all text-left touch-manipulation active:scale-95 ${
+                !isOnline
+                    ? 'border-stone-850 opacity-50 grayscale'
+                    : notificationCounts.total > 0
+                    ? 'border-red-600/80 bg-red-955/20'
+                    : 'border-stone-800 hover:border-cyan-800/60'
+            }`}
+            title={!isOnline ? "Offline - Internet required for comms" : "Direct Messages & Encrypted Comms"}
+        >
+            <div className="relative">
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
+                    notificationCounts.total > 0
+                        ? 'bg-red-955/60 ring-1 ring-red-500'
+                        : 'bg-cyan-955/40 ring-1 ring-cyan-700/50'
+                }`}>
+                    <Mail className={`w-3.5 h-3.5 ${notificationCounts.total > 0 ? 'text-red-400' : 'text-cyan-400'}`} />
+                </div>
+                {notificationCounts.total > 0 ? (
+                    <span className={`absolute -top-1.5 -right-1.5 px-1 py-0.2 bg-red-600 border border-red-300 text-white text-[8px] font-black rounded-full ${reduceEffects ? '' : 'animate-pulse'} min-w-[16px] text-center`}>
+                        {notificationCounts.total > 9 ? '9+' : notificationCounts.total}
+                    </span>
+                ) : (
+                    <span className="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-cyan-400 border border-stone-950" />
+                )}
+            </div>
+            <span className={`text-[11px] font-mono font-bold tracking-wider leading-none ${
+                notificationCounts.total > 0 ? 'text-red-300' : 'text-stone-200'
+            }`}>
+                Messages{notificationCounts.total > 0 ? ` (${notificationCounts.total})` : ''}
+            </span>
+        </button>
+
+        {currentUser ? (
+            <button
+                onClick={() => {
+                    audioManager.playSound('click');
+                    onOpenProfileOrMigration();
+                }}
+                className="flex items-center gap-2 bg-stone-950/90 border border-stone-800 min-h-[44px] p-1.5 pl-2 pr-3 rounded-xl shadow-md cursor-pointer hover:border-stone-700 transition-all text-left touch-manipulation active:scale-95"
+            >
+                <div className="relative">
+                    <img
+                        src={resolvePlayerAvatar(currentUser)}
+                        alt={currentUser.username}
+                        loading="lazy"
+                        decoding="async"
+                        className="w-6 h-6 rounded-full bg-stone-900 border border-stone-750 object-cover shrink-0"
+                    />
+                    <span className={`absolute bottom-0 right-0 w-2 h-2 rounded-full border border-stone-950 ${
+                        isLegacyUpstashUser(currentUser) ? 'bg-amber-400' : 'bg-emerald-500'
+                    }`} />
+                </div>
+                <div className="flex flex-col text-left">
+                    <div className="flex items-center gap-1">
+                        <span className="text-[10px] text-stone-200 font-mono font-bold uppercase tracking-wider leading-none truncate max-w-[90px]">
+                            {currentUser.displayName || currentUser.username}
+                        </span>
+                        {isLegacyUpstashUser(currentUser) ? (
+                            <span className="px-1 py-0.2 bg-amber-955 border border-amber-600 text-amber-300 text-[5.5px] font-black rounded uppercase">LINK</span>
+                        ) : currentUser.isDeveloper ? (
+                            <span className="px-1 py-0.2 bg-red-955 border border-red-800 text-red-400 text-[6px] font-bold rounded uppercase">DEV</span>
+                        ) : null}
+                    </div>
+                    <span className="text-[7px] text-stone-500 font-bold uppercase tracking-widest leading-none mt-0.5 font-mono">
+                        {getPlayerId(currentUser)}
+                    </span>
+                </div>
+            </button>
+        ) : (
+            <button
+                onClick={() => {
+                    audioManager.playSound('click');
+                    onOpenLogin();
+                }}
+                className="group/signin px-3.5 py-2 min-h-[44px] bg-gradient-to-r from-red-955/80 to-stone-950 border border-red-700/60 text-red-400 hover:text-white font-mono font-black text-[9px] tracking-[0.2em] rounded-xl transition-all shadow-md active:scale-95 uppercase flex items-center gap-2 cursor-pointer touch-manipulation"
+            >
+                <span className="relative flex h-1.5 w-1.5">
+                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-650" />
+                </span>
+                Sign In / Register
+            </button>
+        )}
+
+        {isDeveloper && (
+            <button
+                onClick={() => {
+                    audioManager.playSound('click');
+                    onOpenAdmin();
+                }}
+                className="flex items-center gap-1.5 bg-gradient-to-r from-red-955 via-stone-900 to-red-955 border border-red-600/80 hover:border-red-400 min-h-[44px] py-1.5 px-3 rounded-xl shadow-md cursor-pointer text-left active:scale-95 transition-all touch-manipulation"
+                title="Admin Console"
+            >
+                <ShieldAlert size={14} className="text-red-400 shrink-0" />
+                <span className="text-[10px] text-red-200 font-mono font-black uppercase tracking-wider">
+                    ADMIN
+                </span>
+            </button>
+        )}
+    </div>
+));
+MobileStatusRow.displayName = 'MobileStatusRow';
+
+export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
     inputName,
     setInputName,
     onStartGame,
@@ -91,64 +663,148 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
 }) => {
     const nameInputRef = useRef<HTMLInputElement>(null);
     const isOnline = useOnlineStatus();
-    const [scale, setScale] = React.useState(1);
-    const [showHardModeWarning, setShowHardModeWarning] = React.useState(false);
-    const [hasBoundSoul, setHasBoundSoul] = React.useState(false);
-    const [isBindingSoul, setIsBindingSoul] = React.useState(false);
-    const [isTouchDevice, setIsTouchDevice] = React.useState(false);
+    const [scale, setScale] = useState(1);
+    const [showHardModeWarning, setShowHardModeWarning] = useState(false);
+    const [hasBoundSoul, setHasBoundSoul] = useState(false);
+    const [isBindingSoul, setIsBindingSoul] = useState(false);
+    const [isTouchDevice, setIsTouchDevice] = useState(false);
+    const [isMobile, setIsMobile] = useState(false);
+    const [isIOS, setIsIOS] = useState(false);
+    const [isLowPerfSetting, setIsLowPerfSetting] = useState(() => readIsLowPerfSetting());
 
     // Dialog & UI state
-    const [showChangelog, setShowChangelog] = React.useState(false);
-    const [showAnnouncement, setShowAnnouncement] = React.useState(false);
-    const [pendingChangelog, setPendingChangelog] = React.useState(false);
-    const [showLoginModal, setShowLoginModal] = React.useState(false);
-    const [showLeaderboard, setShowLeaderboard] = React.useState(false);
-    const [loginTab, setLoginTab] = React.useState<'signin' | 'register'>('signin');
-    const [loginUsername, setLoginUsername] = React.useState('');
-    const [loginEmail, setLoginEmail] = React.useState('');
-    const [loginPassword, setLoginPassword] = React.useState('');
-    const [showPassword, setShowPassword] = React.useState(false);
-    const [loginError, setLoginError] = React.useState('');
-    const [loginSuccess, setLoginSuccess] = React.useState('');
-    const [isLoadingAuth, setIsLoadingAuth] = React.useState(false);
+    const [showChangelog, setShowChangelog] = useState(false);
+    const [showAnnouncement, setShowAnnouncement] = useState(false);
+    const [pendingChangelog, setPendingChangelog] = useState(false);
+    const [showLoginModal, setShowLoginModal] = useState(false);
+    const [showLeaderboard, setShowLeaderboard] = useState(false);
+    const [loginTab, setLoginTab] = useState<'signin' | 'register'>('signin');
+    const [loginUsername, setLoginUsername] = useState('');
+    const [loginEmail, setLoginEmail] = useState('');
+    const [loginPassword, setLoginPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
+    const [loginError, setLoginError] = useState('');
+    const [loginSuccess, setLoginSuccess] = useState('');
+    const [isLoadingAuth, setIsLoadingAuth] = useState(false);
 
-    const [currentUser, setCurrentUser] = React.useState<UserProfile | null>(() => {
-        return getCurrentUserProfile();
-    });
-
-    // Compatibility getter for existing hooks/components
+    const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => getCurrentUserProfile());
     const loggedInUser = currentUser ? { username: currentUser.username } : null;
 
     // Profile & Migration Modal States
-    const [showProfileModal, setShowProfileModal] = React.useState(false);
-    const [selectedPublicProfile, setSelectedPublicProfile] = React.useState<LeaderboardEntry | UserProfile | null>(null);
+    const [showProfileModal, setShowProfileModal] = useState(false);
+    const [selectedPublicProfile, setSelectedPublicProfile] = useState<LeaderboardEntry | UserProfile | null>(null);
     const openedProfileFromLeaderboardRef = useRef(false);
-    const [showMigrationModal, setShowMigrationModal] = React.useState(false);
-    const [legacyUserToMigrate, setLegacyUserToMigrate] = React.useState<UserProfile | null>(null);
+    const [showMigrationModal, setShowMigrationModal] = useState(false);
+    const [legacyUserToMigrate, setLegacyUserToMigrate] = useState<UserProfile | null>(null);
 
     // Leaderboard & Detailed Profile states
-    const [leaderboard, setLeaderboard] = React.useState<LeaderboardEntry[]>([]);
-    const [isLoadingLeaderboard, setIsLoadingLeaderboard] = React.useState(false);
-    const [selectedMPMatch, setSelectedMPMatch] = React.useState<any>(null);
-    const [showResetSpamModal, setShowResetSpamModal] = React.useState(false);
-    const [spamNoticeTarget, setSpamNoticeTarget] = React.useState('');
-    const [showForgotPasswordModal, setShowForgotPasswordModal] = React.useState(false);
-    const [forgotPasswordInput, setForgotPasswordInput] = React.useState('');
-    const [forgotPasswordLoading, setForgotPasswordLoading] = React.useState(false);
-    const [forgotPasswordError, setForgotPasswordError] = React.useState('');
-    const [messagesToast, setMessagesToast] = React.useState<string | null>(null);
-    const [showMessagesModal, setShowMessagesModal] = React.useState(false);
-    const [messagesTargetUser, setMessagesTargetUser] = React.useState<string | null>(null);
-    const [showAdminModal, setShowAdminModal] = React.useState(false);
-    const [notificationCounts, setNotificationCounts] = React.useState<NotificationCounts>({
+    const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+    const [isLoadingLeaderboard, setIsLoadingLeaderboard] = useState(false);
+    const [selectedMPMatch, setSelectedMPMatch] = useState<any>(null);
+    const [showResetSpamModal, setShowResetSpamModal] = useState(false);
+    const [spamNoticeTarget, setSpamNoticeTarget] = useState('');
+    const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false);
+    const [forgotPasswordInput, setForgotPasswordInput] = useState('');
+    const [forgotPasswordLoading, setForgotPasswordLoading] = useState(false);
+    const [forgotPasswordError, setForgotPasswordError] = useState('');
+    const [messagesToast, setMessagesToast] = useState<string | null>(null);
+    const [showMessagesModal, setShowMessagesModal] = useState(false);
+    const [messagesTargetUser, setMessagesTargetUser] = useState<string | null>(null);
+    const [showAdminModal, setShowAdminModal] = useState(false);
+    const [notificationCounts, setNotificationCounts] = useState<NotificationCounts>({
         unreadDMs: 0,
         pendingRequests: 0,
         total: 0,
         unreadBySender: {}
     });
+    const [friends, setFriends] = useState<FriendUser[]>([]);
 
-    React.useEffect(() => {
-        if (!currentUser?.username) {
+    // PWA Install State
+    const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+    const [isStandalone, setIsStandalone] = useState(false);
+
+    // Login Quote Randomizer State
+    const [loginQuote, setLoginQuote] = useState(AUTH_QUOTES[0]);
+
+    const reduceEffects = isTouchDevice || isMobile || isLowPerfSetting;
+    const isDeveloper = Boolean(
+        currentUser?.isDeveloper ||
+        currentUser?.role === 'developer' ||
+        currentUser?.username?.toLowerCase() === 'aadish'
+    );
+
+    // Sync low-perf settings dynamically when user changes graphics mode in Settings without polling
+    useEffect(() => {
+        const refreshPerfSetting = () => {
+            setIsLowPerfSetting(readIsLowPerfSetting());
+        };
+        const onStorage = (e: StorageEvent) => {
+            if (!e.key || e.key === 'aadish_roulette_settings') refreshPerfSetting();
+        };
+        window.addEventListener('storage', onStorage);
+        window.addEventListener('focus', refreshPerfSetting);
+
+        const rootChild = document.getElementById('root')?.firstElementChild;
+        let observer: MutationObserver | null = null;
+        if (rootChild) {
+            observer = new MutationObserver(refreshPerfSetting);
+            observer.observe(rootChild, { attributes: true, attributeFilter: ['class'] });
+        }
+
+        return () => {
+            window.removeEventListener('storage', onStorage);
+            window.removeEventListener('focus', refreshPerfSetting);
+            if (observer) observer.disconnect();
+        };
+    }, []);
+
+    // Listen for external profile/avatar updates (from ProfileModal / firebaseService)
+    useEffect(() => {
+        const onProfileEvent = (e: Event) => {
+            const detail = (e as CustomEvent<any>).detail;
+            if (!detail || !currentUser?.username) return;
+            const updatedProfile: UserProfile | null = detail.profile || (detail.username ? detail : null);
+            if (updatedProfile?.username?.toLowerCase() === currentUser.username.toLowerCase()) {
+                setCurrentUser((prev) => (prev ? { ...prev, ...updatedProfile } : updatedProfile));
+            }
+        };
+        window.addEventListener('bugshot_profile_updated', onProfileEvent);
+        return () => window.removeEventListener('bugshot_profile_updated', onProfileEvent);
+    }, [currentUser?.username]);
+
+    // Auto-dismiss messages toast cleanly
+    useEffect(() => {
+        if (!messagesToast) return;
+        const timer = setTimeout(() => setMessagesToast(null), 3500);
+        return () => clearTimeout(timer);
+    }, [messagesToast]);
+
+    // Identify user on presence socket after soul is bound (no global re-render subscription at IntroScreen root)
+    useEffect(() => {
+        if (hasBoundSoul && currentUser) {
+            presenceClient.identify(currentUser, 'online');
+        }
+    }, [hasBoundSoul, currentUser?.username, currentUser?.avatarUrl, currentUser?.avatarStyle, currentUser?.displayName]);
+
+    const getUserPresence = useCallback((username: string): UserPresence | null => {
+        return presenceClient.getPresence(username);
+    }, []);
+
+    const adminAPI = useMemo(() => ({
+        fetchOverview: () => presenceClient.fetchAdminOverview(),
+        broadcast: (title: string, text: string) => presenceClient.sendAdminBroadcast(title, text),
+        clearBroadcast: () => presenceClient.clearAdminBroadcast(),
+        dm: (targetUsername: string, text: string) => presenceClient.sendAdminDM(targetUsername, text),
+        kickPlayer: (roomId: string, targetPlayerId?: string, targetUsername?: string) =>
+            presenceClient.kickPlayer(roomId, targetPlayerId, targetUsername),
+        mutePlayer: (targetUsername: string, durationMs?: number) =>
+            presenceClient.mutePlayer(targetUsername, durationMs),
+        unmutePlayer: (targetUsername: string) => presenceClient.unmutePlayer(targetUsername)
+    }), []);
+
+    // Defer Firestore notification & friend subscriptions until soul is bound
+    useEffect(() => {
+        if (!hasBoundSoul || !currentUser?.username) {
             setNotificationCounts({ unreadDMs: 0, pendingRequests: 0, total: 0, unreadBySender: {} });
             return;
         }
@@ -156,13 +812,10 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
             setNotificationCounts(counts);
         });
         return () => unsubscribe();
-    }, [currentUser?.username]);
+    }, [hasBoundSoul, currentUser?.username]);
 
-    const [friends, setFriends] = React.useState<FriendUser[]>([]);
-    const [isFriendsExpanded, setIsFriendsExpanded] = React.useState(false);
-
-    React.useEffect(() => {
-        if (!currentUser?.username) {
+    useEffect(() => {
+        if (!hasBoundSoul || !currentUser?.username) {
             setFriends([]);
             return;
         }
@@ -170,20 +823,280 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
             setFriends(loadedFriends);
         });
         return () => unsubscribe();
-    }, [currentUser?.username]);
+    }, [hasBoundSoul, currentUser?.username]);
 
-    // Live Real-Time Socket Presence & Admin API Hooks
-    const { getUserPresence, broadcastMsg, clearBroadcast, dmMsg, clearDM, adminAPI } = usePresence(currentUser);
-    const isDeveloper = Boolean(currentUser?.isDeveloper || currentUser?.role === 'developer' || currentUser?.username?.toLowerCase() === 'aadish');
+    useEffect(() => {
+        if (showLoginModal) {
+            setLoginQuote(AUTH_QUOTES[Math.floor(Math.random() * AUTH_QUOTES.length)]);
+        }
+    }, [showLoginModal]);
 
-    // Memoize online friends list to prevent expensive per-render array allocations
-    const onlineFriends = React.useMemo(() => {
-        if (!currentUser || !friends.length) return [];
-        return friends.filter(f => {
-            const p = getUserPresence(f.username);
-            return p && p.status && p.status !== 'offline';
-        });
-    }, [currentUser, friends, getUserPresence]);
+    // Stable ref-backed Escape key dismiss handler (registered once)
+    const escapeStateRef = useRef({
+        selectedMPMatch: null as any,
+        showResetSpamModal: false,
+        showForgotPasswordModal: false,
+        selectedPublicProfile: null as any,
+        showProfileModal: false,
+        showMigrationModal: false,
+        showLeaderboard: false,
+        showLoginModal: false,
+        showChangelog: false,
+        showAnnouncement: false,
+        showMessagesModal: false,
+        showAdminModal: false,
+        showHardModeWarning: false
+    });
+    escapeStateRef.current = {
+        selectedMPMatch,
+        showResetSpamModal,
+        showForgotPasswordModal,
+        selectedPublicProfile,
+        showProfileModal,
+        showMigrationModal,
+        showLeaderboard,
+        showLoginModal,
+        showChangelog,
+        showAnnouncement,
+        showMessagesModal,
+        showAdminModal,
+        showHardModeWarning
+    };
+
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key !== 'Escape') return;
+            const s = escapeStateRef.current;
+            if (s.selectedMPMatch) setSelectedMPMatch(null);
+            else if (s.showResetSpamModal) setShowResetSpamModal(false);
+            else if (s.showForgotPasswordModal) setShowForgotPasswordModal(false);
+            else if (s.selectedPublicProfile) {
+                setSelectedPublicProfile(null);
+                if (openedProfileFromLeaderboardRef.current) {
+                    setShowLeaderboard(true);
+                    openedProfileFromLeaderboardRef.current = false;
+                }
+            }
+            else if (s.showProfileModal) setShowProfileModal(false);
+            else if (s.showMigrationModal) setShowMigrationModal(false);
+            else if (s.showLeaderboard) setShowLeaderboard(false);
+            else if (s.showLoginModal) setShowLoginModal(false);
+            else if (s.showChangelog) setShowChangelog(false);
+            else if (s.showAnnouncement) setShowAnnouncement(false);
+            else if (s.showMessagesModal) setShowMessagesModal(false);
+            else if (s.showAdminModal) setShowAdminModal(false);
+            else if (s.showHardModeWarning) setShowHardModeWarning(false);
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, []);
+
+    // Auto-populate name & throttled last-seen tracking
+    useEffect(() => {
+        if (!currentUser) return;
+        const username = currentUser.username;
+        if (!inputName) {
+            setInputName((currentUser.displayName || username).toUpperCase());
+        }
+        if (!hasBoundSoul || !isOnline) return;
+
+        const clean = username.trim().toLowerCase();
+        const sendThrottledLastSeen = () => {
+            if (!isOnline) return;
+            const now = Date.now();
+            const last = lastSeenSentAt.get(clean) || 0;
+            if (now - last >= LAST_SEEN_THROTTLE_MS) {
+                lastSeenSentAt.set(clean, now);
+                updateUserLastSeen(username);
+            }
+        };
+
+        sendThrottledLastSeen();
+        const interval = setInterval(sendThrottledLastSeen, 60000);
+
+        const handleUnload = () => {
+            if (isOnline) {
+                lastSeenSentAt.set(clean, Date.now());
+                updateUserLastSeen(username);
+            }
+        };
+        window.addEventListener('beforeunload', handleUnload);
+
+        return () => {
+            clearInterval(interval);
+            window.removeEventListener('beforeunload', handleUnload);
+        };
+    }, [currentUser?.username, currentUser?.displayName, hasBoundSoul, isOnline]);
+
+    // Announcement & Changelog check with proper timeout cleanup
+    useEffect(() => {
+        if (!hasBoundSoul) return;
+
+        const lastSeenChangelog = localStorage.getItem('aadish_roulette_changelog_seen');
+        const lastSeenAnnouncement = localStorage.getItem('aadish_roulette_announcement_seen');
+        let timerId: ReturnType<typeof setTimeout> | null = null;
+
+        if (lastSeenAnnouncement !== ANNOUNCEMENT_VERSION) {
+            timerId = setTimeout(() => {
+                setShowAnnouncement(true);
+                try { localStorage.setItem('aadish_roulette_announcement_seen', ANNOUNCEMENT_VERSION); } catch {}
+                if (lastSeenChangelog !== GAME_VERSION) {
+                    setPendingChangelog(true);
+                }
+            }, 700);
+        } else if (lastSeenChangelog !== GAME_VERSION) {
+            timerId = setTimeout(() => {
+                setShowChangelog(true);
+                try { localStorage.setItem('aadish_roulette_changelog_seen', GAME_VERSION); } catch {}
+            }, 900);
+        }
+
+        return () => {
+            if (timerId !== null) clearTimeout(timerId);
+        };
+    }, [hasBoundSoul]);
+
+    // Device detection, RAF-throttled viewport scaling & PWA install listeners
+    useEffect(() => {
+        const isS = window.matchMedia('(display-mode: standalone)').matches ||
+            (window.navigator as any).standalone ||
+            document.referrer.includes('android-app://');
+        setIsStandalone(!!isS);
+
+        const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        const hasTouch = isMobileUA || ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+        setIsTouchDevice(Boolean(hasTouch));
+        setIsIOS(/iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream);
+        setIsMobile(isMobileUA);
+
+        let resizeRafId: number | null = null;
+        const computeScale = () => {
+            resizeRafId = null;
+            const h = window.innerHeight;
+            const w = window.innerWidth;
+            let nextScale = 1;
+            if (w < 500) {
+                const hScale = Math.min(1.0, Math.max(0.82, (h - 20) / 680));
+                const wScale = Math.min(1.0, Math.max(0.82, (w - 16) / 380));
+                nextScale = Math.min(hScale, wScale);
+            } else if (w >= 1024) {
+                nextScale = Math.max(1.0, Math.min(1.2, h / 860));
+            } else {
+                nextScale = Math.max(0.9, Math.min(1.05, Math.min(h / 720, w / 520)));
+            }
+            setScale((prev) => (Math.abs(prev - nextScale) > 0.005 ? nextScale : prev));
+        };
+
+        const handleResize = () => {
+            if (resizeRafId !== null) return;
+            resizeRafId = requestAnimationFrame(computeScale);
+        };
+
+        window.addEventListener('resize', handleResize);
+        computeScale();
+
+        if ((window as any).deferredPWAPrompt) {
+            setDeferredPrompt((window as any).deferredPWAPrompt);
+        }
+
+        const beforeInstallPromptHandler = (e: any) => {
+            if (!e || !e.preventDefault) return;
+            e.preventDefault();
+            setDeferredPrompt(e);
+            (window as any).deferredPWAPrompt = e;
+        };
+
+        const globalPwaHandler = (e: any) => {
+            if (e.detail) {
+                setDeferredPrompt(e.detail);
+                (window as any).deferredPWAPrompt = e.detail;
+            }
+        };
+
+        const appInstalledHandler = () => {
+            setIsStandalone(true);
+            setDeferredPrompt(null);
+            (window as any).deferredPWAPrompt = null;
+        };
+
+        window.addEventListener('beforeinstallprompt', beforeInstallPromptHandler as any);
+        window.addEventListener('pwa-prompt-available' as any, globalPwaHandler);
+        window.addEventListener('appinstalled', appInstalledHandler);
+        window.addEventListener('pwa-appinstalled' as any, appInstalledHandler);
+
+        return () => {
+            if (resizeRafId !== null) cancelAnimationFrame(resizeRafId);
+            window.removeEventListener('resize', handleResize);
+            window.removeEventListener('beforeinstallprompt', beforeInstallPromptHandler as any);
+            window.removeEventListener('pwa-prompt-available' as any, globalPwaHandler);
+            window.removeEventListener('appinstalled', appInstalledHandler);
+            window.removeEventListener('pwa-appinstalled' as any, appInstalledHandler);
+        };
+    }, []);
+
+    // Enforce Gmail linking & cloud upgrade for legacy Upstash users
+    useEffect(() => {
+        if (!hasBoundSoul || !currentUser) return;
+
+        if (isLegacyUpstashUser(currentUser)) {
+            let isMounted = true;
+            (async () => {
+                const cleanU = currentUser.username?.trim().toLowerCase();
+                if (cleanU) {
+                    try {
+                        const remote = await findUserByUsernameOrEmail(cleanU);
+                        if (remote && !isLegacyUpstashUser(remote)) {
+                            if (isMounted) {
+                                setCurrentUser(remote);
+                                setInputName((remote.displayName || remote.username).toUpperCase());
+                                try {
+                                    localStorage.setItem('aadish_roulette_logged_in_user', JSON.stringify(remote));
+                                } catch {}
+                            }
+                            return;
+                        }
+
+                        if (remote && isMounted) {
+                            setLegacyUserToMigrate({
+                                ...currentUser,
+                                ...remote,
+                                legacyPasswordHash: remote.legacyPasswordHash || currentUser.legacyPasswordHash || (cleanU === 'aadish' ? 'Aadish20m' : undefined)
+                            });
+                            setShowMigrationModal(true);
+                            return;
+                        }
+                    } catch (err) {
+                        console.warn("Failed checking remote user migration state:", err);
+                    }
+                }
+
+                if (isMounted) {
+                    setLegacyUserToMigrate({
+                        ...currentUser,
+                        legacyPasswordHash: currentUser.legacyPasswordHash || (cleanU === 'aadish' ? 'Aadish20m' : undefined)
+                    });
+                    setShowMigrationModal(true);
+                }
+            })();
+
+            return () => {
+                isMounted = false;
+            };
+        }
+    }, [hasBoundSoul, currentUser?.username]);
+
+    const loadLeaderboardData = useCallback(async () => {
+        if (isLoadingLeaderboard) return;
+        setIsLoadingLeaderboard(true);
+        try {
+            const data = await getLeaderboard();
+            setLeaderboard(data);
+        } catch (e) {
+            console.error("Failed to load leaderboard:", e);
+        } finally {
+            setIsLoadingLeaderboard(false);
+        }
+    }, [isLoadingLeaderboard]);
 
     const handleSendForgotPassword = async () => {
         const clean = forgotPasswordInput.trim().toLowerCase();
@@ -221,283 +1134,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
         }
     };
 
-    const loadLeaderboardData = async () => {
-        setIsLoadingLeaderboard(true);
-        try {
-            const data = await getLeaderboard();
-            setLeaderboard(data);
-        } catch (e) {
-            console.error("Failed to load leaderboard:", e);
-        } finally {
-            setIsLoadingLeaderboard(false);
-        }
-    };
-
-    // PWA Install State
-    const [deferredPrompt, setDeferredPrompt] = React.useState<any>(null);
-    const [isInstallable, setIsInstallable] = React.useState(false);
-    const [promptAvailable, setPromptAvailable] = React.useState(false);
-
-    // Login Quote Randomizer State
-    const [loginQuote, setLoginQuote] = React.useState(AUTH_QUOTES[0]);
-
-    useEffect(() => {
-        if (showLoginModal) {
-            const randomQuote = AUTH_QUOTES[Math.floor(Math.random() * AUTH_QUOTES.length)];
-            setLoginQuote(randomQuote);
-        }
-    }, [showLoginModal]);
-
-    // Keyboard support: Escape dismisses whichever modal or sub-panel is currently foremost
-    useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') {
-                if (selectedMPMatch) {
-                    setSelectedMPMatch(null);
-                } else if (showResetSpamModal) {
-                    setShowResetSpamModal(false);
-                } else if (showForgotPasswordModal) {
-                    setShowForgotPasswordModal(false);
-                } else if (selectedPublicProfile) {
-                    setSelectedPublicProfile(null);
-                    if (openedProfileFromLeaderboardRef.current) {
-                        setShowLeaderboard(true);
-                        openedProfileFromLeaderboardRef.current = false;
-                    }
-                } else if (showProfileModal) {
-                    setShowProfileModal(false);
-                } else if (showMigrationModal) {
-                    setShowMigrationModal(false);
-                } else if (showLeaderboard) {
-                    setShowLeaderboard(false);
-                } else if (showLoginModal) {
-                    setShowLoginModal(false);
-                } else if (showChangelog) {
-                    setShowChangelog(false);
-                } else if (showAnnouncement) {
-                    setShowAnnouncement(false);
-                } else if (showMessagesModal) {
-                    setShowMessagesModal(false);
-                } else if (showAdminModal) {
-                    setShowAdminModal(false);
-                }
-            }
-        };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [
-        selectedMPMatch, showResetSpamModal, showForgotPasswordModal, selectedPublicProfile,
-        showProfileModal, showMigrationModal, showLeaderboard, showLoginModal,
-        showChangelog, showAnnouncement, showMessagesModal, showAdminModal
-    ]);
-
-    const [isIOS, setIsIOS] = React.useState(false);
-    const [isMobile, setIsMobile] = React.useState(false);
-    const [isStandalone, setIsStandalone] = React.useState(false);
-
-    // Auto-populate name from saved login session & track real-time last seen
-    useEffect(() => {
-        if (currentUser) {
-            if (!inputName) {
-                setInputName((currentUser.displayName || currentUser.username).toUpperCase());
-            }
-            if (!isOnline) return;
-            updateUserLastSeen(currentUser.username);
-            const interval = setInterval(() => {
-                if (isOnline) {
-                    updateUserLastSeen(currentUser.username);
-                }
-            }, 60000); // 1-minute persistent database heartbeat
-
-            const handleUnload = () => {
-                if (isOnline) {
-                    updateUserLastSeen(currentUser.username);
-                }
-            };
-            window.addEventListener('beforeunload', handleUnload);
-
-            return () => {
-                clearInterval(interval);
-                window.removeEventListener('beforeunload', handleUnload);
-            };
-        }
-    }, [currentUser, isOnline]);
-
-    useEffect(() => {
-        if (hasBoundSoul) {
-            const currentVersion = GAME_VERSION;
-            const currentAnnouncementVersion = ANNOUNCEMENT_VERSION;
-            const lastSeenChangelog = localStorage.getItem('aadish_roulette_changelog_seen');
-            const lastSeenAnnouncement = localStorage.getItem('aadish_roulette_announcement_seen');
-
-            if (lastSeenAnnouncement !== currentAnnouncementVersion) {
-                setTimeout(() => {
-                    setShowAnnouncement(true);
-                    localStorage.setItem('aadish_roulette_announcement_seen', currentAnnouncementVersion);
-
-                    if (lastSeenChangelog !== currentVersion) {
-                        setPendingChangelog(true);
-                    }
-                }, 700);
-            } else if (lastSeenChangelog !== currentVersion) {
-                setTimeout(() => {
-                    setShowChangelog(true);
-                    localStorage.setItem('aadish_roulette_changelog_seen', currentVersion);
-                }, 900);
-            }
-        }
-    }, [hasBoundSoul]);
-
-    useEffect(() => {
-        // Detect Standalone Mode
-        const checkStandalone = () => {
-            const isS = window.matchMedia('(display-mode: standalone)').matches ||
-                (window.navigator as any).standalone ||
-                document.referrer.includes('android-app://');
-            setIsStandalone(!!isS);
-        };
-        checkStandalone();
-
-        const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        const hasTouch = isMobileUA || ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
-        setIsTouchDevice(Boolean(hasTouch));
-
-        // Detect Mobile & iOS
-        const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
-        setIsIOS(ios);
-        setIsMobile(isMobileUA);
-
-        if ((window as any).deferredPWAPrompt || promptAvailable || ios) {
-            setIsInstallable(true);
-        } else {
-            setIsInstallable(false);
-        }
-
-        const handleResize = () => {
-            const h = window.innerHeight;
-            const w = window.innerWidth;
-            
-            if (w < 500) {
-                // Mobile: keep scale very close to 1.0 (between 0.82 and 1.0) so touch targets and typography stay crisp and legible
-                const hScale = Math.min(1.0, Math.max(0.82, (h - 20) / 680));
-                const wScale = Math.min(1.0, Math.max(0.82, (w - 16) / 380));
-                setScale(Math.min(hScale, wScale));
-            } else if (w >= 1024) {
-                // Desktop monitors
-                const desktopScale = Math.max(1.0, Math.min(1.2, h / 860));
-                setScale(desktopScale);
-            } else {
-                // Tablet / medium screens
-                const tabletScale = Math.max(0.9, Math.min(1.05, Math.min(h / 720, w / 520)));
-                setScale(tabletScale);
-            }
-        };
-
-        window.addEventListener('resize', handleResize);
-        handleResize();
-
-        if ((window as any).deferredPWAPrompt) {
-            setDeferredPrompt((window as any).deferredPWAPrompt);
-            setPromptAvailable(true);
-            setIsInstallable(true);
-        }
-
-        const beforeInstallPromptHandler = (e: any) => {
-            if (!e || !e.preventDefault) return;
-            e.preventDefault();
-            const promptEvent = e;
-            setDeferredPrompt(promptEvent);
-            setPromptAvailable(true);
-            setIsInstallable(true);
-            (window as any).deferredPWAPrompt = promptEvent;
-        };
-
-        const globalPwaHandler = (e: any) => {
-            if (e.detail) {
-                setDeferredPrompt(e.detail);
-                setPromptAvailable(true);
-                setIsInstallable(true);
-                (window as any).deferredPWAPrompt = e.detail;
-            }
-        };
-
-        const appInstalledHandler = () => {
-            setIsStandalone(true);
-            setIsInstallable(false);
-            setPromptAvailable(false);
-            setDeferredPrompt(null);
-            (window as any).deferredPWAPrompt = null;
-        };
-
-        window.addEventListener('beforeinstallprompt', beforeInstallPromptHandler as any);
-        window.addEventListener('pwa-prompt-available' as any, globalPwaHandler);
-        window.addEventListener('appinstalled', appInstalledHandler);
-        window.addEventListener('pwa-appinstalled' as any, appInstalledHandler);
-
-        return () => {
-            window.removeEventListener('resize', handleResize);
-            window.removeEventListener('beforeinstallprompt', beforeInstallPromptHandler as any);
-            window.removeEventListener('pwa-prompt-available' as any, globalPwaHandler);
-            window.removeEventListener('appinstalled', appInstalledHandler);
-            window.removeEventListener('pwa-appinstalled' as any, appInstalledHandler);
-        };
-    }, []);
-
-    // Enforce Gmail linking & cloud upgrade for legacy Upstash users
-    useEffect(() => {
-        if (!currentUser) return;
-
-        if (isLegacyUpstashUser(currentUser)) {
-            let isMounted = true;
-            (async () => {
-                const cleanU = currentUser.username?.trim().toLowerCase();
-                if (cleanU) {
-                    try {
-                        const remote = await findUserByUsernameOrEmail(cleanU);
-                        if (remote && !isLegacyUpstashUser(remote)) {
-                            // User was already migrated on another device/browser
-                            if (isMounted) {
-                                setCurrentUser(remote);
-                                setInputName((remote.displayName || remote.username).toUpperCase());
-                                try {
-                                    localStorage.setItem('aadish_roulette_logged_in_user', JSON.stringify(remote));
-                                } catch (e) {}
-                            }
-                            return;
-                        }
-
-                        if (remote && isMounted) {
-                            const enriched = {
-                                ...currentUser,
-                                ...remote,
-                                legacyPasswordHash: remote.legacyPasswordHash || currentUser.legacyPasswordHash || (cleanU === 'aadish' ? 'Aadish20m' : undefined)
-                            };
-                            setLegacyUserToMigrate(enriched);
-                            setShowMigrationModal(true);
-                            return;
-                        }
-                    } catch (err) {
-                        console.warn("Failed checking remote user migration state:", err);
-                    }
-                }
-
-                if (isMounted) {
-                    const fallbackUser = {
-                        ...currentUser,
-                        legacyPasswordHash: currentUser.legacyPasswordHash || (cleanU === 'aadish' ? 'Aadish20m' : undefined)
-                    };
-                    setLegacyUserToMigrate(fallbackUser);
-                    setShowMigrationModal(true);
-                }
-            })();
-
-            return () => {
-                isMounted = false;
-            };
-        }
-    }, [currentUser?.username]);
-
-    const handleInstallClick = async () => {
+    const handleInstallClick = useCallback(async () => {
         audioManager.playSound('click');
         const promptEvent = deferredPrompt || (window as any).deferredPWAPrompt;
 
@@ -507,8 +1144,6 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                 const result = await promptEvent.userChoice;
                 if (result?.outcome === 'accepted') {
                     setDeferredPrompt(null);
-                    setPromptAvailable(false);
-                    setIsInstallable(false);
                     setIsStandalone(true);
                     (window as any).deferredPWAPrompt = null;
                 }
@@ -533,22 +1168,21 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                 confirmText: "UNDERSTOOD"
             });
         }
-    };
+    }, [deferredPrompt, isIOS]);
 
-    const handleLogout = async () => {
+    const handleLogout = useCallback(async () => {
         audioManager.playSound('click');
         try {
             await logoutUserFromFirebase();
-        } catch (e) {}
+        } catch {}
         clearActiveStatsSession();
         setCurrentUser(null);
         setShowProfileModal(false);
         setInputName('');
         window.location.reload();
-    };
+    }, [setInputName]);
 
     const syncStatsToAccount = async (username: string, remoteStats: any) => {
-        // Load user's own canonical stats directly without merging residual data from other accounts
         const stats = remoteStats || emptyStats();
         setUserActiveStats(username, stats);
         return stats;
@@ -607,7 +1241,6 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                 setIsLoadingAuth(false);
             }
         } else {
-            // Register Tab
             if (!u || !p || !mail) {
                 setLoginError('USERNAME, GMAIL AND PASSWORD REQUIRED');
                 setIsLoadingAuth(false);
@@ -638,7 +1271,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                     setInputName((res.user.displayName || res.user.username).toUpperCase());
                     try {
                         localStorage.setItem('aadish_roulette_name', res.user.username);
-                    } catch (e) {}
+                    } catch {}
                     setTimeout(() => {
                         setShowLoginModal(false);
                         setLoginPassword('');
@@ -671,7 +1304,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                 setInputName((res.user.displayName || res.user.username).toUpperCase());
                 try {
                     localStorage.setItem('aadish_roulette_name', res.user.username);
-                } catch (e) {}
+                } catch {}
                 setTimeout(() => {
                     setShowLoginModal(false);
                     setLoginSuccess('');
@@ -687,66 +1320,27 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
         }
     };
 
-    const handleForgotPassword = async () => {
-        const clean = loginUsername.trim().toLowerCase() || loginEmail.trim().toLowerCase();
-        if (!clean) {
-            setLoginError('ENTER YOUR USERNAME OR GMAIL FIRST TO SEND RESET LINK');
-            return;
-        }
-        setIsLoadingAuth(true);
-        setLoginError('');
-        try {
-            let emailToSend = clean;
-            if (!clean.includes('@')) {
-                const user = await findUserByUsernameOrEmail(clean);
-                if (user?.email) {
-                    emailToSend = user.email;
-                } else {
-                    setLoginError('NO GMAIL REGISTERED FOR THIS USERNAME');
-                    setIsLoadingAuth(false);
-                    return;
-                }
-            }
-            const res = await sendPasswordReset(emailToSend);
-            if (res.success) {
-                setLoginSuccess(`RESET LINK DISPATCHED TO ${emailToSend.toUpperCase()}`);
-                setSpamNoticeTarget(emailToSend);
-                setShowResetSpamModal(true);
-            } else {
-                setLoginError(res.error || 'FAILED TO SEND PASSWORD RESET');
-            }
-        } catch (err: any) {
-            setLoginError(err.message || 'RESET REQUEST FAILED');
-        } finally {
-            setIsLoadingAuth(false);
-        }
-    };
-
-    const handleBindSoul = React.useCallback(async () => {
+    const handleBindSoul = useCallback(async () => {
         if (isBindingSoul || hasBoundSoul) return;
         setIsBindingSoul(true);
 
-        // Immediate tactile haptic feedback on touch devices
         if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
             try {
                 navigator.vibrate([35, 55, 40]);
             } catch {}
         }
 
-        // Warm up and unlock audio immediately
         try {
             await audioManager.initialize();
             audioManager.playSound('click');
             audioManager.playMusic('menu');
         } catch {}
 
-        // 150ms cinematic seal confirmation before entering main menu
         setTimeout(() => {
             setHasBoundSoul(true);
         }, 150);
     }, [isBindingSoul, hasBoundSoul]);
 
-    // Space & Enter keyboard binding for instant desktop entry
     useEffect(() => {
         if (hasBoundSoul) return;
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -759,55 +1353,49 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [hasBoundSoul, handleBindSoul]);
 
+    const handleOpenMessagesFromPanel = useCallback((target: string | null) => {
+        setMessagesTargetUser(target);
+        setShowMessagesModal(true);
+    }, []);
+
+    const handleOpenLogin = useCallback(() => setShowLoginModal(true), []);
+    const handleOpenAdmin = useCallback(() => setShowAdminModal(true), []);
+    const handleOpenProfile = useCallback(() => setShowProfileModal(true), []);
+    const handleOpenProfileOrMigration = useCallback(() => {
+        if (currentUser && isLegacyUpstashUser(currentUser)) {
+            setLegacyUserToMigrate(currentUser);
+            setShowMigrationModal(true);
+            return;
+        }
+        setShowProfileModal(true);
+    }, [currentUser]);
+    const handleOpenMobileMessages = useCallback(() => {
+        setMessagesTargetUser(null);
+        setShowMessagesModal(true);
+    }, []);
+
     if (!hasBoundSoul) {
         return (
-            <div 
-                className="fixed inset-0 z-50 flex flex-col items-center justify-center overflow-hidden pointer-events-auto bg-black font-mono cursor-pointer animate-in fade-in duration-700 select-none"
-                onClick={handleBindSoul}
-                role="button"
-                tabIndex={0}
-                aria-label="Bind soul to enter BugShot Roulette"
-            >
-                {/* Subtle dark ambient red glow */}
-                <div className={`absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(220,38,38,${isBindingSoul ? '0.22' : '0.07'})_0%,transparent_70%)] ${isBindingSoul ? 'animate-none' : 'animate-pulse'} transition-all duration-200 pointer-events-none`} />
-
-                <div className={`text-center relative z-10 p-4 max-w-xl mx-auto flex flex-col items-center transition-transform duration-200 ${isBindingSoul ? 'scale-[1.02]' : 'scale-100'}`}>
-                    <h1 className="text-6xl sm:text-8xl md:text-9xl font-black text-stone-100 mb-8 sm:mb-10 tracking-tighter leading-none drop-shadow-[0_0_25px_rgba(255,255,255,0.2)]">
-                        <span className="block animate-in slide-in-from-top duration-700">BUGSHOT</span>
-                        <span className="block text-red-650 animate-[text-pop_0.5s_ease-out] relative">
-                            ROULETTE
-                            {!isMobile && (
-                                <span className="absolute -inset-1 text-red-400 opacity-20 blur-sm animate-glitch pointer-events-none">ROULETTE</span>
-                            )}
-                        </span>
-                    </h1>
-
-                    <div className="text-stone-400 text-xs sm:text-sm md:text-base tracking-[0.45em] sm:tracking-[0.55em] font-bold uppercase transition-all duration-300 group hover:text-stone-100 flex flex-col items-center gap-3">
-                        <div className={`mb-1 transition-all duration-150 ${isBindingSoul ? 'text-red-500 scale-105 font-black drop-shadow-[0_0_15px_rgba(239,68,68,0.8)]' : 'animate-pulse'}`}>
-                            {isBindingSoul
-                                ? '[ CONTRACT SEALED ]'
-                                : `[ ${isTouchDevice ? 'TAP TO BIND SOUL' : 'CLICK TO BIND SOUL'} ]`
-                            }
-                        </div>
-                        <div className="text-[8.5px] sm:text-[10px] text-stone-600 group-hover:text-red-900/80 tracking-[0.3em] font-mono transition-colors">
-                            BY ENTERING, YOU WAIVE ALL RIGHTS TO PHYSICAL CONTINUITY
-                        </div>
-                        {!isTouchDevice && !isBindingSoul && (
-                            <div className="text-[7.5px] text-stone-600 tracking-[0.25em] font-mono uppercase mt-1">
-                                PRESS SPACE OR CLICK TO INITIATE
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {/* Subtle scanline overlay */}
-                {!isMobile && <div className="scan-line !opacity-15 pointer-events-none" />}
-            </div>
+            <BindSoulOverlay
+                isBindingSoul={isBindingSoul}
+                isMobile={isMobile}
+                isTouchDevice={isTouchDevice}
+                reduceEffects={reduceEffects}
+                onBindSoul={handleBindSoul}
+            />
         );
     }
+
+    const blurMd = reduceEffects ? '' : 'backdrop-blur-md';
+    const blurXl = reduceEffects ? '' : 'backdrop-blur-xl';
+    const blur2xl = reduceEffects ? '' : 'backdrop-blur-2xl';
+    const blur3xl = reduceEffects ? '' : 'backdrop-blur-3xl';
+
     return (
-        <div 
-            className="absolute inset-0 z-50 flex flex-col items-center justify-start sm:justify-center overflow-y-auto sm:overflow-hidden custom-scrollbar pointer-events-auto bg-black/40 backdrop-blur-[2px] p-2 sm:p-4 select-none"
+        <div
+            className={`absolute inset-0 z-50 flex flex-col items-center justify-start sm:justify-center overflow-y-auto sm:overflow-hidden custom-scrollbar pointer-events-auto ${
+                reduceEffects ? 'bg-black/55' : 'bg-black/40 backdrop-blur-[2px]'
+            } p-2 sm:p-4 select-none`}
             style={{
                 paddingTop: 'max(env(safe-area-inset-top, 0px), 8px)',
                 paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 8px)',
@@ -815,149 +1403,19 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                 paddingRight: 'max(env(safe-area-inset-right, 0px), 8px)'
             }}
         >
-            {/* Top Left Messages & Online Friends Section (Clean Transparent) */}
-            <div className="absolute top-4 left-4 sm:top-6 sm:left-6 z-[60] hidden sm:flex flex-col items-start gap-2.5 pointer-events-auto">
-                <button
-                    onClick={() => {
-                        audioManager.playSound('click');
-                        if (!isOnline) {
-                            setMessagesToast('OFFLINE PROTOCOL: Encrypted comms require an active internet connection.');
-                            return;
-                        }
-                        if (!currentUser) {
-                            setShowLoginModal(true);
-                            return;
-                        }
-                        setMessagesTargetUser(null);
-                        setShowMessagesModal(true);
-                    }}
-                    className={`group/msg flex items-center gap-2.5 bg-stone-950/85 hover:bg-stone-900/95 border border-stone-800 hover:border-cyan-500/60 py-2 px-3.5 rounded-2xl backdrop-blur-xl hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer text-left shadow-[0_8px_30px_rgba(0,0,0,0.6)] ${
-                        !isOnline ? 'opacity-50 grayscale' : ''
-                    }`}
-                    title={!isOnline ? "Offline - Internet required for comms" : "Direct Messages & Encrypted Comms"}
-                >
-                    <div className="relative">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center p-0.5 transition-all ${
-                            notificationCounts.total > 0
-                                ? 'bg-red-955/60 ring-2 ring-red-500 shadow-[0_0_15px_rgba(239,68,68,0.5)]'
-                                : 'bg-cyan-955/30 ring-1 ring-cyan-700/40 group-hover/msg:ring-cyan-400 group-hover/msg:bg-cyan-955/60 shadow-[0_0_12px_rgba(6,182,212,0.15)]'
-                        }`}>
-                            <Mail className={`w-4 h-4 transition-transform ${
-                                notificationCounts.total > 0
-                                    ? 'text-red-400 group-hover/msg:scale-110'
-                                    : 'text-cyan-400 group-hover/msg:scale-110'
-                            }`} />
-                        </div>
-                        {notificationCounts.total > 0 ? (
-                            <span className="absolute -top-1.5 -right-1.5 px-1.5 py-0.2 bg-red-600 border border-red-300 text-white text-[9px] font-black rounded-full shadow-[0_0_12px_rgba(220,38,38,0.9)] animate-pulse flex items-center justify-center min-w-[18px]">
-                                {notificationCounts.total > 9 ? '9+' : notificationCounts.total}
-                            </span>
-                        ) : !isOnline ? (
-                            <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-red-500 border-2 border-stone-950 shadow-sm" />
-                        ) : (
-                            <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-cyan-400 border-2 border-stone-950 shadow-sm animate-pulse" />
-                        )}
-                    </div>
-                    <div className="flex flex-col">
-                        <span className={`text-[12px] font-mono font-bold tracking-wider leading-tight transition-colors ${
-                            notificationCounts.total > 0 ? 'text-red-300 group-hover/msg:text-white' : 'text-stone-200 group-hover/msg:text-cyan-300'
-                        }`}>
-                            Messages {!isOnline && <span className="text-[7.5px] text-red-400 uppercase font-mono tracking-widest">[OFF]</span>}
-                        </span>
-                        {notificationCounts.total > 0 && isOnline && (
-                            <span className="text-[8px] font-mono font-bold text-red-400 tracking-wider">
-                                {notificationCounts.unreadDMs > 0 && `${notificationCounts.unreadDMs} New DM`}
-                                {notificationCounts.unreadDMs > 0 && notificationCounts.pendingRequests > 0 && ' • '}
-                                {notificationCounts.pendingRequests > 0 && `${notificationCounts.pendingRequests} Request`}
-                            </span>
-                        )}
-                    </div>
-                </button>
-
-                {/* Online Friends List Directly Downward to Message Button */}
-                {currentUser && isOnline && (
-                    <div className="w-56 bg-stone-950/85 hover:bg-stone-900/90 border border-stone-800 rounded-2xl p-2.5 backdrop-blur-xl shadow-[0_8px_30px_rgba(0,0,0,0.6)] transition-all animate-in fade-in duration-200">
-                        <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-stone-850 px-1">
-                            <div className="flex items-center gap-1.5">
-                                <span className={`w-2 h-2 rounded-full ${onlineFriends.length > 0 ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse' : 'bg-stone-500'}`} />
-                                <span className="text-[9px] font-mono font-bold tracking-wider text-stone-300 uppercase">
-                                    ONLINE FRIENDS
-                                </span>
-                            </div>
-                            <span className="text-[9px] font-mono font-black text-cyan-400 bg-cyan-955/40 px-1.5 py-0.2 rounded border border-cyan-800/40">
-                                {onlineFriends.length}
-                            </span>
-                        </div>
-
-                        {onlineFriends.length === 0 ? (
-                            <div className="py-1.5 px-1 text-center">
-                                <p className="text-[8.5px] font-mono text-stone-500 uppercase tracking-wider">
-                                    {friends.length === 0 ? 'NO FRIENDS ADDED' : 'NO FRIENDS ONLINE'}
-                                </p>
-                            </div>
-                        ) : (
-                            <div className="flex flex-col gap-1 max-h-56 overflow-y-auto pr-0.5 custom-scrollbar">
-                                {(isFriendsExpanded ? onlineFriends : onlineFriends.slice(0, 4)).map((friend) => {
-                                    const presence = getUserPresence(friend.username);
-                                    const status = presence?.status || 'online';
-                                    const isMatch = status === 'in_match';
-                                    const isLobby = status === 'in_lobby';
-                                    const statusLabel = isMatch ? 'In Match' : isLobby ? 'In Lobby' : 'Online';
-                                    const dotColor = isMatch ? 'bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.6)]' : isLobby ? 'bg-cyan-400 shadow-[0_0_6px_rgba(34,211,238,0.6)]' : 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)]';
-                                    const statusTextColor = isMatch ? 'text-amber-400' : isLobby ? 'text-cyan-400' : 'text-emerald-400';
-
-                                    return (
-                                        <button
-                                            key={friend.username}
-                                            onClick={() => {
-                                                audioManager.playSound('click');
-                                                setMessagesTargetUser(friend.username);
-                                                setShowMessagesModal(true);
-                                            }}
-                                            className="group/f flex items-center gap-2 p-1.5 rounded-xl hover:bg-white/5 border border-transparent hover:border-white/10 transition-all text-left cursor-pointer w-full"
-                                            title={`Direct message @${friend.displayName || friend.username} (${statusLabel})`}
-                                        >
-                                            <div className="relative shrink-0">
-                                                <img
-                                                    src={resolvePlayerAvatar(friend)}
-                                                    alt={friend.displayName || friend.username}
-                                                    className="w-6 h-6 rounded-full object-cover bg-stone-900 border border-white/10"
-                                                    onError={(e) => {
-                                                        (e.target as HTMLImageElement).src = '/image/favicon/android-chrome-192x192.png';
-                                                    }}
-                                                />
-                                                <span className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-stone-950 ${dotColor}`} />
-                                            </div>
-                                            <div className="flex flex-col min-w-0 flex-1">
-                                                <span className="text-[10px] font-mono font-bold text-stone-200 group-hover/f:text-white truncate">
-                                                    {friend.displayName || friend.username}
-                                                </span>
-                                                <span className={`text-[7.5px] font-mono font-medium ${statusTextColor} tracking-wide truncate`}>
-                                                    {statusLabel}
-                                                </span>
-                                            </div>
-                                            <MessageSquare className="w-3 h-3 text-stone-500 group-hover/f:text-cyan-400 opacity-0 group-hover/f:opacity-100 transition-opacity shrink-0 mr-0.5" />
-                                        </button>
-                                    );
-                                })}
-
-                                {onlineFriends.length > 4 && (
-                                    <button
-                                        onClick={() => {
-                                            audioManager.playSound('click');
-                                            setIsFriendsExpanded(!isFriendsExpanded);
-                                        }}
-                                        className="flex items-center justify-center gap-1 py-1 px-2 mt-0.5 rounded-lg bg-white/5 hover:bg-white/10 text-[8px] font-mono font-bold text-stone-400 hover:text-white transition-all cursor-pointer border border-white/5"
-                                    >
-                                        <span>{isFriendsExpanded ? 'COLLAPSE' : `+${onlineFriends.length - 4} MORE`}</span>
-                                        {isFriendsExpanded ? <ChevronUp className="w-2.5 h-2.5" /> : <ChevronDown className="w-2.5 h-2.5" />}
-                                    </button>
-                                )}
-                            </div>
-                        )}
-                    </div>
-                )}
-            </div>
+            {/* Top Left Messages & Online Friends Section (Desktop) */}
+            {!isMobile && (
+                <DesktopCommsPanel
+                    currentUser={currentUser}
+                    isOnline={isOnline}
+                    reduceEffects={reduceEffects}
+                    notificationCounts={notificationCounts}
+                    friends={friends}
+                    onOpenMessages={handleOpenMessagesFromPanel}
+                    onRequireLogin={handleOpenLogin}
+                    onOfflineToast={setMessagesToast}
+                />
+            )}
 
             {/* Messages Notification Toast */}
             {messagesToast && (
@@ -967,124 +1425,32 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                 </div>
             )}
 
-            {/* Top Right User Profile Badge Section (Hidden on mobile) */}
-            <div className="absolute top-4 right-4 sm:top-6 sm:right-6 z-[60] hidden sm:flex items-center gap-2.5">
-                {currentUser ? (
-                    <div className="flex items-center gap-2">
-                        {/* Developer-Only Admin Command Center Button */}
-                        {isDeveloper && (
-                            <button
-                                onClick={() => {
-                                    audioManager.playSound('click');
-                                    setShowAdminModal(true);
-                                }}
-                                className="group/admin flex items-center gap-2.5 bg-gradient-to-r from-red-955/95 via-stone-900 to-red-955/95 hover:from-red-900 hover:to-red-950 border border-red-600/80 hover:border-red-400 p-1.5 pl-3 pr-3.5 rounded-2xl backdrop-blur-xl shadow-[0_0_22px_rgba(220,38,38,0.45)] hover:shadow-[0_0_35px_rgba(220,38,38,0.7)] hover:scale-[1.03] active:scale-[0.98] transition-all cursor-pointer text-left"
-                                title="Developer System Admin Control Center"
-                            >
-                                <div className="relative">
-                                    <div className="w-8 h-8 rounded-full bg-red-955 border border-red-600/70 flex items-center justify-center text-red-400 group-hover/admin:text-white transition-colors">
-                                        <ShieldAlert size={16} className="group-hover/admin:rotate-12 transition-transform duration-300" />
-                                    </div>
-                                    <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2">
-                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
-                                    </span>
-                                </div>
-                                <div className="flex flex-col text-left">
-                                    <div className="flex items-center gap-1.5">
-                                        <span className="text-[11px] text-red-200 font-mono font-black uppercase tracking-wider leading-none">
-                                            ADMIN
-                                        </span>
-                                        <span className="px-1 py-0.2 bg-red-650 text-white text-[6.5px] font-black tracking-widest rounded uppercase">
-                                            ROOT
-                                        </span>
-                                    </div>
-                                    <span className="text-[7.5px] text-red-400 font-mono tracking-wider font-semibold mt-0.5">
-                                        DEV CONSOLE
-                                    </span>
-                                </div>
-                            </button>
-                        )}
-                        <button
-                            onClick={() => {
-                                audioManager.playSound('click');
-                                setShowProfileModal(true);
-                            }}
-                            className="group/profile flex items-center gap-3 bg-stone-950/95 hover:bg-stone-900 border border-stone-800 hover:border-stone-700 p-1.5 pl-2.5 pr-4 rounded-2xl backdrop-blur-xl shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer text-left"
-                            title="View and Edit Profile"
-                        >
-                            <div className="relative">
-                                <div className="w-9 h-9 rounded-full overflow-hidden bg-stone-900 ring-1 ring-stone-700 p-0.5">
-                                    <img
-                                        src={(currentUser.username?.toLowerCase() === 'aadish' || Boolean(currentUser.isDeveloper))
-                                            ? 'https://avatars.githubusercontent.com/u/101470733'
-                                            : (currentUser.avatarUrl || getDicebearUrl(currentUser.avatarStyle || 'thumbs', currentUser.username))}
-                                        alt={currentUser.username}
-                                        className="w-full h-full object-cover rounded-full group-hover/profile:scale-105 transition-transform"
-                                    />
-                                </div>
-                                <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-stone-950 shadow-sm ${
-                                    isLegacyUpstashUser(currentUser) ? 'bg-amber-400 animate-ping' : 'bg-emerald-500'
-                                }`} />
-                            </div>
-                            <div className="flex flex-col text-left">
-                                <div className="flex items-center gap-1.5">
-                                    <span className="text-[11px] text-stone-200 font-mono font-bold uppercase tracking-wider leading-none">
-                                        {currentUser.displayName || currentUser.username}
-                                    </span>
-                                    {isLegacyUpstashUser(currentUser) ? (
-                                        <span className="px-1.5 py-0.2 bg-amber-955 border border-amber-600 text-amber-300 text-[6.5px] font-black rounded uppercase animate-pulse">
-                                            LINK GMAIL
-                                        </span>
-                                    ) : currentUser.isDeveloper ? (
-                                        <span className="px-1.5 py-0.2 bg-red-955 border border-red-800 text-red-400 text-[7px] font-bold tracking-widest rounded uppercase">
-                                            DEV
-                                        </span>
-                                    ) : (
-                                        <span className="px-1 py-0.2 bg-stone-900 border border-stone-800 text-stone-400 text-[6.5px] font-bold rounded uppercase">
-                                            PLAYER
-                                        </span>
-                                    )}
-                                </div>
-                                <div className="flex items-center gap-1.5 mt-1">
-                                    <span className="text-[8.5px] text-stone-400 font-bold uppercase tracking-wider leading-none font-mono">
-                                        {getPlayerId(currentUser)}
-                                    </span>
-                                </div>
-                            </div>
-                        </button>
-                    </div>
-                ) : (
-                    <button
-                        onClick={() => {
-                            audioManager.playSound('click');
-                            setShowLoginModal(true);
-                        }}
-                        className="group/signin px-4 py-2 sm:px-5 sm:py-2.5 bg-gradient-to-r from-red-955/60 to-stone-950/80 border border-red-700/50 text-red-400 hover:text-white hover:border-red-500 font-mono font-black text-[9px] sm:text-[10px] tracking-[0.2em] rounded-xl backdrop-blur-md transition-all shadow-[0_0_25px_rgba(220,38,38,0.15)] hover:shadow-[0_0_40px_rgba(220,38,38,0.3)] hover:scale-105 active:scale-95 uppercase flex items-center gap-2 cursor-pointer small-btn"
-                    >
-                        <span className="relative flex h-1.5 w-1.5 sm:h-2 sm:w-2">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-1.5 w-1.5 sm:h-2 sm:w-2 bg-red-650"></span>
-                        </span>
-                        Sign In / Register
-                    </button>
-                )}
-            </div>
+            {/* Top Right User Profile Badge Section (Desktop) */}
+            {!isMobile && (
+                <DesktopProfileBadge
+                    currentUser={currentUser}
+                    isDeveloper={isDeveloper}
+                    reduceEffects={reduceEffects}
+                    onOpenAdmin={handleOpenAdmin}
+                    onOpenProfile={handleOpenProfile}
+                    onOpenLogin={handleOpenLogin}
+                />
+            )}
+
             {/* Bottom Right Floating Control Buttons (Changelog) */}
-            <div 
+            <div
                 className="absolute z-[60] flex items-center gap-2"
                 style={{
                     bottom: 'max(env(safe-area-inset-bottom, 0px), 16px)',
                     right: 'max(env(safe-area-inset-right, 0px), 16px)'
                 }}
             >
-                {/* Changelog Modal Trigger */}
                 <button
                     onClick={() => {
                         audioManager.playSound('click');
                         setShowChangelog(true);
                     }}
-                    className="w-11 h-11 min-w-[44px] min-h-[44px] p-2.5 sm:p-3 bg-gradient-to-br from-stone-900/90 to-stone-950/90 border border-stone-700/50 text-stone-300 hover:text-amber-400 hover:border-amber-600/50 rounded-full shadow-[0_10px_30px_rgba(0,0,0,0.8)] backdrop-blur-md transition-all hover:scale-110 active:scale-95 flex items-center justify-center cursor-pointer hover:shadow-[0_0_30px_rgba(245,158,11,0.15)] touch-manipulation"
+                    className={`w-11 h-11 min-w-[44px] min-h-[44px] p-2.5 sm:p-3 bg-gradient-to-br from-stone-900/95 to-stone-950/95 border border-stone-700/50 text-stone-300 hover:text-amber-400 hover:border-amber-600/50 rounded-full shadow-[0_10px_30px_rgba(0,0,0,0.8)] ${blurMd} transition-all hover:scale-110 active:scale-95 flex items-center justify-center cursor-pointer hover:shadow-[0_0_30px_rgba(245,158,11,0.15)] touch-manipulation`}
                     title="System Changelog & Version History"
                     aria-label="System Changelog & Version History"
                 >
@@ -1093,7 +1459,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
             </div>
 
             {/* Bottom Left Announcement Panel Button (Hidden on mobile) */}
-            <div 
+            <div
                 className="absolute z-[60] hidden sm:block"
                 style={{
                     bottom: 'max(env(safe-area-inset-bottom, 0px), 16px)',
@@ -1105,24 +1471,22 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                         audioManager.playSound('click');
                         setShowAnnouncement(true);
                     }}
-                    className="group/an p-3.5 sm:p-4 bg-gradient-to-br from-stone-900/90 to-stone-950/90 border border-stone-700/50 text-stone-400 hover:text-cyan-300 hover:border-cyan-600/50 rounded-full shadow-[0_10px_30px_rgba(0,0,0,0.8)] backdrop-blur-md transition-all hover:scale-110 active:scale-95 flex items-center justify-center cursor-pointer hover:shadow-[0_0_30px_rgba(45,212,191,0.15)] small-btn"
+                    className={`group/an p-3.5 sm:p-4 bg-gradient-to-br from-stone-900/95 to-stone-950/95 border border-stone-700/50 text-stone-400 hover:text-cyan-300 hover:border-cyan-600/50 rounded-full shadow-[0_10px_30px_rgba(0,0,0,0.8)] ${blurMd} transition-all hover:scale-110 active:scale-95 flex items-center justify-center cursor-pointer hover:shadow-[0_0_30px_rgba(45,212,191,0.15)] small-btn`}
                     title="View Announcement"
                 >
                     <Bell size={20} className="group-hover/an:rotate-[-8deg] transition-transform duration-300" />
                 </button>
             </div>
 
-            {/* Hard Mode Warning Modal - Sleek & Compact */}
+            {/* Hard Mode Warning Modal */}
             {showHardModeWarning && (
-                <div className="fixed inset-0 z-[160] flex items-center justify-center p-3 sm:p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-200">
+                <div className={`fixed inset-0 z-[160] flex items-center justify-center p-3 sm:p-4 bg-black/90 ${blurMd} animate-in fade-in duration-200`}>
                     <div
                         className="relative bg-stone-950/95 border-2 border-red-600/70 p-4 sm:p-6 max-w-md w-full text-center shadow-[0_0_60px_rgba(220,38,38,0.35)] rounded-2xl group overflow-hidden font-mono"
                         style={{ transform: `scale(${scale})` }}
                     >
-                        {/* Top Accent Warning Bar */}
-                        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-red-600 via-red-400 to-red-600 animate-pulse" />
-                        
-                        {/* Close button */}
+                        <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-red-600 via-red-400 to-red-600 ${reduceEffects ? '' : 'animate-pulse'}`} />
+
                         <button
                             onClick={() => {
                                 audioManager.playSound('click');
@@ -1137,10 +1501,10 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
 
                         <div className="relative z-10 flex flex-col items-center">
                             <div className="w-11 h-11 rounded-2xl bg-red-955/60 border border-red-600/60 flex items-center justify-center text-red-500 mb-2.5 shadow-[0_0_20px_rgba(220,38,38,0.4)]">
-                                <ShieldAlert size={26} className="animate-pulse" />
+                                <ShieldAlert size={26} className={reduceEffects ? '' : 'animate-pulse'} />
                             </div>
 
-                            <h2 className="text-xl sm:text-2xl font-black text-red-500 tracking-wider uppercase mb-0.5 drop-shadow-[0_0_15px_rgba(220,38,38,0.4)]">
+                            <h2 className={`text-xl sm:text-2xl font-black text-red-500 tracking-wider uppercase mb-0.5 ${reduceEffects ? '' : 'drop-shadow-[0_0_15px_rgba(220,38,38,0.4)]'}`}>
                                 HARD MODE PROTOCOL
                             </h2>
                             <p className="text-stone-400 text-[9px] sm:text-[10px] font-bold tracking-[0.3em] uppercase mb-3">
@@ -1174,7 +1538,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                 </button>
                                 <button
                                     onClick={() => {
-                                        audioManager.playSound('insert');
+                                        audioManager.playSound('click');
                                         onStartGame(true);
                                     }}
                                     className="flex-1 py-2 sm:py-2.5 bg-red-650 hover:bg-red-600 text-white font-black text-xs sm:text-sm tracking-wider border border-red-500 transition-all hover:scale-[1.01] hover:shadow-[0_0_25px_rgba(220,38,38,0.5)] active:scale-95 group cursor-pointer rounded-xl uppercase flex items-center justify-center gap-1.5 order-1 sm:order-2 shadow-lg"
@@ -1187,10 +1551,11 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                     </div>
                 </div>
             )}
-                  {/* Redesigned Cyberpunk Fullscreen Split Login / Register Modal - Android & Mobile Optimized */}
+
+            {/* Login / Register Modal */}
             {showLoginModal && (
-                <div 
-                    className="fixed inset-0 z-[110] flex items-start sm:items-center justify-center bg-black/92 backdrop-blur-2xl p-2 sm:p-4 md:p-6 animate-in fade-in duration-300 overflow-y-auto overscroll-contain keyboard-aware-bottom"
+                <div
+                    className={`fixed inset-0 z-[110] flex items-start sm:items-center justify-center bg-black/92 ${blur2xl} p-2 sm:p-4 md:p-6 animate-in fade-in duration-300 overflow-y-auto overscroll-contain keyboard-aware-bottom`}
                     role="dialog"
                     aria-modal="true"
                     aria-label="Account Authorization"
@@ -1206,25 +1571,25 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                         paddingRight: 'max(env(safe-area-inset-right, 0px), 8px)'
                     }}
                 >
-                    {/* Glowing background circles for ambient depth */}
-                    <div className="absolute w-[500px] h-[500px] bg-red-955/20 rounded-full blur-[140px] pointer-events-none -translate-x-1/3 -translate-y-1/3" />
-                    <div className="absolute w-[450px] h-[450px] bg-red-900/15 rounded-full blur-[120px] pointer-events-none translate-x-1/3 translate-y-1/3" />
-                    
+                    {!reduceEffects && (
+                        <>
+                            <div className="absolute w-[500px] h-[500px] bg-red-955/20 rounded-full blur-[140px] pointer-events-none -translate-x-1/3 -translate-y-1/3" />
+                            <div className="absolute w-[450px] h-[450px] bg-red-900/15 rounded-full blur-[120px] pointer-events-none translate-x-1/3 translate-y-1/3" />
+                        </>
+                    )}
+
                     <div
-                        className="relative w-full max-w-4xl max-h-[92dvh] sm:max-h-[90vh] bg-stone-950/95 border-2 border-red-500/30 rounded-2xl shadow-[0_0_100px_rgba(0,0,0,0.98),0_0_50px_rgba(239,68,68,0.2)] font-mono text-stone-300 flex flex-col md:flex-row overflow-y-auto md:overflow-hidden my-auto backdrop-blur-3xl"
+                        className={`relative w-full max-w-4xl max-h-[92dvh] sm:max-h-[90vh] bg-stone-950/95 border-2 border-red-500/30 rounded-2xl shadow-[0_0_100px_rgba(0,0,0,0.98),0_0_50px_rgba(239,68,68,0.2)] font-mono text-stone-300 flex flex-col md:flex-row overflow-y-auto md:overflow-hidden my-auto ${blur3xl}`}
                     >
-                        {/* CRT Scanline Overlay Effect */}
-                        {!isMobile && (
+                        {!isMobile && !reduceEffects && (
                             <div className="absolute inset-0 pointer-events-none opacity-25 mix-blend-overlay bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] bg-[size:100%_4px,6px_100%]" />
                         )}
-                        
-                        {/* Tech ticks */}
+
                         <div className="absolute top-3 left-3 w-3 h-3 border-t-2 border-l-2 border-red-500/50 pointer-events-none" />
                         <div className="absolute top-3 right-3 w-3 h-3 border-t-2 border-r-2 border-red-500/50 pointer-events-none" />
                         <div className="absolute bottom-3 left-3 w-3 h-3 border-b-2 border-l-2 border-red-500/50 pointer-events-none" />
                         <div className="absolute bottom-3 right-3 w-3 h-3 border-b-2 border-r-2 border-red-500/50 pointer-events-none" />
 
-                        {/* Close button in top-right */}
                         <button
                             type="button"
                             onClick={() => {
@@ -1244,11 +1609,11 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                             <X size={16} />
                         </button>
 
-                        {/* LEFT PANEL: High-Tech Security Lore & Telemetry (Visible on md+) */}
+                        {/* LEFT PANEL */}
                         <div className="hidden md:flex md:w-5/12 flex-col justify-between p-7 bg-gradient-to-b from-stone-900/70 to-stone-950/90 border-r border-stone-850/80 relative">
                             <div>
                                 <div className="flex items-center gap-2 text-stone-500 text-[9px] uppercase tracking-[0.35em] mb-2 font-black">
-                                    <Terminal size={13} className="text-red-500 animate-pulse" />
+                                    <Terminal size={13} className={`text-red-500 ${reduceEffects ? '' : 'animate-pulse'}`} />
                                     <span>CON_SECURITY_HUB</span>
                                 </div>
                                 <h2 className="text-xl font-black text-white tracking-wider uppercase mb-1">
@@ -1283,7 +1648,6 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                 </div>
                             </div>
 
-                            {/* Quote Box */}
                             <div className="mt-6 p-3 bg-stone-950 border border-stone-800 rounded-xl relative">
                                 <span className="text-[8px] text-stone-600 uppercase tracking-widest block mb-1">
                                     [ TRANSMISSION READOUT ]
@@ -1294,12 +1658,11 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                             </div>
                         </div>
 
-                        {/* RIGHT PANEL: Spacious High-Contrast Authentication Form */}
+                        {/* RIGHT PANEL */}
                         <div className="w-full md:w-7/12 p-4 sm:p-7 flex flex-col justify-center overflow-y-auto">
-                            {/* Header for small screens */}
                             <div className="md:hidden text-center mb-3 pr-8">
                                 <div className="text-[8px] text-stone-500 tracking-[0.3em] uppercase mb-1 flex items-center justify-center gap-1.5">
-                                    <Terminal size={10} className="text-red-500 animate-pulse" />
+                                    <Terminal size={10} className="text-red-500" />
                                     <span>CON_SECURITY_PORTAL</span>
                                 </div>
                                 <h3 className="text-base font-black text-stone-100 tracking-wider uppercase">
@@ -1307,7 +1670,6 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                 </h3>
                             </div>
 
-                            {/* Tabs Switcher */}
                             <div className="grid grid-cols-2 gap-2 mb-3 sm:mb-4 bg-stone-900/80 border border-stone-800 p-1 sm:p-1.5 rounded-xl">
                                 <button
                                     type="button"
@@ -1343,9 +1705,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                 </button>
                             </div>
 
-                            {/* Form */}
                             <form onSubmit={handleLoginSubmit} autoComplete="on" className="space-y-3 sm:space-y-4">
-                                {/* Username or Email Input */}
                                 <div>
                                     <div className="flex justify-between items-center mb-1.5 px-1">
                                         <span className="text-[9px] sm:text-[10px] text-stone-400 font-bold tracking-widest uppercase flex items-center gap-1.5">
@@ -1378,7 +1738,6 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                     </div>
                                 </div>
 
-                                {/* Gmail field only for Register */}
                                 {loginTab === 'register' && (
                                     <div>
                                         <div className="flex justify-between items-center mb-1.5 px-1">
@@ -1410,7 +1769,6 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                     </div>
                                 )}
 
-                                {/* Password Input with Toggle */}
                                 <div>
                                     <div className="flex justify-between items-center mb-1.5 px-1">
                                         <span className="text-[9px] sm:text-[10px] text-stone-400 font-bold tracking-widest uppercase flex items-center gap-1.5">
@@ -1466,23 +1824,20 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                     </div>
                                 </div>
 
-                                {/* Error Readout */}
                                 {loginError && (
                                     <div className="text-[8.5px] sm:text-[9.5px] text-red-400 font-bold tracking-wider uppercase border border-red-900/50 bg-red-955/30 p-2.5 rounded-xl animate-[shake_0.5s_ease-in-out] flex items-center gap-2">
-                                        <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse shrink-0" />
+                                        <span className="w-1.5 h-1.5 bg-red-500 rounded-full shrink-0" />
                                         <span>[CRITICAL FAULT: {loginError}]</span>
                                     </div>
                                 )}
 
-                                {/* Success Readout */}
                                 {loginSuccess && (
-                                    <div className="text-[8.5px] sm:text-[9.5px] text-green-400 font-bold tracking-wider uppercase border border-green-900/50 bg-green-955/30 p-2.5 rounded-xl animate-pulse flex items-center gap-2">
-                                        <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-ping shrink-0" />
+                                    <div className="text-[8.5px] sm:text-[9.5px] text-green-400 font-bold tracking-wider uppercase border border-green-900/50 bg-green-955/30 p-2.5 rounded-xl flex items-center gap-2">
+                                        <span className="w-1.5 h-1.5 bg-green-500 rounded-full shrink-0" />
                                         <span>[SYNC COMPLETE: {loginSuccess}]</span>
                                     </div>
                                 )}
 
-                                {/* Action Buttons */}
                                 <div className="pt-1 space-y-2">
                                     <button
                                         type="submit"
@@ -1491,14 +1846,13 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                     >
                                         {isLoadingAuth && <div className="w-4 h-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />}
                                         <span>
-                                            {isLoadingAuth 
-                                                ? 'CONNECTING TO FIREBASE CLOUD...' 
+                                            {isLoadingAuth
+                                                ? 'CONNECTING TO FIREBASE CLOUD...'
                                                 : (loginTab === 'signin' ? 'EXECUTE AUTHENTICATION' : 'ENROLL CLOUD ACCOUNT')
                                             }
                                         </span>
                                     </button>
 
-                                    {/* Google / Gmail 1-Click Fast Sign-In */}
                                     <div className="relative flex py-1 items-center">
                                         <div className="flex-grow border-t border-stone-800" />
                                         <span className="flex-shrink mx-3 text-[8.5px] font-mono font-bold tracking-[0.2em] text-stone-500 uppercase">
@@ -1523,7 +1877,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                         </svg>
                                         <span className="uppercase tracking-wider">CONTINUE WITH GOOGLE / GMAIL</span>
                                     </button>
-                                    
+
                                     <button
                                         type="button"
                                         onClick={() => {
@@ -1547,10 +1901,10 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                 </div>
             )}
 
-            {/* Dedicated High-Tech Forgot Password Popup Modal - Android & Mobile Optimized */}
+            {/* Forgot Password Modal */}
             {showForgotPasswordModal && (
-                <div 
-                    className="fixed inset-0 z-[220] flex items-start sm:items-center justify-center p-3 sm:p-5 bg-black/92 backdrop-blur-2xl animate-in fade-in duration-200 font-mono overflow-y-auto overscroll-contain keyboard-aware-bottom"
+                <div
+                    className={`fixed inset-0 z-[220] flex items-start sm:items-center justify-center p-3 sm:p-5 bg-black/92 ${blur2xl} animate-in fade-in duration-200 font-mono overflow-y-auto overscroll-contain keyboard-aware-bottom`}
                     role="dialog"
                     aria-modal="true"
                     aria-label="Password Recovery"
@@ -1568,7 +1922,6 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                     }}
                 >
                     <div className="relative w-full max-w-md max-h-[92dvh] sm:max-h-[90vh] bg-stone-950 border-2 border-amber-600/50 rounded-2xl shadow-[0_0_80px_rgba(0,0,0,0.95),0_0_40px_rgba(245,158,11,0.2)] p-4 sm:p-6 space-y-3.5 sm:space-y-4 text-stone-300 overflow-y-auto my-auto">
-                        {/* Header */}
                         <div className="flex items-center justify-between pb-3 border-b border-stone-850 pr-8 sm:pr-0">
                             <div className="flex items-center gap-2.5">
                                 <div className="p-2 rounded-xl bg-amber-955/60 border border-amber-600/60 text-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.3)]">
@@ -1684,7 +2037,6 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                 />
             )}
 
-            {/* Polished Global Leaderboard Modal Component */}
             {showLeaderboard && (
                 <LeaderboardModal
                     isOpen={showLeaderboard}
@@ -1704,146 +2056,45 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
 
             {/* Menu Center Frame Area */}
             <div
-                className="relative z-10 text-center max-w-md w-full p-3 sm:p-5 flex flex-col justify-center origin-center transition-all duration-300 my-auto animate-in fade-in-50"
+                className="relative z-10 text-center max-w-md w-full p-3 sm:p-5 flex flex-col justify-center origin-center transition-transform duration-200 my-auto animate-in fade-in-50"
                 style={{ transform: `scale(${scale})` }}
             >
                 <div className="mb-2 sm:mb-3 relative select-none">
-                    <h1 className="text-4xl sm:text-5xl md:text-6xl font-black mb-0 text-white tracking-tighter leading-[0.88] drop-shadow-[0_0_35px_rgba(255,255,255,0.2)]">
+                    <h1 className={`text-4xl sm:text-5xl md:text-6xl font-black mb-0 text-white tracking-tighter leading-[0.88] ${
+                        reduceEffects ? '' : 'drop-shadow-[0_0_35px_rgba(255,255,255,0.2)]'
+                    }`}>
                         BUGSHOT<br />
                         <span className="text-red-650 tracking-[-0.04em] relative inline-block">
                             ROULETTE
-                            <span className="absolute -inset-2 blur-3xl bg-red-600/35 -z-10" />
+                            {reduceEffects ? (
+                                <span className="absolute -inset-4 bg-[radial-gradient(ellipse_at_center,rgba(220,38,38,0.28)_0%,transparent_70%)] -z-10 pointer-events-none" />
+                            ) : (
+                                <span className="absolute -inset-2 blur-3xl bg-red-600/35 -z-10 pointer-events-none" />
+                            )}
                         </span>
                     </h1>
                 </div>
 
                 {/* Mobile-only User Profile & Messages Badge Row */}
-                <div className="sm:hidden mb-3 flex justify-center items-center gap-2 shrink-0 flex-wrap">
-                    <button
-                        onClick={() => {
-                            audioManager.playSound('click');
-                            if (!isOnline) {
-                                setMessagesToast('OFFLINE PROTOCOL: Encrypted comms require an active internet connection.');
-                                return;
-                            }
-                            if (!currentUser) {
-                                setShowLoginModal(true);
-                                return;
-                            }
-                            setMessagesTargetUser(null);
-                            setShowMessagesModal(true);
-                        }}
-                        className={`flex items-center gap-2 bg-stone-950/90 border min-h-[44px] py-1.5 px-3 rounded-xl shadow-md cursor-pointer transition-all text-left touch-manipulation active:scale-95 ${
-                            !isOnline
-                                ? 'border-stone-850 opacity-50 grayscale'
-                                : notificationCounts.total > 0
-                                ? 'border-red-600/80 bg-red-955/20'
-                                : 'border-stone-800 hover:border-cyan-800/60'
-                        }`}
-                        title={!isOnline ? "Offline - Internet required for comms" : "Direct Messages & Encrypted Comms"}
-                    >
-                        <div className="relative">
-                            <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
-                                notificationCounts.total > 0
-                                    ? 'bg-red-955/60 ring-1 ring-red-500'
-                                    : 'bg-cyan-955/40 ring-1 ring-cyan-700/50'
-                            }`}>
-                                <Mail className={`w-3.5 h-3.5 ${notificationCounts.total > 0 ? 'text-red-400' : 'text-cyan-400'}`} />
-                            </div>
-                            {notificationCounts.total > 0 ? (
-                                <span className="absolute -top-1.5 -right-1.5 px-1 py-0.2 bg-red-600 border border-red-300 text-white text-[8px] font-black rounded-full shadow-[0_0_10px_rgba(220,38,38,0.9)] animate-pulse min-w-[16px] text-center">
-                                    {notificationCounts.total > 9 ? '9+' : notificationCounts.total}
-                                </span>
-                            ) : (
-                                <span className="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-cyan-400 border border-stone-950" />
-                            )}
-                        </div>
-                        <span className={`text-[11px] font-mono font-bold tracking-wider leading-none ${
-                            notificationCounts.total > 0 ? 'text-red-300' : 'text-stone-200'
-                        }`}>
-                            Messages{notificationCounts.total > 0 ? ` (${notificationCounts.total})` : ''}
-                        </span>
-                    </button>
-                    {currentUser ? (
-                        <button
-                            onClick={() => {
-                                audioManager.playSound('click');
-                                if (currentUser && isLegacyUpstashUser(currentUser)) {
-                                    setLegacyUserToMigrate(currentUser);
-                                    setShowMigrationModal(true);
-                                    return;
-                                }
-                                setShowProfileModal(true);
-                            }}
-                            className="flex items-center gap-2 bg-stone-950/90 border border-stone-800 min-h-[44px] p-1.5 pl-2 pr-3 rounded-xl shadow-md cursor-pointer hover:border-stone-700 transition-all text-left touch-manipulation active:scale-95"
-                        >
-                            <div className="relative">
-                                <img
-                                    src={(currentUser.username?.toLowerCase() === 'aadish' || Boolean(currentUser.isDeveloper))
-                                        ? 'https://avatars.githubusercontent.com/u/101470733'
-                                        : (currentUser.avatarUrl || getDicebearUrl(currentUser.avatarStyle || 'thumbs', currentUser.username))}
-                                    alt={currentUser.username}
-                                    className="w-6 h-6 rounded-full bg-stone-900 border border-stone-750 object-cover shrink-0"
-                                />
-                                <span className={`absolute bottom-0 right-0 w-2 h-2 rounded-full border border-stone-950 ${
-                                    isLegacyUpstashUser(currentUser) ? 'bg-amber-400' : 'bg-emerald-500'
-                                }`} />
-                            </div>
-                            <div className="flex flex-col text-left">
-                                <div className="flex items-center gap-1">
-                                    <span className="text-[10px] text-stone-200 font-mono font-bold uppercase tracking-wider leading-none truncate max-w-[90px]">
-                                        {currentUser.displayName || currentUser.username}
-                                    </span>
-                                    {isLegacyUpstashUser(currentUser) ? (
-                                        <span className="px-1 py-0.2 bg-amber-955 border border-amber-600 text-amber-300 text-[5.5px] font-black rounded uppercase animate-pulse">LINK</span>
-                                    ) : currentUser.isDeveloper ? (
-                                        <span className="px-1 py-0.2 bg-red-955 border border-red-800 text-red-400 text-[6px] font-bold rounded uppercase">DEV</span>
-                                    ) : null}
-                                </div>
-                                <span className="text-[7px] text-stone-500 font-bold uppercase tracking-widest leading-none mt-0.5 font-mono">
-                                    {getPlayerId(currentUser)}
-                                </span>
-                            </div>
-                        </button>
-                    ) : (
-                        <button
-                            onClick={() => {
-                                audioManager.playSound('click');
-                                setShowLoginModal(true);
-                            }}
-                            className="group/signin px-3.5 py-2 min-h-[44px] bg-gradient-to-r from-red-955/70 to-stone-950 border border-red-700/60 text-red-400 hover:text-white font-mono font-black text-[9px] tracking-[0.2em] rounded-xl backdrop-blur-md transition-all shadow-[0_0_20px_rgba(220,38,38,0.2)] hover:shadow-[0_0_35px_rgba(220,38,38,0.35)] hover:scale-105 active:scale-95 uppercase flex items-center gap-2 cursor-pointer touch-manipulation"
-                        >
-                            <span className="relative flex h-1.5 w-1.5">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75"></span>
-                                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-650"></span>
-                            </span>
-                            Sign In / Register
-                        </button>
-                    )}
-                    {/* Mobile Developer Admin Button */}
-                    {isDeveloper && (
-                        <button
-                            onClick={() => {
-                                audioManager.playSound('click');
-                                setShowAdminModal(true);
-                            }}
-                            className="flex items-center gap-1.5 bg-gradient-to-r from-red-955 via-stone-900 to-red-955 border border-red-600/80 hover:border-red-400 min-h-[44px] py-1.5 px-3 rounded-xl shadow-[0_0_16px_rgba(220,38,38,0.4)] cursor-pointer text-left active:scale-95 transition-all touch-manipulation"
-                            title="Admin Console"
-                        >
-                            <ShieldAlert size={14} className="text-red-400 shrink-0" />
-                            <span className="text-[10px] text-red-200 font-mono font-black uppercase tracking-wider">
-                                ADMIN
-                            </span>
-                        </button>
-                    )}
-                </div>
+                <MobileStatusRow
+                    currentUser={currentUser}
+                    isOnline={isOnline}
+                    isDeveloper={isDeveloper}
+                    reduceEffects={reduceEffects}
+                    notificationCounts={notificationCounts}
+                    onOpenMessages={handleOpenMobileMessages}
+                    onOpenProfileOrMigration={handleOpenProfileOrMigration}
+                    onOpenLogin={handleOpenLogin}
+                    onOpenAdmin={handleOpenAdmin}
+                    onOfflineToast={setMessagesToast}
+                />
 
                 <div className="flex flex-col gap-2 sm:gap-2.5 max-w-sm mx-auto w-full">
                     {/* Offline Status Protocol Banner */}
                     {!isOnline && (
-                        <div className="mb-1 px-3 py-1.5 bg-red-955/60 border border-red-700/80 rounded-xl flex items-center justify-between text-[8px] sm:text-[9px] font-mono tracking-widest text-red-300 uppercase shadow-[0_0_20px_rgba(220,38,38,0.3)] animate-pulse">
+                        <div className={`mb-1 px-3 py-1.5 bg-red-955/60 border border-red-700/80 rounded-xl flex items-center justify-between text-[8px] sm:text-[9px] font-mono tracking-widest text-red-300 uppercase shadow-[0_0_20px_rgba(220,38,38,0.3)] ${reduceEffects ? '' : 'animate-pulse'}`}>
                             <div className="flex items-center gap-1.5 sm:gap-2">
-                                <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping shrink-0" />
+                                <span className={`w-1.5 h-1.5 rounded-full bg-red-500 ${reduceEffects ? '' : 'animate-ping'} shrink-0`} />
                                 <span className="font-black text-red-200">OFFLINE MODE ENGAGED</span>
                             </div>
                             <span className="text-[7.5px] sm:text-[8px] text-stone-300 font-bold">SOLO & HARD MODE READY</span>
@@ -1853,7 +2104,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                     {/* Identity Section */}
                     <div className="text-center mb-0.5">
                         <p className="text-[10px] sm:text-[11px] text-stone-300 font-black tracking-[0.35em] uppercase mb-1.5 flex items-center justify-center gap-2">
-                            <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-ping shrink-0" />
+                            <span className={`w-1.5 h-1.5 bg-red-500 rounded-full ${reduceEffects ? '' : 'animate-ping'} shrink-0`} />
                             <span>A Web Game By Aadish</span>
                         </p>
                         <div className="relative group max-w-[280px] mx-auto w-full">
@@ -1866,7 +2117,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                     onChange={(e) => setInputName(e.target.value)}
                                     placeholder="IDENTITY"
                                     maxLength={12}
-                                    className="w-full bg-stone-950/85 border-2 border-stone-800 hover:border-stone-700 focus:border-red-600/70 focus:bg-stone-900/40 py-2.5 px-6 sm:py-3 text-base sm:text-sm font-black text-white outline-none transition-all duration-300 tracking-[0.2em] sm:tracking-[0.25em] uppercase text-center placeholder-stone-700 backdrop-blur-xl rounded-xl shadow-inner touch-manipulation"
+                                    className={`w-full bg-stone-950/90 border-2 border-stone-800 hover:border-stone-700 focus:border-red-600/70 focus:bg-stone-900/50 py-2.5 px-6 sm:py-3 text-base sm:text-sm font-black text-white outline-none transition-all duration-300 tracking-[0.2em] sm:tracking-[0.25em] uppercase text-center placeholder-stone-700 ${blurXl} rounded-xl shadow-inner touch-manipulation`}
                                 />
                                 <span className="absolute right-3 text-stone-600 group-focus-within:text-red-500 transition-colors font-bold text-sm pointer-events-none">]</span>
                             </div>
@@ -1875,8 +2126,8 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                     </div>
 
                     <div className="grid grid-cols-12 gap-2 sm:gap-2.5">
-                        {/* Start Game Button (Singleplayer — Fully functional offline) */}
-                        <button 
+                        {/* Start Game Button */}
+                        <button
                             onClick={() => {
                                 audioManager.playSound('click');
                                 if (currentUser && isLegacyUpstashUser(currentUser)) {
@@ -1885,19 +2136,21 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                     return;
                                 }
                                 onStartGame(false);
-                            }} 
-                            disabled={!inputName.trim()} 
+                            }}
+                            disabled={!inputName.trim()}
                             className="col-span-6 min-h-[46px] px-3 py-2.5 sm:py-3.5 bg-gradient-to-b from-white to-stone-200 hover:from-white hover:to-white text-stone-950 font-black text-xs sm:text-sm active:scale-[0.97] transition-all duration-200 disabled:opacity-25 disabled:grayscale tracking-[0.2em] rounded-xl shadow-[0_4px_25px_rgba(255,255,255,0.15)] hover:shadow-[0_0_30px_rgba(255,255,255,0.35)] hover:scale-[1.02] relative overflow-hidden group/btn uppercase leading-none cursor-pointer border-2 border-white/90 touch-manipulation flex items-center justify-center"
                         >
-                            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-black/10 to-transparent -translate-x-full group-hover/btn:translate-x-full transition-transform duration-700" />
+                            {!reduceEffects && (
+                                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-black/10 to-transparent -translate-x-full group-hover/btn:translate-x-full transition-transform duration-700" />
+                            )}
                             <span className="flex items-center justify-center gap-1.5 relative z-10">
                                 <Crosshair size={14} className="text-stone-950 group-hover/btn:rotate-90 transition-transform duration-300 shrink-0" />
                                 <span>START GAME</span>
                             </span>
                         </button>
 
-                        {/* Multiplayer Button — Disabled Offline, Requires Online + Login */}
-                        <button 
+                        {/* Multiplayer Button */}
+                        <button
                             onClick={() => {
                                 audioManager.playSound('click');
                                 if (!isOnline) {
@@ -1916,8 +2169,8 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                     return;
                                 }
                                 onStartMultiplayer(inputName.trim());
-                            }} 
-                            disabled={!inputName.trim() || !isOnline} 
+                            }}
+                            disabled={!inputName.trim() || !isOnline}
                             className={`col-span-6 min-h-[46px] px-3 py-2.5 sm:py-3.5 border-2 font-black text-xs sm:text-sm flex items-center justify-center gap-1.5 group rounded-xl uppercase tracking-[0.2em] leading-none cursor-pointer relative transition-all duration-200 touch-manipulation ${
                                 !isOnline
                                     ? 'bg-stone-950/40 border-stone-850 text-stone-600 opacity-40 cursor-not-allowed shadow-none'
@@ -1934,8 +2187,8 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                             ) : null}
                         </button>
 
-                        {/* Hard Mode Button (Fully functional offline) */}
-                        <button 
+                        {/* Hard Mode Button */}
+                        <button
                             onClick={() => {
                                 audioManager.playSound('click');
                                 if (currentUser && isLegacyUpstashUser(currentUser)) {
@@ -1944,30 +2197,28 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                     return;
                                 }
                                 setShowHardModeWarning(true);
-                            }} 
-                            disabled={!inputName.trim()} 
+                            }}
+                            disabled={!inputName.trim()}
                             className="col-span-12 min-h-[46px] py-3 sm:py-3.5 bg-gradient-to-r from-stone-950 via-red-955/60 to-stone-950 border-2 border-red-900 hover:border-red-500 text-red-400 font-black text-xs sm:text-sm hover:text-white hover:bg-red-955/80 hover:shadow-[0_0_35px_rgba(220,38,38,0.5)] hover:scale-[1.015] active:scale-[0.97] transition-all duration-200 disabled:opacity-25 flex items-center justify-center gap-2 group rounded-xl shadow-[0_4px_25px_rgba(220,38,38,0.2)] uppercase tracking-[0.25em] leading-none cursor-pointer touch-manipulation"
                         >
-                            <Skull size={14} className="text-red-500 group-hover:text-red-300 group-hover:scale-110 transition-all duration-300 animate-pulse shrink-0" />
+                            <Skull size={14} className={`text-red-500 group-hover:text-red-300 group-hover:scale-110 transition-all duration-300 ${reduceEffects ? '' : 'animate-pulse'} shrink-0`} />
                             <span>HARD MODE PROTOCOL</span>
-                            <Skull size={14} className="text-red-500 group-hover:text-red-300 group-hover:scale-110 transition-all duration-300 animate-pulse shrink-0" />
+                            <Skull size={14} className={`text-red-500 group-hover:text-red-300 group-hover:scale-110 transition-all duration-300 ${reduceEffects ? '' : 'animate-pulse'} shrink-0`} />
                         </button>
                     </div>
 
                     <div className="grid grid-cols-3 gap-2 mt-1">
-                        {/* Guide Button */}
-                        <button 
+                        <button
                             onClick={() => {
                                 audioManager.playSound('click');
                                 onOpenGuide();
-                            }} 
-                            className="px-2 py-2.5 min-h-[46px] bg-stone-900/50 hover:bg-stone-850/80 border border-stone-800 hover:border-cyan-500/60 text-stone-400 hover:text-cyan-300 active:scale-95 hover:scale-[1.02] transition-all duration-200 uppercase rounded-xl cursor-pointer flex flex-col items-center justify-center gap-1 font-mono font-bold text-[9px] sm:text-[10px] tracking-[0.2em] touch-manipulation shadow-md group"
+                            }}
+                            className="px-2 py-2.5 min-h-[46px] bg-stone-900/60 hover:bg-stone-850/80 border border-stone-800 hover:border-cyan-500/60 text-stone-400 hover:text-cyan-300 active:scale-95 hover:scale-[1.02] transition-all duration-200 uppercase rounded-xl cursor-pointer flex flex-col items-center justify-center gap-1 font-mono font-bold text-[9px] sm:text-[10px] tracking-[0.2em] touch-manipulation shadow-md group"
                         >
                             <HelpCircle size={15} className="text-stone-500 group-hover:text-cyan-400 transition-colors" />
                             <span>Guide</span>
                         </button>
-                        {/* Stats Button — Disabled Offline, Requires Online Cloud */}
-                        <button 
+                        <button
                             onClick={() => {
                                 audioManager.playSound('click');
                                 if (!isOnline) {
@@ -1984,12 +2235,12 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                     return;
                                 }
                                 onOpenScoreboard();
-                            }} 
+                            }}
                             disabled={!isOnline}
                             className={`px-2 py-2.5 min-h-[46px] border uppercase rounded-xl transition-all duration-200 relative flex flex-col items-center justify-center gap-1 font-mono font-bold text-[9px] sm:text-[10px] tracking-[0.2em] touch-manipulation shadow-md group ${
                                 !isOnline
                                     ? 'bg-stone-950/40 border-stone-850 text-stone-600 opacity-40 cursor-not-allowed'
-                                    : 'bg-stone-900/50 hover:bg-stone-850/80 border-stone-800 hover:border-amber-500/60 text-stone-400 hover:text-amber-300 active:scale-95 hover:scale-[1.02] cursor-pointer'
+                                    : 'bg-stone-900/60 hover:bg-stone-850/80 border-stone-800 hover:border-amber-500/60 text-stone-400 hover:text-amber-300 active:scale-95 hover:scale-[1.02] cursor-pointer'
                             }`}
                             title={!isOnline ? 'Offline Protocol: Network connection required' : 'Operative Stats'}
                         >
@@ -2001,13 +2252,12 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                 <Lock size={8} className="absolute top-1.5 right-1.5 text-red-500/70" />
                             ) : null}
                         </button>
-                        {/* Config Button */}
-                        <button 
+                        <button
                             onClick={() => {
                                 audioManager.playSound('click');
                                 onOpenSettings();
-                            }} 
-                            className="px-2 py-2.5 min-h-[46px] bg-stone-900/50 hover:bg-stone-850/80 border border-stone-800 hover:border-stone-600 text-stone-400 hover:text-white active:scale-95 hover:scale-[1.02] transition-all duration-200 uppercase rounded-xl cursor-pointer flex flex-col items-center justify-center gap-1 font-mono font-bold text-[9px] sm:text-[10px] tracking-[0.2em] touch-manipulation shadow-md group"
+                            }}
+                            className="px-2 py-2.5 min-h-[46px] bg-stone-900/60 hover:bg-stone-850/80 border border-stone-800 hover:border-stone-600 text-stone-400 hover:text-white active:scale-95 hover:scale-[1.02] transition-all duration-200 uppercase rounded-xl cursor-pointer flex flex-col items-center justify-center gap-1 font-mono font-bold text-[9px] sm:text-[10px] tracking-[0.2em] touch-manipulation shadow-md group"
                         >
                             <SettingsIcon size={15} className="text-stone-500 group-hover:text-stone-300 transition-colors" />
                             <span>Config</span>
@@ -2015,7 +2265,6 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                     </div>
 
                     <div className="mt-1">
-                        {/* Leaderboard Trigger Button — Disabled Offline, Requires Online Cloud */}
                         <button
                             onClick={() => {
                                 audioManager.playSound('click');
@@ -2043,17 +2292,18 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                 {/* Multiplayer Match Summary Popup */}
                 {selectedMPMatch && typeof document !== 'undefined' ? createPortal(
                     <>
-                        <div className="fixed inset-0 z-[120] cursor-default bg-black/80 backdrop-blur-md" onClick={() => setSelectedMPMatch(null)} />
+                        <div className={`fixed inset-0 z-[120] cursor-default bg-black/80 ${blurMd}`} onClick={() => setSelectedMPMatch(null)} />
                         <div className="fixed inset-0 z-[130] flex items-center justify-center p-2 sm:p-6 pointer-events-none">
-                            <div className="w-full max-w-[min(96vw,1100px)] max-h-[92dvh] sm:rounded-2xl overflow-y-auto bg-stone-950 border border-cyan-900/40 px-2 sm:px-4 py-4 rounded-xl shadow-[0_0_40px_rgba(6,182,212,0.12)] font-mono text-stone-300 pointer-events-auto custom-scrollbar"
+                            <div
+                                className="w-full max-w-[min(96vw,1100px)] max-h-[92dvh] sm:rounded-2xl overflow-y-auto bg-stone-950 border border-cyan-900/40 px-2 sm:px-4 py-4 rounded-xl shadow-[0_0_40px_rgba(6,182,212,0.12)] font-mono text-stone-300 pointer-events-auto custom-scrollbar"
                                 style={{
-                                    paddingTop: `max(env(safe-area-inset-top, 0px), 12px)`,
-                                    paddingBottom: `max(env(safe-area-inset-bottom, 0px), 12px)`,
-                                    paddingLeft: `max(env(safe-area-inset-left, 0px), 8px)`,
-                                    paddingRight: `max(env(safe-area-inset-right, 0px), 8px)`
-                                }}>
-                                {/* Header - sticky on mobile */}
-                                <div className="sticky top-0 z-20 bg-stone-950/95 backdrop-blur-sm px-3 sm:px-4 py-2 sm:py-3 border-b border-stone-900">
+                                    paddingTop: 'max(env(safe-area-inset-top, 0px), 12px)',
+                                    paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 12px)',
+                                    paddingLeft: 'max(env(safe-area-inset-left, 0px), 8px)',
+                                    paddingRight: 'max(env(safe-area-inset-right, 0px), 8px)'
+                                }}
+                            >
+                                <div className="sticky top-0 z-20 bg-stone-950/95 px-3 sm:px-4 py-2 sm:py-3 border-b border-stone-900">
                                     <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-3">
                                             <Swords className="text-cyan-400" size={16} />
@@ -2071,10 +2321,8 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                     </div>
                                 </div>
 
-                                {/* Main Content: scrollable area */}
                                 <div className="p-3 sm:p-4 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 72px)' }}>
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                        {/* Left: Players / Recent Ops */}
                                         <div className="space-y-3">
                                             <div className="text-[10px] text-stone-500 uppercase tracking-widest font-black">Deployed Agents</div>
                                             <div className="space-y-2">
@@ -2090,7 +2338,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                                         <div key={idx} className="flex items-center justify-between p-2 bg-stone-900/30 border border-stone-850 rounded-xl">
                                                             <div className="flex items-center gap-2.5 min-w-0">
                                                                 <div className="w-8 h-8 rounded-full overflow-hidden bg-stone-900 border border-stone-750 shrink-0">
-                                                                    <img src={avatarUrl} alt={pName} className="w-full h-full object-cover" />
+                                                                    <img src={avatarUrl} alt={pName} loading="lazy" decoding="async" className="w-full h-full object-cover" />
                                                                 </div>
                                                                 <div className="flex flex-col text-left min-w-0">
                                                                     <div className="flex items-center gap-1.5 flex-wrap">
@@ -2110,7 +2358,6 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                             </div>
                                         </div>
 
-                                        {/* Middle: Performance */}
                                         <div>
                                             <div className="text-[10px] text-stone-500 uppercase tracking-widest font-black mb-2">Performance Report</div>
                                             <div className="grid grid-cols-2 md:grid-cols-2 gap-3">
@@ -2137,7 +2384,6 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                             </div>
                                         </div>
 
-                                        {/* Right: Items Deployed / Extras */}
                                         <div className="space-y-3">
                                             <div className="text-[10px] text-stone-500 uppercase tracking-widest font-black">Items Deployed</div>
                                             <div className="grid grid-cols-1 gap-2">
@@ -2162,14 +2408,15 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                                 </div>
                             </div>
                         </div>
-                    </>, document.body
+                    </>,
+                    document.body
                 ) : null}
 
                 <div className="mt-2 sm:mt-3 flex flex-col items-center gap-1.5 select-none">
                     {!isStandalone ? (
                         <button
                             onClick={handleInstallClick}
-                            className="group flex items-center gap-1.5 px-3 py-1 sm:px-3.5 sm:py-1 rounded-full bg-cyan-955/25 hover:bg-cyan-900/40 border border-cyan-700/40 hover:border-cyan-400/80 text-cyan-300 hover:text-white text-[8px] sm:text-[9px] font-mono font-bold tracking-[0.15em] uppercase backdrop-blur-md shadow-[0_0_15px_rgba(6,182,212,0.12)] hover:shadow-[0_0_20px_rgba(6,182,212,0.3)] transition-all active:scale-95 cursor-pointer"
+                            className={`group flex items-center gap-1.5 px-3 py-1 sm:px-3.5 sm:py-1 rounded-full bg-cyan-955/30 hover:bg-cyan-900/40 border border-cyan-700/40 hover:border-cyan-400/80 text-cyan-300 hover:text-white text-[8px] sm:text-[9px] font-mono font-bold tracking-[0.15em] uppercase ${blurMd} shadow-[0_0_15px_rgba(6,182,212,0.12)] hover:shadow-[0_0_20px_rgba(6,182,212,0.3)] transition-all active:scale-95 cursor-pointer`}
                             title="Install BugShot Roulette as a native App (PWA)"
                         >
                             <Download size={10} className="text-cyan-400 group-hover:scale-110 transition-transform shrink-0" />
@@ -2177,7 +2424,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                         </button>
                     ) : (
                         <div className="flex items-center gap-1.5 text-emerald-400/80 text-[7.5px] sm:text-[8px] font-mono font-bold tracking-[0.2em] uppercase">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                            <span className={`w-1.5 h-1.5 rounded-full bg-emerald-400 ${reduceEffects ? '' : 'animate-pulse'}`} />
                             <span>PWA ACTIVE</span>
                         </div>
                     )}
@@ -2187,8 +2434,6 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                 </div>
             </div>
 
-            {/* Modals rendered outside transform:scale container to prevent stacking context traps */}
-            {/* User's Own Profile Modal (Rendered only when open to maximize menu rendering performance) */}
             {showProfileModal && (
                 <ProfileModal
                     isOpen={showProfileModal}
@@ -2210,7 +2455,6 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                 />
             )}
 
-            {/* Public Leaderboard Profile Modal */}
             {selectedPublicProfile && (
                 <ProfileModal
                     isOpen={Boolean(selectedPublicProfile)}
@@ -2243,13 +2487,11 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                 />
             )}
 
-            {/* Legacy Upstash User Cloud Migration Modal */}
             {showMigrationModal && (
                 <MigrationModal
                     isOpen={showMigrationModal}
                     legacyUser={legacyUserToMigrate}
                     onClose={() => {
-                        // If the current session is an unmigrated Upstash user, cancelling logs them out
                         if (currentUser && isLegacyUpstashUser(currentUser)) {
                             handleLogout();
                         } else {
@@ -2262,15 +2504,14 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                         setLegacyUserToMigrate(null);
                         setCurrentUser(migratedUser);
                         setInputName((migratedUser.displayName || migratedUser.username).toUpperCase());
-                        audioManager.playSound('confirm');
+                        audioManager.playSound('click');
                     }}
                 />
             )}
 
-            {/* SPAM FOLDER NOTIFICATION MODAL FOR FORGOT PASSWORD */}
             {showResetSpamModal && (
-                <div 
-                    className="fixed inset-0 z-[230] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-150"
+                <div
+                    className={`fixed inset-0 z-[230] flex items-center justify-center p-4 bg-black/90 ${blurMd} animate-in fade-in duration-150`}
                     style={{
                         paddingTop: 'max(env(safe-area-inset-top, 0px), 16px)',
                         paddingBottom: 'calc(max(env(safe-area-inset-bottom, 0px), 16px) + env(keyboard-inset-height, 0px))',
@@ -2307,7 +2548,6 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                 </div>
             )}
 
-            {/* Developer-Only Live Administrative Command Center Modal */}
             {isDeveloper && showAdminModal && (
                 <AdminDashboardModal
                     isOpen={showAdminModal}
@@ -2318,7 +2558,6 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
                 />
             )}
 
-            {/* Real-Time Encrypted Messages & Comms Modal */}
             {showMessagesModal && (
                 <MessagesModal
                     isOpen={showMessagesModal}
@@ -2348,4 +2587,5 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({
             )}
         </div>
     );
-};
+});
+IntroScreen.displayName = 'IntroScreen';

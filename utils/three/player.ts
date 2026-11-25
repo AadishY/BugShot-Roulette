@@ -111,9 +111,9 @@ export const createPlayerAvatar = (scene: THREE.Scene, position: THREE.Vector3, 
     const isLow = preset === 'low';
     const isBalanced = preset === 'balanced';
     const isHigh = preset === 'high';
-    const isUltra = false;
     const isMobile = scene.userData.isMobile || false;
-    const shouldCastShadow = (isHigh && !isMobile) || (isBalanced && !isMobile);
+    const isAndroid = scene.userData.isAndroid || false;
+    const shouldCastShadow = isHigh || (isBalanced && !isMobile) || (isLow && !isAndroid && !isMobile);
     const isSmoothHead = SMOOTH_HEAD_MODELS.has(modelKey);
     const config = PLAYER_MODEL_CONFIGS[modelKey] ?? PLAYER_MODEL_CONFIGS.DEFAULT;
 
@@ -123,6 +123,7 @@ export const createPlayerAvatar = (scene: THREE.Scene, position: THREE.Vector3, 
 
     getPreloadedGLB(resolveAssetPath(config.path))
         .then((gltf) => {
+            if (scene.userData._disposed) return;
             const model = clone(gltf.scene as THREE.Group);
             model.traverse((obj: THREE.Object3D) => {
                 if (obj instanceof THREE.Light || obj instanceof THREE.Camera || (obj as any).isHelper) {
@@ -157,19 +158,21 @@ export const createPlayerAvatar = (scene: THREE.Scene, position: THREE.Vector3, 
 
                 if (obj instanceof THREE.Mesh) {
                     obj.castShadow = shouldCastShadow;
-                    obj.receiveShadow = isUltra;
+                    obj.receiveShadow = false;
 
                     if (obj.material) {
                         const mats: THREE.Material[] = Array.isArray(obj.material)
                             ? obj.material
                             : [obj.material];
+                        const clonedMats: THREE.Material[] = new Array(mats.length);
 
-                        for (const mat of mats) {
-                            // Ensure cloned material is uniquely disposed on scene teardown,
-                            // while shared textures/geometries remain cached.
+                        for (let mi = 0; mi < mats.length; mi++) {
+                            // Clone material per scene instance so preset mutations never corrupt shared GLB cache
+                            const mat = mats[mi].clone();
                             if (mat.userData) {
                                 delete mat.userData.isCachedAsset;
                             }
+                            clonedMats[mi] = mat;
 
                             const m = mat as THREE.MeshStandardMaterial;
 
@@ -193,9 +196,9 @@ export const createPlayerAvatar = (scene: THREE.Scene, position: THREE.Vector3, 
                                 m.side = THREE.DoubleSide;
                                 m.roughness = m.roughnessMap ? Math.min(m.roughness, 0.85) : 0.68;
                                 m.metalness = 0.0;
-                                m.envMapIntensity = isHigh ? 1.4 : (isBalanced ? 0.9 : (isLow ? 0.5 : 0.25));
+                                m.envMapIntensity = isHigh ? 1.35 : (isBalanced ? 0.9 : (isLow ? 0.5 : 0.25));
                                 if (m.emissive) m.emissive.setHex(0x120a08); // subtle warm lift
-                                m.emissiveIntensity = isPotato ? 0.12 : 0.22;
+                                m.emissiveIntensity = isPotato ? 0.16 : 0.22;
                                 m.fog = !isPotato;
                                 if (m.color) {
                                     m.color.setHex(0xffffff);
@@ -217,6 +220,7 @@ export const createPlayerAvatar = (scene: THREE.Scene, position: THREE.Vector3, 
                                 m.needsUpdate = true;
                             }
                         }
+                        obj.material = Array.isArray(obj.material) ? clonedMats : clonedMats[0];
                     }
                 }
             });

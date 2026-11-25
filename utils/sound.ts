@@ -48,11 +48,22 @@ export const updateVolumes = (settings: GameSettings) => {
 };
 
 /**
- * Stop all playing SFX audio clones and reset active audio dimming cleanly.
+ * Stop all playing SFX audio nodes/clones and reset active audio dimming cleanly.
  */
 export const stopAllSFX = () => {
     try {
         audioManager.stopAllSFX();
+    } catch {
+        // Silent catch
+    }
+};
+
+/**
+ * Release non-critical decoded SFX buffers to free RAM on mode transitions.
+ */
+export const releaseUnusedSFX = (keepKeys?: string[]) => {
+    try {
+        audioManager.releaseUnusedSFX(keepKeys);
     } catch {
         // Silent catch
     }

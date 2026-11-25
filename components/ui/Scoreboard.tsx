@@ -241,7 +241,7 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ onClose, stats: initialS
 
     return (
         <div 
-            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/55 backdrop-blur-md pointer-events-auto p-1 sm:p-2.5 animate-in fade-in duration-300"
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md pointer-events-auto p-1.5 sm:p-3 animate-in fade-in duration-300"
             role="dialog"
             aria-modal="true"
             aria-label="Agent Service Record"
@@ -258,29 +258,29 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ onClose, stats: initialS
                 }
             }}
         >
-            <div className="w-full max-w-[min(96vw,calc(100vw-16px))] h-[90vh] max-h-[96vh] md:w-[90vw] md:h-[90vh] bg-stone-950/40 backdrop-blur-2xl border-[2px] border-stone-700/80 shadow-[0_36px_100px_rgba(0,0,0,0.9)] flex flex-col relative overflow-hidden rounded-2xl ring-2 ring-white/10">
+            <div className="w-full max-w-[min(96vw,calc(100vw-16px))] lg:max-w-5xl h-[92dvh] max-h-[92dvh] bg-stone-950/60 backdrop-blur-2xl border-2 border-stone-700/80 shadow-[0_36px_100px_rgba(0,0,0,0.9)] flex flex-col relative overflow-hidden rounded-2xl ring-1 ring-white/10">
 
                 {/* Decorative Elements */}
                 <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-yellow-500/20 to-transparent pointer-events-none" />
                 <div className="absolute -top-24 -right-24 w-48 h-48 bg-yellow-500/5 blur-[80px] rounded-full pointer-events-none" />
 
                 {/* Header with Player Profile & Avatar */}
-                <div className="p-3 sm:p-4 border-b border-stone-800/60 flex flex-col sm:flex-row justify-between sm:items-center gap-3 bg-stone-950/80 backdrop-blur-md">
-                    <div className="flex items-center gap-3">
+                <div className="p-2.5 sm:p-4 border-b border-stone-800/60 flex flex-row justify-between items-center gap-2 bg-stone-950/80 backdrop-blur-md shrink-0">
+                    <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
                         <div className="relative shrink-0">
-                            <div className="w-12 h-12 rounded-2xl overflow-hidden bg-stone-900 border border-stone-750 p-0.5 shadow-lg">
+                            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl overflow-hidden bg-stone-900 border border-stone-750 p-0.5 shadow-lg">
                                 <img
                                     src={playerAvatar}
                                     alt={playerDisplayName}
-                                    className="w-full h-full object-cover rounded-xl"
+                                    className="w-full h-full object-cover rounded-lg sm:rounded-xl"
                                 />
                             </div>
-                            <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-stone-950 shadow-sm" title="Active" />
+                            <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 sm:w-3.5 sm:h-3.5 rounded-full bg-emerald-500 border-2 border-stone-950 shadow-sm" title="Active" />
                         </div>
 
-                        <div className="flex flex-col">
-                            <div className="flex items-center gap-2 flex-wrap">
-                                <h2 className="text-base sm:text-lg font-black text-white tracking-wider uppercase leading-tight">
+                        <div className="flex flex-col min-w-0">
+                            <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                                <h2 className="text-sm sm:text-lg font-black text-white tracking-wider uppercase leading-tight truncate max-w-[140px] sm:max-w-none">
                                     {playerDisplayName}
                                 </h2>
                                 {isDev ? (
@@ -289,12 +289,12 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ onClose, stats: initialS
                                     </span>
                                 ) : (
                                     <span className="px-1.5 py-0.5 bg-stone-900 border border-stone-750 text-stone-400 text-[7px] font-bold tracking-widest rounded uppercase">
-                                        COMBAT AGENT
+                                        AGENT
                                     </span>
                                 )}
                             </div>
 
-                            <div className="flex items-center gap-2.5 text-[9px] text-stone-400 font-mono mt-0.5">
+                            <div className="flex items-center gap-2 text-[9px] text-stone-400 font-mono mt-0.5 flex-wrap">
                                 <button
                                     onClick={() => {
                                         audioManager.playSound('click');
@@ -302,88 +302,87 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ onClose, stats: initialS
                                         setCopiedId(true);
                                         setTimeout(() => setCopiedId(false), 2000);
                                     }}
-                                    className="inline-flex items-center gap-1.5 bg-stone-900/90 hover:bg-stone-800 border border-stone-800 hover:border-stone-700 px-2.5 py-1.5 min-h-[44px] rounded-lg text-stone-300 font-bold transition-all cursor-pointer"
+                                    className="small-btn inline-flex items-center gap-1 bg-stone-900/90 hover:bg-stone-800 border border-stone-800 hover:border-stone-700 px-2 py-1 rounded-md text-stone-300 font-bold transition-all cursor-pointer"
                                     title="Click to copy Player ID"
                                 >
-                                    <span>{playerIdentifier}</span>
-                                    {copiedId ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                                    <span className="truncate max-w-[110px] sm:max-w-none">{playerIdentifier}</span>
+                                    {copiedId ? <Check size={11} className="text-emerald-400 shrink-0" /> : <Copy size={11} className="shrink-0" />}
                                 </button>
-                                <span className="text-stone-600">•</span>
+                                <span className="hidden sm:inline text-stone-600">•</span>
                                 <span className="flex items-center gap-1 text-stone-400">
-                                    <Clock size={11} className="text-stone-500" />
-                                    <span>Playtime: <strong className="text-stone-200">{formattedPlaytime}</strong></span>
+                                    <Clock size={11} className="text-stone-500 shrink-0" />
+                                    <span><strong className="text-stone-200">{formattedPlaytime}</strong></span>
                                 </span>
                             </div>
                         </div>
                     </div>
 
-                    <div className="flex items-center self-end sm:self-auto gap-2">
-                        <button
-                            onClick={() => {
-                                audioManager.playSound('click');
-                                onClose();
-                            }}
-                            className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center text-stone-400 hover:text-white bg-stone-900/80 hover:bg-stone-800 border border-stone-800 rounded-xl transition-all cursor-pointer shadow-md"
-                            title="Close"
-                        >
-                            <X size={20} />
-                        </button>
-                    </div>
+                    <button
+                        onClick={() => {
+                            audioManager.playSound('click');
+                            onClose();
+                        }}
+                        className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center text-stone-400 hover:text-white bg-stone-900/80 hover:bg-stone-800 border border-stone-800 rounded-xl transition-all cursor-pointer shadow-md shrink-0"
+                        title="Close"
+                        aria-label="Close"
+                    >
+                        <X size={20} />
+                    </button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-hide custom-scrollbar">
+                <div className="flex-1 overflow-y-auto p-2.5 sm:p-4 space-y-3 sm:space-y-4 scrollbar-hide custom-scrollbar">
 
                     {/* Main Stats - Wins/Losses/WinRate */}
-                    <div className="grid grid-cols-3 gap-3">
-                        <div className="bg-stone-900/40 p-4 border border-white/5 rounded-2xl flex flex-col items-center justify-center group hover:bg-stone-900/60 transition-colors">
-                            <div className="text-stone-500 text-[8px] font-black tracking-[0.2em] uppercase mb-1 group-hover:text-green-500/70 transition-colors">WINS</div>
-                            <div className="text-3xl font-black text-white px-2 relative">
+                    <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                        <div className="bg-stone-900/40 p-2.5 sm:p-4 border border-white/5 rounded-xl sm:rounded-2xl flex flex-col items-center justify-center group hover:bg-stone-900/60 transition-colors">
+                            <div className="text-stone-500 text-[8px] font-black tracking-[0.2em] uppercase mb-0.5 group-hover:text-green-500/70 transition-colors">WINS</div>
+                            <div className="text-2xl sm:text-3xl font-black text-white px-2 relative">
                                 {stats.wins}
                                 <div className="absolute -inset-1 blur-lg bg-green-500/10 -z-10 group-hover:bg-green-500/20 transition-all" />
                             </div>
                         </div>
-                        <div className="bg-stone-900/40 p-4 border border-white/5 rounded-2xl flex flex-col items-center justify-center group hover:bg-stone-900/60 transition-colors">
-                            <div className="text-stone-500 text-[8px] font-black tracking-[0.2em] uppercase mb-1 group-hover:text-red-500/70 transition-colors">LOSSES</div>
-                            <div className="text-3xl font-black text-white px-2 relative">
+                        <div className="bg-stone-900/40 p-2.5 sm:p-4 border border-white/5 rounded-xl sm:rounded-2xl flex flex-col items-center justify-center group hover:bg-stone-900/60 transition-colors">
+                            <div className="text-stone-500 text-[8px] font-black tracking-[0.2em] uppercase mb-0.5 group-hover:text-red-500/70 transition-colors">LOSSES</div>
+                            <div className="text-2xl sm:text-3xl font-black text-white px-2 relative">
                                 {stats.losses}
                                 <div className="absolute -inset-1 blur-lg bg-red-500/10 -z-10 group-hover:bg-red-500/20 transition-all" />
                             </div>
                         </div>
-                        <div className="bg-stone-900/40 p-4 border border-white/5 rounded-2xl flex flex-col items-center justify-center group hover:bg-stone-900/60 transition-colors">
-                            <div className="text-stone-500 text-[8px] font-black tracking-[0.2em] uppercase mb-1 group-hover:text-yellow-500/70 transition-colors">SUCCESS</div>
-                            <div className="text-3xl font-black text-white">
-                                {winRate}<span className="text-sm text-stone-600 align-top opacity-50 ml-0.5">%</span>
+                        <div className="bg-stone-900/40 p-2.5 sm:p-4 border border-white/5 rounded-xl sm:rounded-2xl flex flex-col items-center justify-center group hover:bg-stone-900/60 transition-colors">
+                            <div className="text-stone-500 text-[8px] font-black tracking-[0.2em] uppercase mb-0.5 group-hover:text-yellow-500/70 transition-colors">SUCCESS</div>
+                            <div className="text-2xl sm:text-3xl font-black text-white">
+                                {winRate}<span className="text-xs sm:text-sm text-stone-600 align-top opacity-50 ml-0.5">%</span>
                             </div>
                         </div>
                     </div>
 
                     {/* Performance Grid */}
-                    <div className="space-y-4">
+                    <div className="space-y-2.5 sm:space-y-4">
                         <div className="flex items-center gap-3">
                             <div className="h-[1px] flex-1 bg-stone-800/50" />
                             <h3 className="text-stone-500 font-black tracking-[0.3em] uppercase text-[9px]">Combat Analysis</h3>
                             <div className="h-[1px] flex-1 bg-stone-800/50" />
                         </div>
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                            <div className="bg-black/40 p-3 border border-white/5 rounded-xl flex flex-col items-center justify-center group hover:border-blue-900/30 transition-all">
-                                <Activity className="text-blue-500/80 mb-2 group-hover:scale-110 transition-transform" size={16} />
-                                <div className="text-2xl font-black text-white leading-none">{stats.totalRounds}</div>
-                                <div className="text-[8px] text-stone-600 font-bold uppercase tracking-wider mt-2">Rounds</div>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+                            <div className="bg-black/40 p-2.5 sm:p-3 border border-white/5 rounded-xl flex flex-col items-center justify-center group hover:border-blue-900/30 transition-all">
+                                <Activity className="text-blue-500/80 mb-1 sm:mb-2 group-hover:scale-110 transition-transform" size={15} />
+                                <div className="text-xl sm:text-2xl font-black text-white leading-none">{stats.totalRounds}</div>
+                                <div className="text-[8px] text-stone-600 font-bold uppercase tracking-wider mt-1.5">Rounds</div>
                             </div>
-                            <div className="bg-black/40 p-3 border border-white/5 rounded-xl flex flex-col items-center justify-center group hover:border-red-900/30 transition-all">
-                                <Target className="text-red-500/80 mb-2 group-hover:scale-110 transition-transform" size={16} />
-                                <div className="text-2xl font-black text-white leading-none">{accuracy}%</div>
-                                <div className="text-[8px] text-stone-600 font-bold uppercase tracking-wider mt-2">Precision</div>
+                            <div className="bg-black/40 p-2.5 sm:p-3 border border-white/5 rounded-xl flex flex-col items-center justify-center group hover:border-red-900/30 transition-all">
+                                <Target className="text-red-500/80 mb-1 sm:mb-2 group-hover:scale-110 transition-transform" size={15} />
+                                <div className="text-xl sm:text-2xl font-black text-white leading-none">{accuracy}%</div>
+                                <div className="text-[8px] text-stone-600 font-bold uppercase tracking-wider mt-1.5">Precision</div>
                             </div>
-                            <div className="bg-black/40 p-3 border border-white/5 rounded-xl flex flex-col items-center justify-center group hover:border-orange-900/30 transition-all">
-                                <Swords className="text-orange-500/80 mb-2 group-hover:scale-110 transition-transform" size={16} />
-                                <div className="text-2xl font-black text-white leading-none">{stats.damageDealt}</div>
-                                <div className="text-[8px] text-stone-600 font-bold uppercase tracking-wider mt-2">Lethality</div>
+                            <div className="bg-black/40 p-2.5 sm:p-3 border border-white/5 rounded-xl flex flex-col items-center justify-center group hover:border-orange-900/30 transition-all">
+                                <Swords className="text-orange-500/80 mb-1 sm:mb-2 group-hover:scale-110 transition-transform" size={15} />
+                                <div className="text-xl sm:text-2xl font-black text-white leading-none">{stats.damageDealt}</div>
+                                <div className="text-[8px] text-stone-600 font-bold uppercase tracking-wider mt-1.5">Lethality</div>
                             </div>
-                            <div className="bg-black/40 p-3 border border-white/5 rounded-xl flex flex-col items-center justify-center group hover:border-purple-900/30 transition-all">
-                                <Skull className="text-purple-500/80 mb-2 group-hover:scale-110 transition-transform" size={16} />
-                                <div className="text-2xl font-black text-white leading-none">{stats.highestRound}</div>
-                                <div className="text-[8px] text-stone-600 font-bold uppercase tracking-wider mt-2">Tier</div>
+                            <div className="bg-black/40 p-2.5 sm:p-3 border border-white/5 rounded-xl flex flex-col items-center justify-center group hover:border-purple-900/30 transition-all">
+                                <Skull className="text-purple-500/80 mb-1 sm:mb-2 group-hover:scale-110 transition-transform" size={15} />
+                                <div className="text-xl sm:text-2xl font-black text-white leading-none">{stats.highestRound}</div>
+                                <div className="text-[8px] text-stone-600 font-bold uppercase tracking-wider mt-1.5">Tier</div>
                             </div>
                         </div>
                     </div>
@@ -391,7 +390,7 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ onClose, stats: initialS
                     {/* Tactical Loadout removed — considered redundant */}
 
                     {/* Match History */}
-                    <div className="space-y-4">
+                    <div className="space-y-2.5 sm:space-y-4">
                         <div className="flex items-center gap-3">
                             <h3 className="text-stone-500 font-black tracking-[0.3em] uppercase text-[9px]">Recent Operations</h3>
                             <div className="h-[1px] flex-1 bg-stone-800/50" />
@@ -405,43 +404,43 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ onClose, stats: initialS
                                             audioManager.playSound('click');
                                             setSelectedMatch(match);
                                         }}
-                                        className="bg-stone-900/20 hover:bg-stone-900/40 p-2.5 px-3.5 border border-white/5 hover:border-cyan-500/40 rounded-xl flex justify-between items-center transition-all cursor-pointer group"
+                                        className="bg-stone-900/20 hover:bg-stone-900/40 p-2 sm:p-2.5 sm:px-3.5 border border-white/5 hover:border-cyan-500/40 rounded-xl flex justify-between items-center gap-2 transition-all cursor-pointer group"
                                     >
-                                        <div className="flex items-center gap-3">
-                                            <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-black text-[11px] border ${match.result === 'WIN' ? 'bg-green-500/10 text-green-500 border-green-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20'}`}>
+                                        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                                            <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-black text-[11px] border shrink-0 ${match.result === 'WIN' ? 'bg-green-500/10 text-green-500 border-green-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20'}`}>
                                                 {match.result === 'WIN' ? 'W' : 'L'}
                                             </div>
-                                            <div className="flex flex-col">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-[10px] font-black text-stone-300 tracking-wider">
+                                            <div className="flex flex-col min-w-0">
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="text-[10px] font-black text-stone-300 tracking-wider truncate">
                                                         MATCH #{i + 1}
                                                     </span>
                                                     {match.isMultiplayer ? (
-                                                        <span className="text-[7px] bg-cyan-950/50 text-cyan-400 border border-cyan-900/30 px-1.5 py-0.5 rounded font-black tracking-widest uppercase animate-pulse">MP</span>
+                                                        <span className="text-[7px] bg-cyan-950/50 text-cyan-400 border border-cyan-900/30 px-1.5 py-0.5 rounded font-black tracking-widest uppercase animate-pulse shrink-0">MP</span>
                                                     ) : match.isHardMode ? (
-                                                        <span className="text-[7px] bg-red-955/20 text-red-500 border border-red-900/30 px-1.5 py-0.5 rounded font-black tracking-widest uppercase">HardMode</span>
+                                                        <span className="text-[7px] bg-red-955/20 text-red-500 border border-red-900/30 px-1.5 py-0.5 rounded font-black tracking-widest uppercase shrink-0">HardMode</span>
                                                     ) : (
-                                                        <span className="text-[7px] bg-stone-800 text-stone-400 px-1.5 py-0.5 rounded font-black tracking-widest uppercase">SOLO</span>
+                                                        <span className="text-[7px] bg-stone-800 text-stone-400 px-1.5 py-0.5 rounded font-black tracking-widest uppercase shrink-0">SOLO</span>
                                                     )}
                                                 </div>
-                                                <span className="text-[8px] text-stone-600 font-mono tracking-tighter uppercase">
+                                                <span className="text-[8px] text-stone-600 font-mono tracking-tighter uppercase truncate">
                                                     {match.timestamp ? new Date(match.timestamp).toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : 'Unknown Date'}
                                                 </span>
                                             </div>
                                         </div>
-                                        <div className="flex gap-3 sm:gap-4 items-center">
+                                        <div className="flex gap-2.5 sm:gap-4 items-center shrink-0">
                                             {/* Accuracy Ratio */}
                                             {(() => {
                                                 const fired = match.shotsFired || 0;
                                                 const hit = match.shotsHit || 0;
                                                 const acc = fired > 0 ? Math.round((hit / fired) * 100) : 0;
                                                 return (
-                                                    <div className="hidden xs:flex flex-col items-end">
+                                                    <div className="flex flex-col items-end">
                                                         <span className="text-[7px] text-stone-600 font-bold uppercase tracking-widest">Accuracy</span>
-                                                        <span className="text-xs font-black text-cyan-400 font-mono flex items-center gap-1">
-                                                            <Target size={11} className="text-cyan-500" />
+                                                        <span className="text-[11px] sm:text-xs font-black text-cyan-400 font-mono flex items-center gap-1">
+                                                            <Target size={10} className="text-cyan-500 shrink-0" />
                                                             <span>{acc}%</span>
-                                                            <span className="text-[7.5px] text-stone-500 font-normal">({hit}/{fired})</span>
+                                                            <span className="hidden sm:inline text-[7.5px] text-stone-500 font-normal">({hit}/{fired})</span>
                                                         </span>
                                                     </div>
                                                 );
@@ -451,8 +450,8 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ onClose, stats: initialS
                                                 <span className="text-sm font-black text-yellow-500/80">{match.totalScore?.toLocaleString() || 0}</span>
                                             </div>
                                             <div className="flex flex-col items-end">
-                                                <span className="text-[7px] text-stone-600 font-bold uppercase tracking-widest">Rounds</span>
-                                                <span className="text-sm font-black text-stone-200">{match.roundsSurvived}</span>
+                                                <span className="text-[7px] text-stone-600 font-bold uppercase tracking-widest">Rds</span>
+                                                <span className="text-xs sm:text-sm font-black text-stone-200">{match.roundsSurvived}</span>
                                             </div>
                                         </div>
                                     </div>
@@ -466,13 +465,13 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ onClose, stats: initialS
                 </div>
 
                 {/* Footer */}
-                <div className="p-3 border-t border-stone-800/50 bg-stone-950/40 backdrop-blur-xl flex justify-center">
+                <div className="p-2.5 sm:p-3 border-t border-stone-800/50 bg-stone-950/40 backdrop-blur-xl flex justify-center shrink-0">
                     <button
                         onClick={() => {
                             audioManager.playSound('click');
                             onClose();
                         }}
-                        className="w-full py-2.5 bg-white text-black font-black text-[10px] tracking-[0.35em] active:scale-[0.98] transition-all shadow-xl hover:bg-stone-200 uppercase rounded-xl"
+                        className="w-full py-2.5 min-h-[44px] bg-white text-black font-black text-[10px] tracking-[0.35em] active:scale-[0.98] transition-all shadow-xl hover:bg-stone-200 uppercase rounded-xl"
                     >
                         Return to Hub
                     </button>
@@ -482,7 +481,7 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ onClose, stats: initialS
                 {selectedMatch && (
                     <>
                         <div className="fixed inset-0 bg-black/85 z-[120] cursor-default backdrop-blur-sm" onClick={() => setSelectedMatch(null)} />
-                        <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[95vw] sm:w-[90vw] max-w-4xl max-h-[88vh] overflow-y-auto bg-stone-950 border border-stone-800 p-4 sm:p-6 rounded-2xl shadow-[0_0_60px_rgba(0,0,0,0.85)] z-[130] font-mono text-stone-300 custom-scrollbar">
+                        <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[95vw] sm:w-[90vw] max-w-4xl max-h-[88dvh] overflow-y-auto bg-stone-950 border border-stone-800 p-3 sm:p-6 rounded-2xl shadow-[0_0_60px_rgba(0,0,0,0.85)] z-[130] font-mono text-stone-300 custom-scrollbar">
                             {/* Header */}
                             <div className="flex justify-between items-center border-b border-stone-800 pb-3 mb-4">
                                 <div className="flex items-center gap-2.5 flex-wrap">

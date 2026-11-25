@@ -26,9 +26,9 @@ interface ShootingContext {
     startRound: (resetItems?: boolean) => Promise<void> | void;
     setIsProcessing: StateSetter<boolean>;
     matchStats?: React.MutableRefObject<MatchStats>; // Added
-    handleHardModeRoundEnd?: (winner: TurnOwner) => void;
-    handleMPRoundEnd?: (winner: TurnOwner) => void;
-    handleNormalModeRoundEnd?: (winner: TurnOwner) => void;
+    handleHardModeRoundEnd?: (winner: TurnOwner) => Promise<void> | void;
+    handleMPRoundEnd?: (winner: TurnOwner) => Promise<void> | void;
+    handleNormalModeRoundEnd?: (winner: TurnOwner) => Promise<void> | void;
     opponentName: string;
     onBatchEnd?: (keepTurn: boolean) => void;
 }
@@ -73,81 +73,62 @@ export const performShot = async (
 
         setGameState(prev => ({ ...prev, phase: 'RESOLVING' }));
 
-        const shell = chamber[currentShellIndex];
-        const isLive = shell === 'LIVE';
+    const shell = chamber[currentShellIndex];
+    const isLive = shell === 'LIVE';
 
     const isSawed = shooter === 'PLAYER' ? player.isSawedActive : dealer.isSawedActive;
     const isChoked = shooter === 'PLAYER' ? player.isChokeActive : dealer.isChokeActive;
+    const isChokeBurst = isChoked && currentShellIndex + 1 < chamber.length;
+    const processedShells = isChokeBurst ? 2 : 1;
 
-    // Pre-calculate if this shot will "HIT" (important for animations)
-    let willHit = isLive;
-    let anyLive = isLive;
-    if (isChoked && currentShellIndex + 1 < chamber.length) {
-        anyLive = chamber[currentShellIndex] === 'LIVE' || chamber[currentShellIndex + 1] === 'LIVE';
-        willHit = anyLive;
-    }
+    const shell1 = chamber[currentShellIndex];
+    const shell2 = isChokeBurst ? chamber[currentShellIndex + 1] : null;
+    const live1 = shell1 === 'LIVE';
+    const live2 = shell2 === 'LIVE';
+    const liveHits = (live1 ? 1 : 0) + (live2 ? 1 : 0);
+    const anyLive = liveHits > 0;
+    const willHit = anyLive;
 
-    // Pre-calculate damage and totem save to prevent double falling animation
-    let damage = isLive ? 1 : 0;
-    if (isChoked && currentShellIndex + 1 < chamber.length) {
-        const shell1 = chamber[currentShellIndex];
-        const shell2 = chamber[currentShellIndex + 1];
-        const live1 = shell1 === 'LIVE';
-        const live2 = shell2 === 'LIVE';
-        let chokeDamage = (live1 && live2) ? 2 : ((live1 || live2) ? 1 : 0);
-        if (isSawed && chokeDamage > 0) chokeDamage *= 2;
-        damage = chokeDamage;
+    let damage = liveHits;
+    if (isSawed && damage > 0) damage *= 2;
+
+    const targetState = target === 'PLAYER' ? player : dealer;
+    const targetHasJackpot = (targetState.jackpotImmunityShots ?? 0) > 0;
+
+    if (isChokeBurst) {
+        if (anyLive) {
+            if (live1 && live2) audioManager.playSound('liveshell', { playbackRate: 0.8 });
+            else audioManager.playSound('liveshell');
+        } else {
+            audioManager.playSound('blankshell');
+            setTimeout(() => audioManager.playSound('blankshell'), 150);
+        }
     } else {
-        if (isLive && isSawed) damage = 2;
+        setTimeout(() => {
+            if (anyLive) audioManager.playSound('liveshell');
+            else audioManager.playSound('blankshell');
+        }, 50);
     }
-
-    const targetHasJackpot = ((target === 'PLAYER' ? player.jackpotImmunityShots : dealer.jackpotImmunityShots) ?? 0) > 0;
-    const isLethal = willHit && !targetHasJackpot && damage >= (target === 'PLAYER' ? player.hp : dealer.hp);
-    const targetIsFlashbanged = target === 'PLAYER' ? player.isFlashbanged : dealer.isFlashbanged;
-    const targetHasTotem = (target === 'PLAYER' ? (player.items || []).includes('TOTEM') : (dealer.items || []).includes('TOTEM')) && !targetIsFlashbanged;
-    const isSavedByTotem = isLethal && targetHasTotem;
-
-    setTimeout(() => {
-        if (anyLive) audioManager.playSound('liveshell');
-        else audioManager.playSound('blankshell');
-    }, 50);
 
     setAnim(prev => ({
         ...prev,
         isLiveShot: anyLive,
-        triggerRecoil: prev.triggerRecoil + 1,
-        muzzleFlashIntensity: anyLive ? 120 : 0
+        triggerRecoil: prev.triggerRecoil + (isChokeBurst && anyLive ? 2 : 1),
+        muzzleFlashIntensity: anyLive ? (isChokeBurst ? 150 : 120) : 0
     }));
 
     if (willHit && target === 'DEALER') {
-        // INSTANT HIT
         setAnim(prev => ({ ...prev, dealerHit: true, dealerDropping: true }));
         setTimeout(() => setAnim(prev => ({ ...prev, dealerHit: false })), 200);
     }
 
     if (willHit && target === 'PLAYER') {
-        // INSTANT HIT - Player knocked down
-        if (isSavedByTotem) {
-            setAnim(prev => ({ ...prev, playerHit: true, playerRecovering: false }));
-            setOverlayColor('red');
-            setShowBlood(true);
-            setTimeout(() => {
-                setShowBlood(false);
-                setOverlayColor('none');
-            }, 2500);
-        } else {
-            setAnim(prev => ({ ...prev, playerHit: true, playerRecovering: true }));
-            setOverlayColor('red');
-            setShowBlood(true);
-            setTimeout(() => {
-                setAnim(prev => ({ ...prev, playerHit: false }));
-                setShowBlood(false);
-                setOverlayColor('none');
-                setTimeout(() => {
-                    setAnim(prev => ({ ...prev, playerRecovering: false }));
-                }, 2000);
-            }, 2500);
-        }
+        setAnim(prev => ({ ...prev, playerHit: true, playerRecovering: false }));
+        setOverlayColor('red');
+        setShowBlood(true);
+        setTimeout(() => {
+            setShowBlood(false);
+        }, 2200);
     }
 
     if (anyLive) {
@@ -158,77 +139,34 @@ export const performShot = async (
         }, 100);
     }
 
-    setOverlayText(shell);
-
-    damage = isLive ? 1 : 0;
-    // (Variables isSawed/isChoked already declared above)
-
-    // --- CHOKE LOGIC ---
-    let processedShells = 1;
-
-    if (isChoked && currentShellIndex + 1 < chamber.length) {
-        // We have at least 2 shells to fire
-        processedShells = 2;
-        const shell1 = chamber[currentShellIndex];
-        const shell2 = chamber[currentShellIndex + 1];
-
-        let chokeDamage = 0;
-        const live1 = shell1 === 'LIVE';
-        const live2 = shell2 === 'LIVE';
-
-        // Calculate Damage
+    if (isChokeBurst) {
         if (live1 && live2) {
-            chokeDamage = 2; // Double Base
             addLog('DOUBLE BARREL HIT! (2 LIVE)', 'danger');
         } else if (live1 || live2) {
-            chokeDamage = 1; // Normal Base
             addLog('SPLIT SHOT (1 LIVE)', 'danger');
         } else {
-            chokeDamage = 0;
             addLog('DOUBLE CLICK (2 BLANK)', 'safe');
         }
-
-        // Apply Saw Multiplier to the result
-        if (isSawed && chokeDamage > 0) {
-            chokeDamage *= 2; // Multiplies the result (so 2->4, 1->2)
+        if (isSawed && damage > 0) {
             addLog('CRITICAL MASS! (SAWED+CHOKE)', 'danger');
         }
-
-        damage = chokeDamage;
-
-        // Sounds / Flash
-        if (live1 || live2) {
-            setAnim(prev => ({ ...prev, muzzleFlashIntensity: 150, triggerRecoil: prev.triggerRecoil + 1 })); // Bigger kick
-            if (live1 && live2) audioManager.playSound('liveshell', { playbackRate: 0.8 }); // Lower boom
-            else audioManager.playSound('liveshell');
-        } else {
-            audioManager.playSound('blankshell');
-            setTimeout(() => audioManager.playSound('blankshell'), 150);
-        }
-
         setOverlayText(`${shell1} + ${shell2}`);
-
     } else {
-        // --- NORMAL SHOT LOGIC ---
-        // (Includes Fallback if Choke active but only 1 shell left -> Acts normal)
         if (isChoked) addLog("(CHOKE FAILED - 1 SHELL LEFT)", 'neutral');
-
-        damage = isLive ? 1 : 0;
         if (isLive && isSawed) {
-            damage = 2;
             addLog('CRITICAL HIT! (SAWED-OFF)', 'danger');
         }
         addLog(isLive ? `BANG! ${damage} DMG` : 'CLICK.', isLive ? 'danger' : 'safe');
+        setOverlayText(shell);
     }
 
-    // Update Match Stats
-    if (matchStats && matchStats.current) {
-        if (damage > 0) {
-            if (target === 'PLAYER') matchStats.current.damageTaken += damage;
-            else if (target === 'DEALER' && shooter === 'PLAYER') {
-                matchStats.current.damageDealt += damage;
-                matchStats.current.shotsHit++;
-            }
+    // Update Match Stats (only count damage if not absorbed by Jackpot shield)
+    if (matchStats && matchStats.current && damage > 0 && !targetHasJackpot) {
+        if (target === 'PLAYER') {
+            matchStats.current.damageTaken += damage;
+        } else if (target === 'DEALER' && shooter === 'PLAYER') {
+            matchStats.current.damageDealt += damage;
+            matchStats.current.shotsHit++;
         }
     }
 
@@ -276,216 +214,151 @@ export const performShot = async (
 
 
     if (damage > 0) {
-        if (target === 'PLAYER') {
-            const hasJackpot = player.jackpotImmunityShots !== undefined && player.jackpotImmunityShots > 0;
-            const nextImmunity = Math.max(0, (player.jackpotImmunityShots || 0) - processedShells);
+        const isPlayerTarget = target === 'PLAYER';
+        const setTarget = isPlayerTarget ? setPlayer : setDealer;
+        const winnerOnDeath: TurnOwner = isPlayerTarget ? 'DEALER' : 'PLAYER';
+        const hasJackpot = (targetState.jackpotImmunityShots ?? 0) > 0;
 
-            if (hasJackpot) {
-                // Decrement jackpot shots
-                setPlayer(p => ({ 
-                    ...p, 
-                    jackpotImmunityShots: nextImmunity,
-                    hasJackpotWinActive: nextImmunity > 0 ? p.hasJackpotWinActive : false
+        if (hasJackpot) {
+            const nextImmunity = Math.max(0, (targetState.jackpotImmunityShots || 0) - liveHits);
+            setTarget(p => ({
+                ...p,
+                jackpotImmunityShots: nextImmunity,
+                hasJackpotWinActive: nextImmunity > 0 ? p.hasJackpotWinActive : false
+            }));
+            if (nextImmunity <= 0) {
+                audioManager.stopJackpotMusic();
+            }
+
+            // RCT Sequence
+            const originalHp = targetState.hp;
+            const tempHp = Math.max(0, originalHp - damage);
+
+            setTarget(p => ({ ...p, hp: tempHp }));
+            setOverlayColor('red');
+            setOverlayText(isPlayerTarget
+                ? '✨ REVERSE CURSED TECHNIQUE ✨'
+                : `✨ REVERSE CURSED TECHNIQUE FOR ${opponentName.toUpperCase()} ✨`
+            );
+            setAnim(prev => ({
+                ...prev,
+                ...(isPlayerTarget ? { playerHit: true, playerRecovering: false } : { dealerHit: true, dealerRecovering: false })
+            }));
+
+            await wait(1800);
+
+            setTarget(p => ({ ...p, hp: originalHp }));
+            setOverlayText('✨ RCT: HEALED! ✨');
+            setOverlayColor('green');
+
+            setAnim(prev => ({
+                ...prev,
+                ...(isPlayerTarget ? { playerHit: false, playerRecovering: true } : { dealerHit: false, dealerRecovering: true })
+            }));
+            await wait(1500);
+            setAnim(prev => ({
+                ...prev,
+                ...(isPlayerTarget ? { playerRecovering: false } : { dealerRecovering: false })
+            }));
+            setOverlayColor('none');
+            setOverlayText(null);
+        } else {
+            let newHp = Math.max(0, targetState.hp - damage);
+            const hasTotem = (targetState.items || []).includes('TOTEM') && !targetState.isFlashbanged;
+
+            if (newHp <= 0 && hasTotem) {
+                newHp = 1;
+                setTarget(p => {
+                    const idx = p.items.indexOf('TOTEM');
+                    const newItems = [...p.items];
+                    if (idx !== -1) newItems.splice(idx, 1);
+                    return { ...p, hp: 1, items: newItems };
+                });
+
+                setOverlayText(isPlayerTarget
+                    ? '✨ TOTEM ACTIVATED ✨\nSurvives at 1 HP!'
+                    : `✨ TOTEM ACTIVATED FOR ${opponentName.toUpperCase()} ✨\nSurvives at 1 HP!`
+                );
+                setAnim(prev => ({
+                    ...prev,
+                    triggerTotem: (prev.triggerTotem || 0) + 1,
+                    totemTarget: target
                 }));
-                if (nextImmunity <= 0) {
-                    audioManager.stopJackpotMusic();
-                }
+                audioManager.playSound('totem');
+                addLog(
+                    isPlayerTarget
+                        ? "PLAYER'S TOTEM ACTIVATED: Survived lethal damage at 1 HP!"
+                        : `${opponentName.toUpperCase()}'S TOTEM ACTIVATED: Survived lethal damage at 1 HP!`,
+                    'safe'
+                );
 
-                // RCT Sequence
-                const originalHp = player.hp;
-                const tempHp = Math.max(0, originalHp - damage);
-
-                setPlayer(p => ({ ...p, hp: tempHp }));
-                setOverlayColor('red');
-                setOverlayText('✨ REVERSE CURSED TECHNIQUE ✨');
-                setAnim(prev => ({ ...prev, playerHit: true, playerRecovering: false }));
-
-                await wait(1800);
-
-                setPlayer(p => ({ ...p, hp: originalHp }));
-                setOverlayText('✨ RCT: HEALED! ✨');
-                setOverlayColor('green');
-
-                setAnim(prev => ({ ...prev, playerHit: false, playerRecovering: true }));
-                await wait(1500);
-                setAnim(prev => ({ ...prev, playerRecovering: false }));
-                setOverlayColor('none');
+                await wait(3000);
                 setOverlayText(null);
+
+                // Recovery animation
+                setOverlayColor('red');
+                setAnim(prev => ({
+                    ...prev,
+                    ...(isPlayerTarget
+                        ? { playerHit: false, playerRecovering: true }
+                        : { dealerHit: false, dealerDropping: false, dealerRecovering: true })
+                }));
+                await wait(2200);
+                setAnim(prev => ({
+                    ...prev,
+                    ...(isPlayerTarget ? { playerRecovering: false } : { dealerRecovering: false })
+                }));
+                setOverlayColor('none');
             } else {
-                let newHp = Math.max(0, player.hp - damage);
-                const hasTotem = player.items.includes('TOTEM') && !player.isFlashbanged;
+                setTarget(p => ({ ...p, hp: newHp }));
 
-                if (newHp <= 0 && hasTotem) {
-                    newHp = 1;
-                    setPlayer(p => {
-                        const idx = p.items.indexOf('TOTEM');
-                        const newItems = [...p.items];
-                        if (idx !== -1) newItems.splice(idx, 1);
-                        return { ...p, hp: 1, items: newItems };
-                    });
-
-                    // Trigger Totem VFX & SFX
-                    setOverlayText('✨ TOTEM ACTIVATED ✨\nSurvives at 1 HP!');
+                if (newHp <= 0) {
                     setAnim(prev => ({
                         ...prev,
-                        triggerTotem: (prev.triggerTotem || 0) + 1,
-                        totemTarget: 'PLAYER'
+                        ...(isPlayerTarget ? { playerHit: false, playerRecovering: false } : { dealerHit: false, dealerRecovering: false })
                     }));
-                    audioManager.playSound('totem');
-                    addLog("PLAYER'S TOTEM ACTIVATED: Survived lethal damage at 1 HP!", 'safe');
+                    setOverlayColor('none');
 
-                    // Wait for Totem animation to play out
-                    await wait(3000);
-                    setOverlayText(null);
-
-                    // Hurt and recovery animation
+                    if (gameState.isHardMode && handleHardModeRoundEnd) {
+                        addLog(isPlayerTarget ? 'ROUND LOST' : 'ROUND WON', isPlayerTarget ? 'danger' : 'safe');
+                        await handleHardModeRoundEnd(winnerOnDeath);
+                        setIsProcessing(false);
+                        return;
+                    }
+                    if (gameState.isMultiplayer && handleMPRoundEnd) {
+                        addLog(isPlayerTarget ? 'ROUND LOST' : 'ROUND WON', isPlayerTarget ? 'danger' : 'safe');
+                        await handleMPRoundEnd(winnerOnDeath);
+                        setIsProcessing(false);
+                        return;
+                    }
+                    if (!gameState.isMultiplayer && !gameState.isHardMode && handleNormalModeRoundEnd) {
+                        addLog(isPlayerTarget ? 'ROUND LOST' : 'ROUND WON', isPlayerTarget ? 'danger' : 'safe');
+                        await handleNormalModeRoundEnd(winnerOnDeath);
+                        setIsProcessing(false);
+                        return;
+                    }
+                    setGameState(prev => ({ ...prev, winner: winnerOnDeath, phase: 'GAME_OVER' }));
+                    if (matchStats?.current) matchStats.current.result = isPlayerTarget ? 'LOSS' : 'WIN';
+                    gameOver = true;
+                    addLog(isPlayerTarget ? 'YOU DIED.' : `${opponentName.toUpperCase()} ELIMINATED.`, isPlayerTarget ? 'danger' : 'safe');
+                } else if (isPlayerTarget) {
                     setOverlayColor('red');
+                    setAnim(prev => ({ ...prev, playerHit: true }));
+                    await wait(1800);
                     setAnim(prev => ({ ...prev, playerHit: false, playerRecovering: true }));
-                    await wait(2200);
+                    await wait(1500);
                     setAnim(prev => ({ ...prev, playerRecovering: false }));
                     setOverlayColor('none');
                 } else {
-                    setPlayer(p => ({ ...p, hp: newHp }));
-
-                    if (newHp <= 0) {
-                        if (gameState.isHardMode && handleHardModeRoundEnd) {
-                            addLog('ROUND LOST', 'danger');
-                            handleHardModeRoundEnd('DEALER');
-                            setIsProcessing(false);
-                            return;
-                        }
-                        if (gameState.isMultiplayer && handleMPRoundEnd) {
-                            addLog('ROUND LOST', 'danger');
-                            handleMPRoundEnd('DEALER');
-                            setIsProcessing(false);
-                            return;
-                        }
-                        if (!gameState.isMultiplayer && !gameState.isHardMode && handleNormalModeRoundEnd) {
-                            addLog('ROUND LOST', 'danger');
-                            handleNormalModeRoundEnd('DEALER');
-                            setIsProcessing(false);
-                            return;
-                        }
-                        setGameState(prev => ({ ...prev, winner: 'DEALER', phase: 'GAME_OVER' }));
-                        if (matchStats?.current) matchStats.current.result = 'LOSS';
-                        gameOver = true;
-                        addLog('YOU DIED.', 'danger');
-                    } else {
-                        setOverlayColor('red');
-                        setAnim(prev => ({ ...prev, playerHit: true }));
-                        await wait(1800);
-                        setAnim(prev => ({ ...prev, playerHit: false, playerRecovering: true }));
-                        await wait(1500);
-                        setAnim(prev => ({ ...prev, playerRecovering: false }));
-                        setOverlayColor('none');
-                    }
-                }
-            }
-        } else {
-            const hasJackpot = dealer.jackpotImmunityShots !== undefined && dealer.jackpotImmunityShots > 0;
-            const nextImmunity = Math.max(0, (dealer.jackpotImmunityShots || 0) - processedShells);
-
-            if (hasJackpot) {
-                // Decrement jackpot shots
-                setDealer(d => ({ 
-                    ...d, 
-                    jackpotImmunityShots: nextImmunity,
-                    hasJackpotWinActive: nextImmunity > 0 ? d.hasJackpotWinActive : false
-                }));
-                if (nextImmunity <= 0) {
-                    audioManager.stopJackpotMusic();
-                }
-
-                // RCT Sequence
-                const originalHp = dealer.hp;
-                const tempHp = Math.max(0, originalHp - damage);
-
-                setDealer(d => ({ ...d, hp: tempHp }));
-                setOverlayColor('red');
-                setOverlayText(`✨ REVERSE CURSED TECHNIQUE FOR ${opponentName.toUpperCase()} ✨`);
-                setAnim(prev => ({ ...prev, dealerHit: true, dealerRecovering: false }));
-
-                await wait(1800);
-
-                setDealer(d => ({ ...d, hp: originalHp }));
-                setOverlayText(`✨ RCT: HEALED! ✨`);
-                setOverlayColor('green');
-
-                setAnim(prev => ({ ...prev, dealerHit: false, dealerRecovering: true }));
-                await wait(1500);
-                setAnim(prev => ({ ...prev, dealerRecovering: false }));
-                setOverlayColor('none');
-                setOverlayText(null);
-            } else {
-                let newHp = Math.max(0, dealer.hp - damage);
-                const hasTotem = dealer.items.includes('TOTEM') && !dealer.isFlashbanged;
-
-                if (newHp <= 0 && hasTotem) {
-                    newHp = 1;
-                    setDealer(d => {
-                        const idx = d.items.indexOf('TOTEM');
-                        const newItems = [...d.items];
-                        if (idx !== -1) newItems.splice(idx, 1);
-                        return { ...d, hp: 1, items: newItems };
-                    });
-
-                    // Trigger Totem VFX & SFX
-                    setOverlayText(`✨ TOTEM ACTIVATED FOR ${opponentName.toUpperCase()} ✨\nSurvives at 1 HP!`);
-                    setAnim(prev => ({
-                        ...prev,
-                        triggerTotem: (prev.triggerTotem || 0) + 1,
-                        totemTarget: 'DEALER'
-                    }));
-                    audioManager.playSound('totem');
-                    addLog(`${opponentName.toUpperCase()}'S TOTEM ACTIVATED: Survived lethal damage at 1 HP!`, 'safe');
-
-                    // Wait for Totem animation to play out
-                    await wait(3000);
-                    setOverlayText(null);
-
-                    // Hurt and recovery animation
-                    setOverlayColor('red');
-                    setAnim(prev => ({ ...prev, dealerHit: false, dealerDropping: false, dealerRecovering: true }));
-                    await wait(2200);
+                    setOverlayColor('green');
+                    setAnim(prev => ({ ...prev, dealerHit: true, dealerDropping: true }));
+                    await wait(1200);
+                    setAnim(prev => ({ ...prev, dealerHit: false, dealerRecovering: true }));
+                    await wait(1200);
+                    setAnim(prev => ({ ...prev, dealerDropping: false }));
+                    await wait(1000);
                     setAnim(prev => ({ ...prev, dealerRecovering: false }));
                     setOverlayColor('none');
-                } else {
-                    setDealer(d => ({ ...d, hp: newHp }));
-
-                    if (newHp <= 0) {
-                        if (gameState.isHardMode && handleHardModeRoundEnd) {
-                            addLog('ROUND WON', 'safe');
-                            handleHardModeRoundEnd('PLAYER');
-                            setIsProcessing(false);
-                            return;
-                        }
-                        if (gameState.isMultiplayer && handleMPRoundEnd) {
-                            addLog('ROUND WON', 'safe');
-                            handleMPRoundEnd('PLAYER');
-                            setIsProcessing(false);
-                            return;
-                        }
-                        if (!gameState.isMultiplayer && !gameState.isHardMode && handleNormalModeRoundEnd) {
-                            addLog('ROUND WON', 'safe');
-                            handleNormalModeRoundEnd('PLAYER');
-                            setIsProcessing(false);
-                            return;
-                        }
-                        setGameState(prev => ({ ...prev, winner: 'PLAYER', phase: 'GAME_OVER' }));
-                        if (matchStats?.current) matchStats.current.result = 'WIN';
-                        gameOver = true;
-                        addLog(`${opponentName.toUpperCase()} ELIMINATED.`, 'safe');
-                    } else {
-                        setOverlayColor('green');
-                        setAnim(prev => ({ ...prev, dealerHit: true, dealerDropping: true }));
-                        await wait(1200);
-                        setAnim(prev => ({ ...prev, dealerHit: false, dealerRecovering: true }));
-                        await wait(1200);
-                        setAnim(prev => ({ ...prev, dealerDropping: false }));
-                        await wait(1000);
-                        setAnim(prev => ({ ...prev, dealerRecovering: false }));
-                        setOverlayColor('none');
-                    }
                 }
             }
         }
@@ -563,7 +436,12 @@ export const performShot = async (
     }
 
     const ownerPhase = nextOwner === 'PLAYER' ? 'PLAYER_TURN' : 'DEALER_TURN';
-    setGameState(prev => ({ ...prev, turnOwner: nextOwner, phase: ownerPhase, lastTurnWasSkipped: skipped }));
+    setGameState(prev => ({
+        ...prev,
+        turnOwner: nextOwner,
+        phase: ownerPhase,
+        lastTurnWasSkipped: turnChanged ? skipped : prev.lastTurnWasSkipped
+    }));
     
     // Note: lastTurnWasSkipped should be cleared when the skipped player's turn comes around again
     // This will be handled by the turn transition logic in useGameLogic

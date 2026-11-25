@@ -1,12 +1,26 @@
 import React from 'react';
 import { GameState, PlayerState, TurnOwner, ShellType, ItemType, LogEntry, AnimationState } from '../../types';
-import { wait } from '../gameUtils';
+import { wait, getFriendlyItemName } from '../gameUtils';
 import { audioManager } from '../audioManager';
 import { getContractLoot } from './inventory';
 import { MAX_ITEMS } from '../../constants';
 
 // Helper to update state safely
 type StateSetter<T> = React.Dispatch<React.SetStateAction<T>>;
+
+// Schedule overlay clear safely so stale timers never erase a newer message
+const showTimedOverlay = (
+    setOverlayText: StateSetter<string | null> | undefined,
+    message: string,
+    durationMs: number
+) => {
+    if (!setOverlayText) return;
+    setOverlayText(message);
+    setTimeout(() => {
+        setOverlayText(prev => (prev === message ? null : prev));
+    }, durationMs);
+};
+
 export const handleContract = async (
     user: TurnOwner,
     player: PlayerState,
@@ -21,186 +35,158 @@ export const handleContract = async (
     setOverlayColor?: StateSetter<'none' | 'red' | 'green' | 'scan'>,
     isHardMode?: boolean,
     isMultiplayer?: boolean,
-    handleHardModeRoundEnd?: (winner: TurnOwner) => void,
-    handleMPRoundEnd?: (winner: TurnOwner) => void,
-    handleNormalModeRoundEnd?: (winner: TurnOwner) => void,
+    handleHardModeRoundEnd?: (winner: TurnOwner) => Promise<void> | void,
+    handleMPRoundEnd?: (winner: TurnOwner) => Promise<void> | void,
+    handleNormalModeRoundEnd?: (winner: TurnOwner) => Promise<void> | void,
     contractLootOverride?: ItemType[]
-) => {
+): Promise<boolean> => {
     setTriggerContract(p => p + 1);
     await wait(2500); // Wait for contract sign/burn animation
 
     if (setOverlayColor) setOverlayColor('red'); // Blood effect
 
-    // 1. Pay Handling Cost (1 HP)
-    if (user === 'PLAYER') {
-        const hasJackpot = player.jackpotImmunityShots !== undefined && player.jackpotImmunityShots > 0;
+    const isPlayerUser = user === 'PLAYER';
+    const userState = isPlayerUser ? player : dealer;
+    const setUser = isPlayerUser ? setPlayer : setDealer;
+    const winnerOnDeath: TurnOwner = isPlayerUser ? 'DEALER' : 'PLAYER';
+    const hasJackpot = (userState.jackpotImmunityShots ?? 0) > 0;
 
-        if (hasJackpot) {
-            const nextImmunity = Math.max(0, (player.jackpotImmunityShots ?? 0) - 1);
-            setPlayer(p => ({ ...p, jackpotImmunityShots: nextImmunity, hasJackpotWinActive: nextImmunity > 0 ? p.hasJackpotWinActive : false }));
-            if (nextImmunity <= 0) {
-                audioManager.stopJackpotMusic();
-            }
+    // 1. Pay Handling Cost (1 HP, or 1 Jackpot shield charge, or Totem save)
+    if (hasJackpot) {
+        const nextImmunity = Math.max(0, (userState.jackpotImmunityShots ?? 0) - 1);
+        const originalHp = userState.hp;
+        const tempHp = Math.max(0, originalHp - 1);
 
-            // RCT Sequence for Contract Sacrifice
-            const originalHp = player.hp;
-            const tempHp = Math.max(0, originalHp - 1);
-
-            setPlayer(p => ({ ...p, hp: tempHp }));
-            if (setOverlayColor) setOverlayColor('red');
-            if (setOverlayText) setOverlayText('✨ REVERSE CURSED TECHNIQUE ✨');
-            setAnim((prev: any) => ({ ...prev, playerHit: true, playerRecovering: false }));
-
-            await wait(1800);
-
-            setPlayer(p => ({ ...p, hp: originalHp }));
-            if (setOverlayText) setOverlayText('✨ RCT: HEALED! ✨');
-            if (setOverlayColor) setOverlayColor('green');
-
-            setAnim((prev: any) => ({ ...prev, playerHit: false, playerRecovering: true }));
-            await wait(1500);
-
-            if (setOverlayColor) setOverlayColor('none');
-            if (setOverlayText) setOverlayText(null);
-        } else {
-            const newHp = player.hp - 1;
-            const hasTotem = (player.items || []).includes('TOTEM') && !player.isFlashbanged;
-
-            if (newHp <= 0) {
-                if (hasTotem) {
-                    setPlayer(p => {
-                        const items = p.items || [];
-                        const idx = items.indexOf('TOTEM');
-                        const newItems = [...items];
-                        if (idx !== -1) newItems.splice(idx, 1);
-                        return { ...p, hp: 1, items: newItems };
-                    });
-
-                    if (setOverlayText) setOverlayText('✨ TOTEM ACTIVATED ✨\nSurvives at 1 HP!');
-                    setAnim((prev: any) => ({
-                        ...prev,
-                        triggerTotem: (prev.triggerTotem || 0) + 1,
-                        totemTarget: 'PLAYER'
-                    }));
-                    audioManager.playSound('totem');
-                    addLog("PLAYER'S TOTEM ACTIVATED: Survived lethal blood contract sacrifice at 1 HP!", 'safe');
-                    await wait(3000);
-                    if (setOverlayText) setOverlayText(null);
-                } else {
-                    setPlayer(p => ({ ...p, hp: 0 }));
-                    // Immediate Death
-                    if (isHardMode && handleHardModeRoundEnd) {
-                        addLog('YOU DIED (BLOOD CONTRACT).', 'danger');
-                        handleHardModeRoundEnd('DEALER');
-                        return;
-                    }
-                    if (isMultiplayer && handleMPRoundEnd) {
-                        addLog('YOU DIED (BLOOD CONTRACT).', 'danger');
-                        handleMPRoundEnd('DEALER');
-                        return;
-                    }
-                    if (!isMultiplayer && !isHardMode && handleNormalModeRoundEnd) {
-                        addLog('YOU DIED (BLOOD CONTRACT).', 'danger');
-                        handleNormalModeRoundEnd('DEALER');
-                        return;
-                    }
-                    setGameState(prev => ({ ...prev, winner: 'DEALER', phase: 'GAME_OVER' }));
-                    addLog('YOU DIED (BLOOD CONTRACT).', 'danger');
-                    await wait(1500);
-                    if (setOverlayColor) setOverlayColor('none');
-                    return; // End execution
-                }
-            } else {
-                setPlayer(p => ({ ...p, hp: newHp }));
-            }
-        }
-    } else {
-            const newHp = dealer.hp - 1;
-            const hasTotem = (dealer.items || []).includes('TOTEM') && !dealer.isFlashbanged;
-
-            if (newHp <= 0) {
-                if (hasTotem) {
-                    setDealer(d => {
-                        const items = d.items || [];
-                        const idx = items.indexOf('TOTEM');
-                        const newItems = [...items];
-                        if (idx !== -1) newItems.splice(idx, 1);
-                        return { ...d, hp: 1, items: newItems };
-                    });
-
-                    if (setOverlayText) setOverlayText('✨ TOTEM ACTIVATED ✨\nDealer survives at 1 HP!');
-                    setAnim(prev => ({
-                        ...prev,
-                        triggerTotem: (prev.triggerTotem || 0) + 1,
-                        totemTarget: 'DEALER'
-                    }));
-                    audioManager.playSound('totem');
-                    addLog("DEALER'S TOTEM ACTIVATED: Survived lethal blood contract sacrifice at 1 HP!", 'safe');
-                    await wait(3000);
-                    if (setOverlayText) setOverlayText(null);
-                } else {
-                    setDealer(d => ({ ...d, hp: 0 }));
-                    // Immediate Death
-                    if (isHardMode && handleHardModeRoundEnd) {
-                        addLog('DEALER DIED (BLOOD CONTRACT).', 'safe');
-                        handleHardModeRoundEnd('PLAYER');
-                        return;
-                    }
-                    if (isMultiplayer && handleMPRoundEnd) {
-                        addLog('DEALER DIED (BLOOD CONTRACT).', 'safe');
-                        handleMPRoundEnd('PLAYER');
-                        return;
-                    }
-                    if (!isMultiplayer && !isHardMode && handleNormalModeRoundEnd) {
-                        addLog('DEALER DIED (BLOOD CONTRACT).', 'safe');
-                        handleNormalModeRoundEnd('PLAYER');
-                        return;
-                    }
-                    setGameState(prev => ({ ...prev, winner: 'PLAYER', phase: 'GAME_OVER' }));
-                    addLog('DEALER DIED (BLOOD CONTRACT).', 'safe');
-                    await wait(1500);
-                    if (setOverlayColor) setOverlayColor('none');
-                    return; // End execution
-                }
-            } else {
-                setDealer(d => ({ ...d, hp: newHp }));
-            }
+        setUser(u => ({
+            ...u,
+            hp: tempHp,
+            jackpotImmunityShots: nextImmunity,
+            hasJackpotWinActive: nextImmunity > 0 ? u.hasJackpotWinActive : false
+        }));
+        if (nextImmunity <= 0) {
+            audioManager.stopJackpotMusic();
         }
 
-        await wait(800); // Wait for pain
+        if (setOverlayColor) setOverlayColor('red');
+        if (setOverlayText) {
+            setOverlayText(isPlayerUser ? '✨ REVERSE CURSED TECHNIQUE ✨' : '✨ DEALER RCT ACTIVATED ✨');
+        }
+        setAnim(prev => ({
+            ...prev,
+            ...(isPlayerUser ? { playerHit: true, playerRecovering: false } : { dealerHit: true, dealerRecovering: false })
+        }));
+
+        await wait(1800);
+
+        setUser(u => ({ ...u, hp: originalHp }));
+        if (setOverlayText) setOverlayText('✨ RCT: HEALED! ✨');
+        if (setOverlayColor) setOverlayColor('green');
+
+        setAnim(prev => ({
+            ...prev,
+            ...(isPlayerUser ? { playerHit: false, playerRecovering: true } : { dealerHit: false, dealerRecovering: true })
+        }));
+        await wait(1500);
+
+        setAnim(prev => ({
+            ...prev,
+            ...(isPlayerUser ? { playerRecovering: false } : { dealerRecovering: false })
+        }));
         if (setOverlayColor) setOverlayColor('none');
+        if (setOverlayText) setOverlayText(null);
+    } else {
+        const newHp = userState.hp - 1;
+        const hasTotem = (userState.items || []).includes('TOTEM') && !userState.isFlashbanged;
+
+        if (newHp <= 0) {
+            if (hasTotem) {
+                setUser(u => {
+                    const items = u.items || [];
+                    const idx = items.indexOf('TOTEM');
+                    const newItems = [...items];
+                    if (idx !== -1) newItems.splice(idx, 1);
+                    return { ...u, hp: 1, items: newItems };
+                });
+
+                if (setOverlayText) {
+                    setOverlayText(isPlayerUser
+                        ? '✨ TOTEM ACTIVATED ✨\nSurvives at 1 HP!'
+                        : '✨ TOTEM ACTIVATED ✨\nDealer survives at 1 HP!'
+                    );
+                }
+                setAnim(prev => ({
+                    ...prev,
+                    triggerTotem: (prev.triggerTotem || 0) + 1,
+                    totemTarget: isPlayerUser ? 'PLAYER' : 'DEALER'
+                }));
+                audioManager.playSound('totem');
+                addLog(
+                    isPlayerUser
+                        ? "PLAYER'S TOTEM ACTIVATED: Survived lethal blood contract sacrifice at 1 HP!"
+                        : "DEALER'S TOTEM ACTIVATED: Survived lethal blood contract sacrifice at 1 HP!",
+                    'safe'
+                );
+                await wait(3000);
+                if (setOverlayText) setOverlayText(null);
+            } else {
+                setUser(u => ({ ...u, hp: 0 }));
+                if (setOverlayColor) setOverlayColor('none');
+                if (isPlayerUser) {
+                    addLog('YOU DIED (BLOOD CONTRACT).', 'danger');
+                } else {
+                    addLog('DEALER DIED (BLOOD CONTRACT).', 'safe');
+                }
+
+                if (isHardMode && handleHardModeRoundEnd) {
+                    await handleHardModeRoundEnd(winnerOnDeath);
+                    return true;
+                }
+                if (isMultiplayer && handleMPRoundEnd) {
+                    await handleMPRoundEnd(winnerOnDeath);
+                    return true;
+                }
+                if (!isMultiplayer && !isHardMode && handleNormalModeRoundEnd) {
+                    await handleNormalModeRoundEnd(winnerOnDeath);
+                    return true;
+                }
+                setGameState(prev => ({ ...prev, winner: winnerOnDeath, phase: 'GAME_OVER' }));
+                await wait(1500);
+                return true; // End execution
+            }
+        } else {
+            setUser(u => ({ ...u, hp: newHp }));
+        }
+    }
+
+    await wait(800); // Wait for pain
+    if (setOverlayColor) setOverlayColor('none');
 
     // 2. Grant Loot
-    const activeCharmsCount = user === 'PLAYER' ? (player.luckycharmsUsed || 0) : (dealer.luckycharmsUsed || 0);
+    const activeCharmsCount = userState.luckycharmsUsed || 0;
     const newItems = contractLootOverride || getContractLoot(activeCharmsCount);
     const itemNames = newItems.join(' & ');
     const userName = user === 'PLAYER' ? 'YOU' : (user === 'DEALER' ? 'OPPONENT' : user);
 
-    if (user === 'PLAYER') {
-        setPlayer(p => {
-            const current = p.items;
-            const combined = [...current, ...newItems].slice(0, MAX_ITEMS);
-            return { ...p, items: combined, luckycharmsUsed: 0 };
-        });
-    } else {
-        setDealer(d => {
-            const combined = [...d.items, ...newItems].slice(0, MAX_ITEMS);
-            return { ...d, items: combined, luckycharmsUsed: 0 };
-        });
-    }
+    setUser(u => {
+        const combined = [...(u.items || []), ...newItems].slice(0, MAX_ITEMS);
+        return { ...u, items: combined, luckycharmsUsed: 0 };
+    });
 
     if (setOverlayText) {
-        setOverlayText(`🩸 BLOOD ACCEPTED 🩸\n${userName} SACRIFICED 1 HP`);
+        const acceptMsg = `🩸 BLOOD ACCEPTED 🩸\n${userName} SACRIFICED 1 HP`;
+        const offerMsg = `${userName} OFFERING:\n${itemNames}`;
+        setOverlayText(acceptMsg);
         setTimeout(() => {
-            if (setOverlayText) {
-                setOverlayText(`${userName} OFFERING:\n${itemNames}`);
-                setTimeout(() => setOverlayText?.(null), 2500);
-            }
+            setOverlayText(prev => (prev === acceptMsg ? offerMsg : prev));
         }, 2500);
+        setTimeout(() => {
+            setOverlayText(prev => (prev === offerMsg ? null : prev));
+        }, 5000);
     }
 
     addLog(`${userName} SACRIFICED HP FOR: ${itemNames}`, 'danger');
     await wait(1000);
+    return false;
 };
 
 export const handleBeer = async (
@@ -211,13 +197,19 @@ export const handleBeer = async (
     setTriggerDrink: StateSetter<number>,
     setOverlayText: StateSetter<string | null>,
     addLog: (text: string, type: LogEntry['type']) => void,
-    startRound: () => void,
+    startRound: () => Promise<void> | void,
     onBatchEnd?: (keepTurn: boolean) => void
 ): Promise<boolean> => {
+    if (gameState.currentShellIndex >= gameState.chamber.length) {
+        addLog('CHAMBER IS EMPTY', 'neutral');
+        return false;
+    }
+
     setTriggerDrink(p => p + 1); // Visual cue
     await wait(1500); // Wait for drinking animation
 
     const shell = gameState.chamber[gameState.currentShellIndex];
+    if (!shell) return false;
     setEjectedShellColor(shell === 'LIVE' ? 'red' : 'blue');
     setTriggerRack(p => p + 1);
     addLog(`RACKED: ${shell}`, shell === 'LIVE' ? 'danger' : 'safe');
@@ -231,7 +223,6 @@ export const handleBeer = async (
     await wait(2000); // Wait for rack animation and message
     setOverlayText(null);
 
-    const isLive = shell === 'LIVE';
     let roundEnded = false;
 
     setGameState(prev => {
@@ -254,7 +245,8 @@ export const handleBeer = async (
                 setOverlayText("WAITING FOR HOST...");
             }
         } else {
-            setTimeout(startRound, 1000);
+            await wait(1000);
+            await startRound();
         }
         roundEnded = true;
     }
@@ -315,21 +307,25 @@ export const handleGlass = async (
     setTriggerGlass: StateSetter<number>,
     addLog: (text: string, type: LogEntry['type']) => void
 ) => {
+    if (gameState.currentShellIndex >= gameState.chamber.length) {
+        addLog('CHAMBER IS EMPTY', 'neutral');
+        return;
+    }
+
     // 1. Instant Animation Trigger
     setTriggerGlass(p => p + 1);
-    // audioManager.playSound('grab', { playbackRate: 1.2 }); // Glass click
-
 
     // 2. Delay for lift up animation
     await wait(1200);
 
     const nextShell = gameState.chamber[gameState.currentShellIndex];
+    if (!nextShell) return;
 
     if (user === 'PLAYER') {
         setKnownShell(nextShell);
         addLog(`IT IS ${nextShell}`, 'info');
-        // Clear after 2.5 seconds
-        setTimeout(() => setKnownShell(null), 2500);
+        // Clear after 2.5 seconds only if still showing this inspected shell
+        setTimeout(() => setKnownShell(prev => (prev === nextShell ? null : prev)), 2500);
         await wait(1200); // Wait for player to see result
     } else {
         // Dealer uses it: AI logic knows the shell, but we DO NOT show it to player
@@ -348,7 +344,6 @@ export const handlePhone = async (
     phoneFutureIndexOverride?: number
 ) => {
     setTriggerPhone(p => p + 1);
-    // audioManager.playSound('grab', { playbackRate: 0.8 }); // Heavy plastic
     await wait(2500); // Wait for phone animation
 
     const checkLimit = gameState.chamber.length;
@@ -364,20 +359,19 @@ export const handlePhone = async (
         if (user === 'PLAYER') {
             const msg = "YOU ARE ON YOUR OWN BUD";
             addLog("📞 NO INTEL AVAILABLE", 'neutral');
-            if (setOverlayText) {
-                setOverlayText(msg);
-                setTimeout(() => setOverlayText?.(null), 2500);
-            }
+            showTimedOverlay(setOverlayText, msg, 2500);
         } else {
             addLog("DEALER CHECKS PHONE", 'dealer');
         }
     } else {
-        const randomIndex = phoneFutureIndexOverride !== undefined ? phoneFutureIndexOverride : available[Math.floor(Math.random() * available.length)];
+        const randomIndex = phoneFutureIndexOverride !== undefined && phoneFutureIndexOverride < checkLimit
+            ? phoneFutureIndexOverride
+            : available[Math.floor(Math.random() * available.length)];
         const actualShell = gameState.chamber[randomIndex];
         const offset = randomIndex - current;
 
-        // 5% chance to LIE about the shell type
-        const isLying = Math.random() < 0.05;
+        // 5% chance to LIE about the shell type (for player's burner phone)
+        const isLying = user === 'PLAYER' && Math.random() < 0.05;
         const displayedShell = isLying ? (actualShell === 'LIVE' ? 'BLANK' : 'LIVE') : actualShell;
 
         let positionText = "";
@@ -390,10 +384,7 @@ export const handlePhone = async (
         if (user === 'PLAYER') {
             const displayText = `📞 ${positionText} IS ${displayedShell}`;
             addLog(`${positionText} IS ${displayedShell}`, 'info');
-            if (setOverlayText) {
-                setOverlayText(displayText);
-                setTimeout(() => setOverlayText?.(null), 3000);
-            }
+            showTimedOverlay(setOverlayText, displayText, 2500);
         } else {
             // Dealer gets the REAL info (AI knows truth)
             addLog(`DEALER USES PHONE`, 'dealer');
@@ -410,16 +401,19 @@ export const handleInverter = async (
     addLog: (text: string, type: LogEntry['type']) => void,
     setOverlayText?: StateSetter<string | null>
 ) => {
+    if (gameState.currentShellIndex >= gameState.chamber.length) {
+        addLog('CHAMBER IS EMPTY', 'neutral');
+        return;
+    }
+
     setTriggerInverter(p => p + 1);
-    // audioManager.playSound('blankshell', { playbackRate: 1.8 }); // Electronic click
     await wait(1500); // Wait for animation to play
 
-    const currentShell = gameState.chamber[gameState.currentShellIndex];
-    const newType = currentShell === 'LIVE' ? 'BLANK' : 'LIVE';
-
     setGameState(prev => {
+        if (prev.currentShellIndex >= prev.chamber.length) return prev;
         const newChamber = [...prev.chamber];
-        newChamber[prev.currentShellIndex] = newType;
+        const cur = newChamber[prev.currentShellIndex];
+        newChamber[prev.currentShellIndex] = cur === 'LIVE' ? 'BLANK' : 'LIVE';
 
         const remaining = newChamber.slice(prev.currentShellIndex);
         return {
@@ -431,12 +425,7 @@ export const handleInverter = async (
     });
 
     addLog(`${user} INVERTED POLARITY`, 'info');
-
-    // Display POLARITY CHANGED message on screen
-    if (setOverlayText) {
-        setOverlayText('⚡ POLARITY CHANGED ⚡');
-        setTimeout(() => setOverlayText(null), 2000);
-    }
+    showTimedOverlay(setOverlayText, '⚡ POLARITY CHANGED ⚡', 2000);
 
     await wait(800); // Final sync
 };
@@ -449,6 +438,11 @@ export const handleBigInverter = async (
     addLog: (text: string, type: LogEntry['type']) => void,
     setOverlayText?: StateSetter<string | null>
 ) => {
+    if (gameState.currentShellIndex >= gameState.chamber.length) {
+        addLog('CHAMBER IS EMPTY', 'neutral');
+        return;
+    }
+
     setTriggerBigInverter(p => p + 1);
     await wait(2800); // Wait for animation (longer for BIG effect)
 
@@ -457,15 +451,10 @@ export const handleBigInverter = async (
         let newLive = 0;
         let newBlank = 0;
 
-        // Invert ALL remaining shells
         for (let i = prev.currentShellIndex; i < newChamber.length; i++) {
-            newChamber[i] = newChamber[i] === 'LIVE' ? 'BLANK' : 'LIVE';
-        }
-
-        // Recalculate counts properly based on remaining shells and inverted status
-        // Note: liveCount/blankCount usually track remaining, so we recalculate from current index
-        for (let i = prev.currentShellIndex; i < newChamber.length; i++) {
-            if (newChamber[i] === 'LIVE') newLive++;
+            const inverted = newChamber[i] === 'LIVE' ? 'BLANK' : 'LIVE';
+            newChamber[i] = inverted;
+            if (inverted === 'LIVE') newLive++;
             else newBlank++;
         }
 
@@ -478,11 +467,7 @@ export const handleBigInverter = async (
     });
 
     addLog(`${user} INVERTED THE ENTIRE CHAMBER!`, 'danger');
-
-    if (setOverlayText) {
-        setOverlayText('⚡ TOTAL POLARITY REVERSAL ⚡');
-        setTimeout(() => setOverlayText(null), 2500);
-    }
+    showTimedOverlay(setOverlayText, '⚡ TOTAL POLARITY REVERSAL ⚡', 2500);
 
     await wait(800);
 };
@@ -496,7 +481,6 @@ export const handleAdrenaline = async (
     setOverlayColor?: StateSetter<'none' | 'red' | 'green' | 'scan'>
 ) => {
     setTriggerAdrenaline(p => p + 1);
-    // audioManager.playSound('grab', { playbackRate: 1.0 }); // Normal grab
 
     await wait(500);
     // Heartbeat / Rush effect
@@ -507,10 +491,7 @@ export const handleAdrenaline = async (
     if (setOverlayColor) setOverlayColor('none');
 
     // Show message AFTER animation plays
-    if (setOverlayText) {
-        setOverlayText(user === 'PLAYER' ? '⚡ ADRENALINE RUSH ⚡' : '💉 DEALER SURGE');
-        setTimeout(() => setOverlayText?.(null), 2000);
-    }
+    showTimedOverlay(setOverlayText, user === 'PLAYER' ? '⚡ ADRENALINE RUSH ⚡' : '💉 DEALER SURGE', 2000);
 
     await wait(500); // Pause before phase change
 
@@ -557,19 +538,18 @@ export const handleRemote = async (
     if (currentIdx + 1 < gameState.chamber.length) {
         // Swap Current with Next
         setGameState(prev => {
+            const idx = prev.currentShellIndex;
+            if (idx + 1 >= prev.chamber.length) return prev;
             const newChamber = [...prev.chamber];
-            const s1 = newChamber[currentIdx];
-            const s2 = newChamber[currentIdx + 1];
-            newChamber[currentIdx] = s2;
-            newChamber[currentIdx + 1] = s1;
+            const s1 = newChamber[idx];
+            const s2 = newChamber[idx + 1];
+            newChamber[idx] = s2;
+            newChamber[idx + 1] = s1;
             return { ...prev, chamber: newChamber };
         });
 
         addLog(`${user} SWAPPED SHELL ORDER`, 'info');
-        if (setOverlayText) {
-            setOverlayText('↻ CHAMBER CYCLED ↻');
-            setTimeout(() => setOverlayText(null), 2000);
-        }
+        showTimedOverlay(setOverlayText, '↻ CHAMBER CYCLED ↻', 2000);
     } else {
         addLog(`${user} TRIED REMOTE (FAILED)`, 'neutral');
     }
@@ -590,10 +570,7 @@ export const handleLuckycharm = async (
 
     if (user === 'PLAYER') {
         setPlayer(p => ({ ...p, luckycharmsUsed: (p.luckycharmsUsed || 0) + 1 }));
-        if (setOverlayText) {
-            setOverlayText('🍀 LUCK CHARMED 🍀\nHope you will get better items');
-            setTimeout(() => setOverlayText(null), 2500);
-        }
+        showTimedOverlay(setOverlayText, '🍀 LUCK CHARMED 🍀\nHope you will get better items', 2500);
         addLog("YOU ACTIVATED LUCKY CHARM: Next shipment improved", 'safe');
     } else {
         setDealer(d => ({ ...d, luckycharmsUsed: (d.luckycharmsUsed || 0) + 1 }));
@@ -622,47 +599,16 @@ export const handleFlashbang = async (
 
     if (user === 'PLAYER') {
         setDealer(d => ({ ...d, isFlashbanged: true }));
-        if (setOverlayText) {
-            setOverlayText('💥 FLASHBANGED 💥\nOpponent cannot use items next turn');
-            setTimeout(() => setOverlayText(null), 2500);
-        }
+        showTimedOverlay(setOverlayText, '💥 FLASHBANGED 💥\nOpponent cannot use items next turn', 2500);
         addLog("YOU FLASHBANGED THE DEALER: Items blocked on their next turn", 'safe');
     } else {
         setPlayer(p => ({ ...p, isFlashbanged: true }));
-        if (setOverlayText) {
-            setOverlayText('💥 BLINDED! 💥\nYou cannot use items next turn');
-            setTimeout(() => setOverlayText(null), 2500);
-        }
+        showTimedOverlay(setOverlayText, '💥 BLINDED! 💥\nYou cannot use items next turn', 2500);
         addLog("DEALER FLASHBANGED YOU: Items blocked on your next turn", 'danger');
     }
 
     await wait(1800); // Let the screen blind fade out
     if (setShowFlashbang) setShowFlashbang(false);
-};
-
-const getFriendlyItemName = (item: ItemType): string => {
-    const names: Record<ItemType, string> = {
-        'BEER': 'Beer',
-        'CIGS': 'Cigarettes',
-        'GLASS': 'Magnifying Glass',
-        'CUFFS': 'Handcuffs',
-        'SAW': 'Hand Saw',
-        'PHONE': 'Burner Phone',
-        'INVERTER': 'Polarity Inverter',
-        'ADRENALINE': 'Adrenaline',
-        'CHOKE': 'Choke Mod',
-        'REMOTE': 'Remote Control',
-        'BIG_INVERTER': 'Big Inverter',
-        'CONTRACT': 'Blood Contract',
-        'LUCKYCHARM': 'Lucky Charm',
-        'FLASHBANG': 'Flashbang',
-        'CRUSHER': 'Item Crusher',
-        'TOTEM': 'Totem of Undying',
-        'MIRROR': 'Mirror',
-        'DECK_CARD': 'Tarot Card',
-        'JACKPOT': 'Jackpot Slot Machine'
-    };
-    return names[item] || item;
 };
 
 export const handleCrusher = async (
@@ -686,34 +632,34 @@ export const handleCrusher = async (
     const targetSetter = user === 'PLAYER' ? setDealer : setPlayer;
 
     if (target.items.length === 0) {
-        if (setOverlayText) {
-            setOverlayText(user === 'PLAYER' ? "Dealer's inventory is empty!" : "Your inventory is empty!");
-            setTimeout(() => setOverlayText(null), 2000);
-        }
+        showTimedOverlay(setOverlayText, user === 'PLAYER' ? "Dealer's inventory is empty!" : "Your inventory is empty!", 2000);
         addLog(user === 'PLAYER' ? "YOU USED CRUSHER: Opponent has no items to destroy!" : "DEALER USED CRUSHER: You have no items to destroy!", 'safe');
         await wait(900); // Wait for remainder of 2.2s animation
         return;
     }
 
-    // Determine the item to destroy based on the fresh copy of target items
-    const randomIndex = crushIndexOverride !== undefined ? crushIndexOverride : Math.floor(Math.random() * target.items.length);
-    const itemToDestroy = target.items[randomIndex];
+    // Determine the item to destroy based on target items
+    const safeIdx = crushIndexOverride !== undefined && crushIndexOverride >= 0 && crushIndexOverride < target.items.length
+        ? crushIndexOverride
+        : Math.floor(Math.random() * target.items.length);
+    const itemToDestroy = target.items[safeIdx];
+    if (!itemToDestroy) {
+        await wait(900);
+        return;
+    }
     const friendlyName = getFriendlyItemName(itemToDestroy);
 
-    // Remove the item from the state safely by value-matching (find the first index of this item)
+    // Remove the item from the state safely by value-matching
     targetSetter(prev => {
         const idx = prev.items.indexOf(itemToDestroy);
-        if (idx === -1) return prev; // If not found, fallback safely
+        if (idx === -1) return prev;
         const newItems = [...prev.items];
         newItems.splice(idx, 1);
         return { ...prev, items: newItems };
     });
 
-    if (setOverlayText) {
-        const ownerName = user === 'PLAYER' ? "Dealer's" : "Player's";
-        setOverlayText(`DESTROYED_ITEM::${itemToDestroy}::${ownerName}::${friendlyName}`);
-        setTimeout(() => setOverlayText(null), 4000);
-    }
+    const ownerName = user === 'PLAYER' ? "Dealer's" : "Player's";
+    showTimedOverlay(setOverlayText, `DESTROYED_ITEM::${itemToDestroy}::${ownerName}::${friendlyName}`, 4000);
 
     if (user === 'PLAYER') {
         addLog(`YOU CRUSHED DEALER'S ITEM: Destroyed 1 ${friendlyName}`, 'safe');

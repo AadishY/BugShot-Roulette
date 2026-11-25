@@ -27,7 +27,7 @@ import {
     writeBatch
 } from 'firebase/firestore';
 import { auth, db, googleProvider, isFirebaseConfigured } from './firebase';
-import { generateRandomAvatar, getDicebearUrl, DicebearStyle } from './dicebear';
+import { generateRandomAvatar, getDicebearUrl, resolveCanonicalAvatar, DicebearStyle } from './dicebear';
 import { setUserActiveStats, mergeGameStats, type GameStats } from './statsManager';
 import legacyUsersList from './legacyUsersBackup.json';
 
@@ -145,11 +145,26 @@ export const getLocalUsersCache = (): Record<string, UserProfile> => {
     return currentMap;
 };
 
-const saveLocalUsersCache = (cache: Record<string, UserProfile>) => {
+let localCacheSaveTimer: ReturnType<typeof setTimeout> | null = null;
+const saveLocalUsersCache = (cache: Record<string, UserProfile>, immediate = true) => {
     localUsersMemoryCache = cache;
-    try {
-        localStorage.setItem(LOCAL_STORAGE_USERS_KEY, JSON.stringify(cache));
-    } catch (e) {}
+    const persist = () => {
+        try {
+            localStorage.setItem(LOCAL_STORAGE_USERS_KEY, JSON.stringify(localUsersMemoryCache || cache));
+        } catch (e) {}
+    };
+    if (immediate) {
+        if (localCacheSaveTimer) {
+            clearTimeout(localCacheSaveTimer);
+            localCacheSaveTimer = null;
+        }
+        persist();
+    } else if (!localCacheSaveTimer) {
+        localCacheSaveTimer = setTimeout(() => {
+            localCacheSaveTimer = null;
+            persist();
+        }, 250);
+    }
 };
 
 // Memory cache for user lookups with 30s TTL
@@ -179,11 +194,75 @@ const setCachedUser = (identifierLower: string, profile: UserProfile | null) => 
         if (profile.email) {
             userMemoryCache.set(profile.email.toLowerCase(), { profile, timestamp: now });
         }
+        if (profile.displayName) {
+            userMemoryCache.set(`dn:${profile.displayName.toLowerCase()}`, { profile, timestamp: now });
+        }
     }
 };
 
-const invalidateCachedUser = (identifierLower: string) => {
-    userMemoryCache.delete(identifierLower);
+export const invalidateCachedUser = (identifierLower: string) => {
+    if (!identifierLower) return;
+    const clean = identifierLower.trim().toLowerCase();
+    const existing = userMemoryCache.get(clean)?.profile;
+    userMemoryCache.delete(clean);
+    if (existing?.email) userMemoryCache.delete(existing.email.toLowerCase());
+    if (existing?.displayName) userMemoryCache.delete(`dn:${existing.displayName.toLowerCase()}`);
+};
+
+/**
+ * Synchronous lookup of a user profile from in-memory cache, active session, or local storage cache.
+ * Matches by username, email, or displayName without triggering network calls.
+ */
+export const getCachedUserSync = (identifier: string): UserProfile | null => {
+    const clean = (identifier || '').trim().toLowerCase();
+    if (!clean) return null;
+
+    const mem = getCachedUser(clean);
+    if (mem) return mem;
+
+    const memByDisplay = getCachedUser(`dn:${clean}`);
+    if (memByDisplay) return memByDisplay;
+
+    try {
+        const rawSession = localStorage.getItem(LOCAL_STORAGE_SESSION_KEY);
+        if (rawSession) {
+            const sess = JSON.parse(rawSession) as UserProfile;
+            if (sess && (sess.username?.toLowerCase() === clean || sess.displayName?.toLowerCase() === clean)) {
+                return sess;
+            }
+        }
+    } catch (e) {}
+
+    const localCache = getLocalUsersCache();
+    if (localCache[clean]) return localCache[clean];
+    for (const key in localCache) {
+        const u = localCache[key];
+        if (!u) continue;
+        if (
+            u.username?.trim().toLowerCase() === clean ||
+            u.email?.trim().toLowerCase() === clean ||
+            u.displayName?.trim().toLowerCase() === clean
+        ) {
+            return u;
+        }
+    }
+    return null;
+};
+
+const dispatchProfileUpdatedEvent = (profile: UserProfile) => {
+    if (typeof window === 'undefined' || !profile) return;
+    try {
+        window.dispatchEvent(new CustomEvent('bugshot_profile_updated', {
+            detail: {
+                username: profile.username,
+                displayName: profile.displayName,
+                avatarUrl: profile.avatarUrl,
+                avatarStyle: profile.avatarStyle,
+                avatarSeed: profile.avatarSeed,
+                profile
+            }
+        }));
+    } catch (e) {}
 };
 
 // In-flight request deduplication map to prevent simultaneous redundant document reads
@@ -194,120 +273,178 @@ export const seedMigratedUsersToFirestore = async () => {
     // Migration from legacy stores has already concluded
 };
 
-// Find user by username or email in Firestore / cache (optimized, cached, and deduplicated)
-export const findUserByUsernameOrEmail = async (identifier: string): Promise<UserProfile | null> => {
-    const clean = (identifier || '').trim().toLowerCase();
-    if (!clean) return null;
-
-    // 1. Check in-memory fast cache
-    const memCached = getCachedUser(clean);
-    if (memCached !== undefined) {
-        return memCached;
-    }
-
-    // 2. Check local storage cache for instant resolution
+const findInLocalCache = (clean: string): UserProfile | null => {
     const localCache = getLocalUsersCache();
-    if (localCache[clean]) {
-        setCachedUser(clean, localCache[clean]);
-        return localCache[clean];
-    }
+    if (localCache[clean]) return localCache[clean];
     for (const key in localCache) {
         const u = localCache[key];
         if (!u) continue;
         if (u.email?.trim().toLowerCase() === clean || u.username?.trim().toLowerCase() === clean) {
-            setCachedUser(clean, u);
             return u;
         }
     }
+    return null;
+};
+
+// Find user by username or email in Firestore / cache (optimized, cached, and deduplicated)
+export const findUserByUsernameOrEmail = async (
+    identifier: string,
+    options?: { forceRemote?: boolean; localOnly?: boolean }
+): Promise<UserProfile | null> => {
+    const clean = (identifier || '').trim().toLowerCase();
+    if (!clean) return null;
+
+    const forceRemote = Boolean(options?.forceRemote);
+    const localOnly = Boolean(options?.localOnly);
+
+    // 1. Check in-memory fast cache (unless caller explicitly requested a fresh Firestore read)
+    if (!forceRemote) {
+        const memCached = getCachedUser(clean);
+        if (memCached !== undefined) {
+            return memCached;
+        }
+    }
+
+    const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+
+    // 2. If offline, localOnly, or Firebase unconfigured, resolve immediately from local cache
+    if (localOnly || !isOnline || !isFirebaseConfigured() || !db) {
+        const localHit = findInLocalCache(clean);
+        if (localHit) {
+            setCachedUser(clean, localHit);
+            return localHit;
+        }
+        return null;
+    }
 
     // 3. Deduplicate simultaneous in-flight reads
-    if (pendingUserReads.has(clean)) {
-        return pendingUserReads.get(clean)!;
+    const dedupKey = forceRemote ? `remote:${clean}` : clean;
+    if (pendingUserReads.has(dedupKey)) {
+        return pendingUserReads.get(dedupKey)!;
     }
 
     const fetchPromise = (async (): Promise<UserProfile | null> => {
-        if (isFirebaseConfigured() && db) {
-            try {
-                // If clean contains '@', query by email with limit(1)
-                if (clean.includes('@')) {
-                    const qEmail = query(collection(db, 'users'), where('email', '==', clean), limit(1));
-                    const emailSnap = await getDocs(qEmail);
-                    if (!emailSnap.empty) {
-                        const data = emailSnap.docs[0].data() as UserProfile;
-                        if (data && data.username) {
-                            setCachedUser(clean, data);
-                            localCache[data.username.toLowerCase()] = data;
-                            saveLocalUsersCache(localCache);
-                            return data;
-                        }
-                    }
-
-                    // Direct doc check in case email was used as doc id
-                    const userDoc = await getDoc(doc(db, 'users', clean));
-                    if (userDoc.exists()) {
-                        const data = userDoc.data() as UserProfile;
-                        if (data && data.username) {
-                            setCachedUser(clean, data);
-                            localCache[data.username.toLowerCase()] = data;
-                            saveLocalUsersCache(localCache);
-                            return data;
-                        }
-                    }
-                } else {
-                    // Direct username doc lookup (O(1) direct read)
-                    const userDoc = await getDoc(doc(db, 'users', clean));
-                    if (userDoc.exists()) {
-                        const data = userDoc.data() as UserProfile;
-                        if (data && data.username) {
-                            setCachedUser(clean, data);
-                            localCache[data.username.toLowerCase()] = data;
-                            saveLocalUsersCache(localCache);
-                            return data;
-                        }
-                    }
-
-                    // Query by username with limit(1)
-                    const qUser = query(collection(db, 'users'), where('username', '==', clean), limit(1));
-                    const userSnap = await getDocs(qUser);
-                    if (!userSnap.empty) {
-                        const data = userSnap.docs[0].data() as UserProfile;
-                        if (data && data.username) {
-                            setCachedUser(clean, data);
-                            localCache[data.username.toLowerCase()] = data;
-                            saveLocalUsersCache(localCache);
-                            return data;
-                        }
+        try {
+            const localCache = getLocalUsersCache();
+            // If clean contains '@', query by email with limit(1)
+            if (clean.includes('@')) {
+                const qEmail = query(collection(db!, 'users'), where('email', '==', clean), limit(1));
+                const emailSnap = await getDocs(qEmail);
+                if (!emailSnap.empty) {
+                    const data = emailSnap.docs[0].data() as UserProfile;
+                    if (data && data.username) {
+                        setCachedUser(clean, data);
+                        localCache[data.username.toLowerCase()] = data;
+                        saveLocalUsersCache(localCache, false);
+                        return data;
                     }
                 }
-            } catch (e) {
-                console.warn("[Firebase] Query error, falling back to local cache:", e);
+
+                // Direct doc check in case email was used as doc id
+                const userDoc = await getDoc(doc(db!, 'users', clean));
+                if (userDoc.exists()) {
+                    const data = userDoc.data() as UserProfile;
+                    if (data && data.username) {
+                        setCachedUser(clean, data);
+                        localCache[data.username.toLowerCase()] = data;
+                        saveLocalUsersCache(localCache, false);
+                        return data;
+                    }
+                }
+            } else {
+                // Direct username doc lookup (O(1) direct read)
+                const userDoc = await getDoc(doc(db!, 'users', clean));
+                if (userDoc.exists()) {
+                    const data = userDoc.data() as UserProfile;
+                    if (data && data.username) {
+                        setCachedUser(clean, data);
+                        localCache[data.username.toLowerCase()] = data;
+                        saveLocalUsersCache(localCache, false);
+                        return data;
+                    }
+                }
+
+                // Query by username with limit(1)
+                const qUser = query(collection(db!, 'users'), where('username', '==', clean), limit(1));
+                const userSnap = await getDocs(qUser);
+                if (!userSnap.empty) {
+                    const data = userSnap.docs[0].data() as UserProfile;
+                    if (data && data.username) {
+                        setCachedUser(clean, data);
+                        localCache[data.username.toLowerCase()] = data;
+                        saveLocalUsersCache(localCache, false);
+                        return data;
+                    }
+                }
             }
+        } catch (e) {
+            console.warn("[Firebase] Query error, falling back to local cache:", e);
         }
 
-        // Fallback to local cache if not found in Firestore
-        const fallbackCache = getLocalUsersCache();
-        if (fallbackCache[clean]) {
-            setCachedUser(clean, fallbackCache[clean]);
-            return fallbackCache[clean];
-        }
-        for (const key in fallbackCache) {
-            const u = fallbackCache[key];
-            if (u && (u.email?.trim().toLowerCase() === clean || u.username?.trim().toLowerCase() === clean)) {
-                setCachedUser(clean, u);
-                return u;
-            }
+        // Fallback to local cache if not found in Firestore or offline/errored
+        const fallbackHit = findInLocalCache(clean);
+        if (fallbackHit) {
+            setCachedUser(clean, fallbackHit);
+            return fallbackHit;
         }
 
         setCachedUser(clean, null);
         return null;
     })();
 
-    pendingUserReads.set(clean, fetchPromise);
+    pendingUserReads.set(dedupKey, fetchPromise);
     try {
         return await fetchPromise;
     } finally {
-        pendingUserReads.delete(clean);
+        pendingUserReads.delete(dedupKey);
     }
+};
+
+/**
+ * Batch-resolve multiple usernames in parallel with memory-cache reuse and single local cache flush.
+ */
+export const getUsersByUsernames = async (
+    usernames: string[],
+    options?: { forceRemote?: boolean }
+): Promise<Record<string, UserProfile>> => {
+    const result: Record<string, UserProfile> = {};
+    const uniqueClean = Array.from(
+        new Set(
+            (usernames || [])
+                .map(u => (u || '').trim().toLowerCase())
+                .filter(u => u && u !== 'bugshot' && u !== 'system')
+        )
+    );
+    if (uniqueClean.length === 0) return result;
+
+    const toFetch: string[] = [];
+    for (const uname of uniqueClean) {
+        if (!options?.forceRemote) {
+            const mem = getCachedUser(uname);
+            if (mem) {
+                result[uname] = mem;
+                continue;
+            }
+        }
+        toFetch.push(uname);
+    }
+
+    if (toFetch.length > 0) {
+        const CHUNK_SIZE = 10;
+        for (let i = 0; i < toFetch.length; i += CHUNK_SIZE) {
+            const chunk = toFetch.slice(i, i + CHUNK_SIZE);
+            const settled = await Promise.all(
+                chunk.map(uname => findUserByUsernameOrEmail(uname, options).catch(() => null))
+            );
+            settled.forEach((profile, idx) => {
+                if (profile) {
+                    result[chunk[idx]] = profile;
+                }
+            });
+        }
+    }
+
+    return result;
 };
 
 // Dedicated helper to strictly check if an email is already bound to any registered account (optimized & cached)
@@ -321,14 +458,16 @@ export const findUserByEmail = async (email: string): Promise<UserProfile | null
         return memCached;
     }
 
-    // 2. Check local cache first for instant lookup
-    const cache = getLocalUsersCache();
-    for (const key in cache) {
-        const u = cache[key];
-        if (u && u.email && u.email.trim().toLowerCase() === clean) {
-            setCachedUser(clean, u);
-            return u;
+    const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+
+    // 2. If offline or unconfigured, check local cache immediately
+    if (!isOnline || !isFirebaseConfigured() || !db) {
+        const localHit = findInLocalCache(clean);
+        if (localHit) {
+            setCachedUser(clean, localHit);
+            return localHit;
         }
+        return null;
     }
 
     // 3. Deduplicate in-flight reads
@@ -337,32 +476,37 @@ export const findUserByEmail = async (email: string): Promise<UserProfile | null
     }
 
     const fetchPromise = (async (): Promise<UserProfile | null> => {
-        if (isFirebaseConfigured() && db) {
-            try {
-                // Direct query by email with limit(1)
-                const qEmail = query(collection(db, 'users'), where('email', '==', clean), limit(1));
-                const emailSnap = await getDocs(qEmail);
-                if (!emailSnap.empty) {
-                    const data = emailSnap.docs[0].data() as UserProfile;
-                    if (data && data.username) {
-                        setCachedUser(clean, data);
-                        return data;
-                    }
+        try {
+            // Direct query by email with limit(1)
+            const qEmail = query(collection(db!, 'users'), where('email', '==', clean), limit(1));
+            const emailSnap = await getDocs(qEmail);
+            if (!emailSnap.empty) {
+                const data = emailSnap.docs[0].data() as UserProfile;
+                if (data && data.username) {
+                    setCachedUser(clean, data);
+                    return data;
                 }
-
-                // Check if document was saved with email as ID
-                const directDoc = await getDoc(doc(db, 'users', clean));
-                if (directDoc.exists()) {
-                    const data = directDoc.data() as UserProfile;
-                    if (data && data.username) {
-                        setCachedUser(clean, data);
-                        return data;
-                    }
-                }
-            } catch (e) {
-                console.warn("[Firebase] findUserByEmail error:", e);
             }
+
+            // Check if document was saved with email as ID
+            const directDoc = await getDoc(doc(db!, 'users', clean));
+            if (directDoc.exists()) {
+                const data = directDoc.data() as UserProfile;
+                if (data && data.username) {
+                    setCachedUser(clean, data);
+                    return data;
+                }
+            }
+        } catch (e) {
+            console.warn("[Firebase] findUserByEmail error:", e);
         }
+
+        const localHit = findInLocalCache(clean);
+        if (localHit) {
+            setCachedUser(clean, localHit);
+            return localHit;
+        }
+
         setCachedUser(clean, null);
         return null;
     })();
@@ -915,36 +1059,60 @@ export const updateUserAvatar = async (
     style: DicebearStyle,
     seed: string
 ): Promise<UserProfile | null> => {
-    const cleanUsername = username.trim().toLowerCase();
-    const userProfile = await findUserByUsernameOrEmail(cleanUsername);
+    const cleanUsername = (username || '').trim().toLowerCase();
+    if (!cleanUsername) return null;
+
+    let userProfile = await findUserByUsernameOrEmail(cleanUsername, { localOnly: true });
+    if (!userProfile) {
+        const sessionUser = getCurrentUserProfile();
+        if (sessionUser && sessionUser.username?.toLowerCase() === cleanUsername) {
+            userProfile = { ...sessionUser };
+        }
+    }
+    if (!userProfile) {
+        userProfile = await findUserByUsernameOrEmail(cleanUsername);
+    }
     if (!userProfile) return null;
 
-    const newUrl = getDicebearUrl(style, seed);
-    userProfile.avatarUrl = newUrl;
-    userProfile.avatarStyle = style;
-    userProfile.avatarSeed = seed;
+    const cleanSeed = (seed || cleanUsername || 'operator').trim();
+    const newUrl = getDicebearUrl(style, cleanSeed);
+    const updatedProfile: UserProfile = {
+        ...userProfile,
+        avatarUrl: newUrl,
+        avatarStyle: style,
+        avatarSeed: cleanSeed
+    };
 
-    if (isFirebaseConfigured() && db) {
+    // Update memory cache, leaderboard cache, local storage cache, and active session immediately
+    setCachedUser(cleanUsername, updatedProfile);
+    cachedLeaderboard = null;
+
+    const cache = getLocalUsersCache();
+    cache[cleanUsername] = updatedProfile;
+    saveLocalUsersCache(cache, true);
+
+    try {
+        const sessionUser = getCurrentUserProfile();
+        if (!sessionUser || sessionUser.username?.toLowerCase() === cleanUsername) {
+            localStorage.setItem(LOCAL_STORAGE_SESSION_KEY, JSON.stringify(updatedProfile));
+        }
+    } catch (e) {}
+
+    dispatchProfileUpdatedEvent(updatedProfile);
+
+    if (isFirebaseConfigured() && db && (typeof navigator === 'undefined' || navigator.onLine)) {
         try {
-            await updateDoc(doc(db, 'users', cleanUsername), {
+            await setDoc(doc(db, 'users', cleanUsername), {
                 avatarUrl: newUrl,
                 avatarStyle: style,
-                avatarSeed: seed
-            });
+                avatarSeed: cleanSeed
+            }, { merge: true });
         } catch (e) {
             console.warn("Firestore avatar update error:", e);
         }
     }
 
-    const cache = getLocalUsersCache();
-    cache[cleanUsername] = userProfile;
-    saveLocalUsersCache(cache);
-
-    try {
-        localStorage.setItem(LOCAL_STORAGE_SESSION_KEY, JSON.stringify(userProfile));
-    } catch (e) {}
-
-    return userProfile;
+    return updatedProfile;
 };
 
 // Update Display Name
@@ -952,31 +1120,53 @@ export const updateUserDisplayName = async (
     username: string,
     newDisplayName: string
 ): Promise<UserProfile | null> => {
-    const cleanUsername = username.trim().toLowerCase();
-    const userProfile = await findUserByUsernameOrEmail(cleanUsername);
+    const cleanUsername = (username || '').trim().toLowerCase();
+    if (!cleanUsername) return null;
+
+    let userProfile = await findUserByUsernameOrEmail(cleanUsername, { localOnly: true });
+    if (!userProfile) {
+        const sessionUser = getCurrentUserProfile();
+        if (sessionUser && sessionUser.username?.toLowerCase() === cleanUsername) {
+            userProfile = { ...sessionUser };
+        }
+    }
+    if (!userProfile) {
+        userProfile = await findUserByUsernameOrEmail(cleanUsername);
+    }
     if (!userProfile) return null;
 
-    userProfile.displayName = newDisplayName.trim() || userProfile.displayName;
+    const updatedProfile: UserProfile = {
+        ...userProfile,
+        displayName: newDisplayName.trim() || userProfile.displayName
+    };
 
-    if (isFirebaseConfigured() && db) {
+    setCachedUser(cleanUsername, updatedProfile);
+    cachedLeaderboard = null;
+
+    const cache = getLocalUsersCache();
+    cache[cleanUsername] = updatedProfile;
+    saveLocalUsersCache(cache, true);
+
+    try {
+        const sessionUser = getCurrentUserProfile();
+        if (!sessionUser || sessionUser.username?.toLowerCase() === cleanUsername) {
+            localStorage.setItem(LOCAL_STORAGE_SESSION_KEY, JSON.stringify(updatedProfile));
+        }
+    } catch (e) {}
+
+    dispatchProfileUpdatedEvent(updatedProfile);
+
+    if (isFirebaseConfigured() && db && (typeof navigator === 'undefined' || navigator.onLine)) {
         try {
-            await updateDoc(doc(db, 'users', cleanUsername), {
-                displayName: userProfile.displayName
-            });
+            await setDoc(doc(db, 'users', cleanUsername), {
+                displayName: updatedProfile.displayName
+            }, { merge: true });
         } catch (e) {
             console.warn("Firestore displayName update error:", e);
         }
     }
 
-    const cache = getLocalUsersCache();
-    cache[cleanUsername] = userProfile;
-    saveLocalUsersCache(cache);
-
-    try {
-        localStorage.setItem(LOCAL_STORAGE_SESSION_KEY, JSON.stringify(userProfile));
-    } catch (e) {}
-
-    return userProfile;
+    return updatedProfile;
 };
 
 // Send password reset email to a user's registered Gmail address
@@ -1203,6 +1393,7 @@ export const updateUserEmail = async (
 
     // 4. Update local cache & active session
     userProfile.email = cleanNewEmail;
+    setCachedUser(cleanUsername, userProfile);
     const cache = getLocalUsersCache();
     cache[cleanUsername] = userProfile;
     saveLocalUsersCache(cache);
@@ -1210,6 +1401,8 @@ export const updateUserEmail = async (
     try {
         localStorage.setItem(LOCAL_STORAGE_SESSION_KEY, JSON.stringify(userProfile));
     } catch (e) {}
+
+    dispatchProfileUpdatedEvent(userProfile);
 
     return {
         success: true,
@@ -1244,6 +1437,8 @@ export const deleteUserAccount = async (
     }
 
     // 3. Delete from local cache and session
+    invalidateCachedUser(cleanUsername);
+    cachedLeaderboard = null;
     const cache = getLocalUsersCache();
     delete cache[cleanUsername];
     saveLocalUsersCache(cache);
@@ -1428,31 +1623,45 @@ let pendingLeaderboardPromise: Promise<LeaderboardEntry[]> | null = null;
 const LEADERBOARD_CACHE_TTL_MS = 30000;
 
 // Get Full Leaderboard sorted with avatars and player info (with 30s cache and in-flight deduplication)
-// Returns up to 50 operatives as requested
+// Returns up to 250 operatives
 export const getLeaderboard = async (forceRefresh = false): Promise<LeaderboardEntry[]> => {
     const now = Date.now();
     if (!forceRefresh && cachedLeaderboard && (now - cachedLeaderboard.timestamp) < LEADERBOARD_CACHE_TTL_MS) {
         return cachedLeaderboard.data;
     }
 
-    if (!forceRefresh && pendingLeaderboardPromise) {
+    if (forceRefresh) {
+        cachedLeaderboard = null;
+    }
+
+    if (pendingLeaderboardPromise) {
         return pendingLeaderboardPromise;
     }
 
     pendingLeaderboardPromise = (async () => {
         const usersMap: Record<string, UserProfile> = {};
+        const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
 
-        // Load from Firestore if available
-        if (isFirebaseConfigured() && db) {
+        // Load from Firestore if available and online
+        if (isOnline && isFirebaseConfigured() && db) {
             try {
                 const snap = await getDocs(collection(db, 'users'));
                 if (!snap.empty) {
+                    const localCache = getLocalUsersCache();
+                    let cacheUpdated = false;
                     snap.forEach(docSnap => {
                         const data = docSnap.data() as UserProfile;
                         if (data && data.username) {
-                            usersMap[data.username.toLowerCase()] = data;
+                            const cleanU = data.username.toLowerCase();
+                            usersMap[cleanU] = data;
+                            setCachedUser(cleanU, data);
+                            localCache[cleanU] = data;
+                            cacheUpdated = true;
                         }
                     });
+                    if (cacheUpdated) {
+                        saveLocalUsersCache(localCache, false);
+                    }
                 }
             } catch (e) {
                 console.warn("Firestore leaderboard fetch error, using local cache:", e);
@@ -1462,8 +1671,25 @@ export const getLeaderboard = async (forceRefresh = false): Promise<LeaderboardE
         // Merge with local cache / backed up operatives
         const localCache = getLocalUsersCache();
         for (const key in localCache) {
-            if (!usersMap[key]) {
-                usersMap[key] = localCache[key];
+            const cleanKey = key.toLowerCase();
+            if (!usersMap[cleanKey]) {
+                usersMap[cleanKey] = localCache[key];
+            }
+        }
+
+        // Overlay active session user so local avatar/stat updates are always reflected immediately
+        const sessionUser = getCurrentUserProfile();
+        if (sessionUser?.username) {
+            const cleanSession = sessionUser.username.toLowerCase();
+            const existing = usersMap[cleanSession];
+            if (existing) {
+                usersMap[cleanSession] = {
+                    ...existing,
+                    displayName: sessionUser.displayName || existing.displayName,
+                    avatarUrl: sessionUser.avatarUrl || existing.avatarUrl,
+                    avatarStyle: sessionUser.avatarStyle || existing.avatarStyle,
+                    avatarSeed: sessionUser.avatarSeed || existing.avatarSeed
+                };
             }
         }
 
@@ -1482,7 +1708,7 @@ export const getLeaderboard = async (forceRefresh = false): Promise<LeaderboardE
             leaderboard.push({
                 username: u.username,
                 displayName: u.displayName || u.username,
-                avatarUrl: u.avatarUrl || getDicebearUrl(u.avatarStyle || 'thumbs', u.avatarSeed || u.username),
+                avatarUrl: resolveCanonicalAvatar(u),
                 avatarStyle: u.avatarStyle,
                 avatarSeed: u.avatarSeed,
                 wins: stats.wins || 0,
@@ -1599,7 +1825,7 @@ export const getAllUsers = async (): Promise<UserProfile[]> => {
                             ...data,
                             username: cleanU,
                             playerId: data.playerId || getPlayerId(data),
-                            avatarUrl: data.avatarUrl || getDicebearUrl(data.avatarStyle || 'thumbs', data.avatarSeed || cleanU),
+                            avatarUrl: resolveCanonicalAvatar(data),
                             isDeveloper: Boolean(data.isDeveloper || data.role === 'developer' || cleanU === 'aadish')
                         };
                     }
@@ -1620,7 +1846,7 @@ export const getAllUsers = async (): Promise<UserProfile[]> => {
                 ...u,
                 username: cleanU,
                 playerId: u.playerId || getPlayerId(u),
-                avatarUrl: u.avatarUrl || getDicebearUrl(u.avatarStyle || 'thumbs', u.avatarSeed || cleanU),
+                avatarUrl: resolveCanonicalAvatar(u),
                 isDeveloper: Boolean(u.isDeveloper || u.role === 'developer' || cleanU === 'aadish')
             };
         }

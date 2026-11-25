@@ -1,4 +1,5 @@
-const CACHE_NAME = 'bugshot-roulette-v10';
+const CACHE_NAME = 'bugshot-roulette-v11';
+const RUNTIME_CACHE = 'bugshot-roulette-runtime-v11';
 
 // Critical core assets to pre-cache on install for 100% offline singleplayer capability
 const CRITICAL_ASSETS = [
@@ -89,6 +90,26 @@ const CRITICAL_ASSETS = [
     '/sticker/sticker26.webp'
 ];
 
+// Batch pre-cache fetches to avoid saturating mobile network connections during install
+async function precacheInBatches(cache, urls, batchSize = 6) {
+    let successCount = 0;
+    for (let i = 0; i < urls.length; i += batchSize) {
+        const batch = urls.slice(i, i + batchSize);
+        const results = await Promise.allSettled(
+            batch.map(async (url) => {
+                const response = await fetch(url, { cache: 'reload' });
+                if (response && (response.status === 200 || response.type === 'opaque')) {
+                    await cache.put(url, response);
+                    return true;
+                }
+                return false;
+            })
+        );
+        successCount += results.filter((r) => r.status === 'fulfilled' && r.value).length;
+    }
+    return successCount;
+}
+
 // Helper: Handle HTTP 206 Partial Content for Audio Range Requests (Safari & Chrome mobile seeking)
 async function handleRangeRequest(request, cachedResponse) {
     const rangeHeader = request.headers.get('range');
@@ -103,7 +124,7 @@ async function handleRangeRequest(request, cachedResponse) {
         const start = parseInt(bytesMatch[1], 10);
         const end = bytesMatch[2] ? parseInt(bytesMatch[2], 10) : total - 1;
 
-        if (start >= total || end >= total) {
+        if (isNaN(start) || isNaN(end) || start < 0 || end < start || start >= total || end >= total) {
             return new Response('', {
                 status: 416,
                 headers: { 'Content-Range': `bytes */${total}` }
@@ -127,28 +148,18 @@ async function handleRangeRequest(request, cachedResponse) {
     }
 }
 
-// Install event - Pre-cache critical assets with allSettled and skip waiting immediately
+// Install event - Pre-cache critical assets cleanly; skipWaiting immediately only on first install
+// so active gameplay tabs aren't disrupted mid-session unless user/menu accepts update via SKIP_WAITING.
 self.addEventListener('install', (event) => {
     console.log('[Service Worker] Installing new version:', CACHE_NAME);
-    // Skip waiting so the new worker activates immediately without waiting for existing tabs to close
-    self.skipWaiting();
+    if (!self.registration.active) {
+        self.skipWaiting();
+    }
 
     event.waitUntil(
         caches.open(CACHE_NAME).then(async (cache) => {
             console.log('[Service Worker] Pre-caching critical game assets for offline PWA operation...');
-            const results = await Promise.allSettled(
-                CRITICAL_ASSETS.map(async (url) => {
-                    try {
-                        const response = await fetch(url, { cache: 'reload' });
-                        if (response.ok || response.type === 'opaque') {
-                            await cache.put(url, response);
-                        }
-                    } catch (err) {
-                        console.warn(`[Service Worker] Pre-cache skipped for ${url}:`, err.message);
-                    }
-                })
-            );
-            const successCount = results.filter((r) => r.status === 'fulfilled').length;
+            const successCount = await precacheInBatches(cache, CRITICAL_ASSETS, 6);
             console.log(`[Service Worker] Critical asset caching cycle complete: ${successCount}/${CRITICAL_ASSETS.length} assets ready.`);
         })
     );
@@ -162,18 +173,16 @@ self.addEventListener('activate', (event) => {
             const cacheNames = await caches.keys();
             await Promise.all(
                 cacheNames.map((cacheName) => {
-                    if (cacheName !== CACHE_NAME) {
+                    if (cacheName !== CACHE_NAME && cacheName !== RUNTIME_CACHE) {
                         console.log('[Service Worker] Purging obsolete cache store:', cacheName);
                         return caches.delete(cacheName);
                     }
                 })
             );
 
-            // Take control of all pages within scope immediately
             await self.clients.claim();
             console.log('[Service Worker] Clients claimed. Broadcasting UPDATE_AVAILABLE...');
 
-            // Notify open window clients that a fresh update has taken control
             const clients = await self.clients.matchAll({ type: 'window' });
             clients.forEach((client) => {
                 client.postMessage({
@@ -201,28 +210,29 @@ self.addEventListener('message', (event) => {
     }
 });
 
-// Fetch event - Cache-First for static assets, Stale-While-Revalidate for unhashed media, Fast-Network-First for navigation
+// Fetch event - Network-First for HTML/navigation, Cache-First for immutable hashed Vite chunks & audio, SWR for static media
 self.addEventListener('fetch', (event) => {
-    // Only handle GET requests
     if (event.request.method !== 'GET') {
         return;
     }
 
     const url = new URL(event.request.url);
 
-    // Skip non-HTTP protocols (e.g. chrome-extension://)
     if (url.protocol !== 'http:' && url.protocol !== 'https:') {
         return;
     }
 
-    // Bypass real-time socket connections, live backend endpoints, and Firebase auth/firestore APIs
+    // Never intercept Service Worker script itself, live sockets, backend APIs, or auth/DB endpoints
     if (
+        url.pathname === '/sw.js' ||
         url.pathname.includes('/socket.io') ||
         url.pathname.includes('ws') ||
         (url.hostname.includes('localhost') && url.port === '3001') ||
         url.pathname.startsWith('/api/') ||
         url.pathname.startsWith('/redis') ||
+        url.hostname.includes('hf.space') ||
         url.hostname.includes('firebaseio.com') ||
+        url.hostname.includes('firebaseapp.com') ||
         url.hostname.includes('identitytoolkit.googleapis.com') ||
         url.hostname.includes('securetoken.googleapis.com') ||
         url.hostname.includes('firestore.googleapis.com')
@@ -230,29 +240,37 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // 1. SPA Navigation requests (HTML documents)
+    // 1. SPA Navigation requests (HTML documents) - Always validate with server when online (cache: 'no-cache')
     const isNavigation = event.request.mode === 'navigate' ||
         (event.request.headers.get('accept') || '').includes('text/html');
 
     if (isNavigation) {
         event.respondWith(
             (async () => {
-                // Try fast network first (2000ms timeout) so new builds are caught, but offline loads instantly
-                try {
-                    const networkPromise = fetch(event.request);
-                    const timeoutPromise = new Promise((_, reject) =>
-                        setTimeout(() => reject(new Error('Navigation timeout')), 2000)
-                    );
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 2500);
 
-                    const networkResponse = await Promise.race([networkPromise, timeoutPromise]);
+                try {
+                    const networkResponse = await fetch(event.request, {
+                        cache: 'no-cache',
+                        signal: controller.signal
+                    });
+                    clearTimeout(timeoutId);
+
                     if (networkResponse && networkResponse.status === 200) {
                         const clone = networkResponse.clone();
-                        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+                        const indexClone = networkResponse.clone();
+                        caches.open(CACHE_NAME).then((cache) => {
+                            cache.put(event.request, clone).catch(() => {});
+                            if (url.pathname === '/' || url.pathname === '/index.html') {
+                                cache.put('/index.html', indexClone).catch(() => {});
+                            }
+                        });
                     }
                     return networkResponse;
                 } catch {
-                    // Offline or slow network: instantly serve cached HTML shell
-                    const cachedIndex = (await caches.match(event.request)) ||
+                    clearTimeout(timeoutId);
+                    const cachedIndex = (await caches.match(event.request, { ignoreSearch: true })) ||
                         (await caches.match('/index.html')) ||
                         (await caches.match('/'));
                     if (cachedIndex) return cachedIndex;
@@ -267,9 +285,9 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // 2. Immutable Vite build chunks (/assets/*.js, /assets/*.css) - Pure Cache-First
+    // 2. Immutable Vite content-hashed build chunks (/assets/name-HASH.js|css|wasm|woff2) - Pure Cache-First
     const isHashedAsset = url.pathname.startsWith('/assets/') &&
-        url.pathname.match(/\.[a-f0-9_-]+\.(js|css|wasm)$/i);
+        /[-.][A-Za-z0-9_-]{6,}\.(js|css|wasm|woff2?|png|webp|svg)$/i.test(url.pathname);
 
     if (isHashedAsset) {
         event.respondWith(
@@ -278,7 +296,7 @@ self.addEventListener('fetch', (event) => {
                 return fetch(event.request).then((netRes) => {
                     if (netRes && netRes.status === 200) {
                         const clone = netRes.clone();
-                        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+                        caches.open(RUNTIME_CACHE).then((cache) => cache.put(event.request, clone).catch(() => {}));
                     }
                     return netRes;
                 });
@@ -288,7 +306,7 @@ self.addEventListener('fetch', (event) => {
     }
 
     // 3. Audio requests with Range Header support (seeking and mobile playback)
-    const isAudio = url.pathname.match(/\.(mp3|wav|ogg)$/i);
+    const isAudio = /\.(mp3|wav|ogg)$/i.test(url.pathname);
     if (isAudio) {
         event.respondWith(
             (async () => {
@@ -301,13 +319,12 @@ self.addEventListener('fetch', (event) => {
                 }
                 try {
                     const netResponse = await fetch(event.request);
-                    if (netResponse && (netResponse.status === 200 || netResponse.status === 206)) {
+                    if (netResponse && netResponse.status === 200) {
                         const clone = netResponse.clone();
-                        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+                        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone).catch(() => {}));
                     }
                     return netResponse;
                 } catch {
-                    // Return silent audio buffer to prevent unhandled playback rejection
                     return new Response(new ArrayBuffer(0), {
                         status: 200,
                         headers: { 'Content-Type': 'audio/mpeg' }
@@ -318,35 +335,39 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // 4. Static media assets (3D GLBs, Draco WASM, textures, fonts, stickers, favicons, CDN avatars)
+    // 4. Static media & runtime assets (3D GLBs, Draco WASM, textures, fonts, stickers, favicons, CDN avatars)
     const isStaticAsset =
-        url.pathname.match(/\.(png|jpg|jpeg|gif|webp|svg|glb|gltf|wasm|bin|js|css|woff|woff2|ico|json)$/i) ||
+        /\.(png|jpg|jpeg|gif|webp|svg|glb|gltf|wasm|bin|js|css|woff|woff2|ico|json)$/i.test(url.pathname) ||
         url.host.includes('fonts.gstatic.com') ||
         url.host.includes('fonts.googleapis.com') ||
         url.host.includes('api.dicebear.com') ||
         url.host.includes('avatars.githubusercontent.com');
 
     if (isStaticAsset) {
+        const isUnhashedMutable = /\.(json|js|css)$/i.test(url.pathname) && !url.pathname.startsWith('/assets/');
+
         event.respondWith(
             caches.match(event.request, { ignoreSearch: true }).then((cachedResponse) => {
-                // Background network fetch to revalidate cache
-                const fetchPromise = fetch(event.request)
+                const fetchPromise = fetch(
+                    event.request,
+                    isUnhashedMutable ? { cache: 'no-cache' } : undefined
+                )
                     .then((networkResponse) => {
                         if (networkResponse && (networkResponse.status === 200 || networkResponse.type === 'opaque')) {
                             const clone = networkResponse.clone();
-                            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+                            const targetCache = url.origin === self.location.origin ? CACHE_NAME : RUNTIME_CACHE;
+                            caches.open(targetCache).then((cache) => cache.put(event.request, clone).catch(() => {}));
                         }
                         return networkResponse;
                     })
                     .catch(() => null);
 
-                // If in cache, return immediately for sub-millisecond load speed
                 if (cachedResponse) {
+                    // For unhashed mutable config/scripts (manifest.json, draco glue), SWR validates in background
                     fetchPromise.catch(() => {});
                     return cachedResponse;
                 }
 
-                // If not in cache, wait for network
                 return fetchPromise.then((netRes) => {
                     if (netRes) return netRes;
                     return new Response('Asset Offline', {

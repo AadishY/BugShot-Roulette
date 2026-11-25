@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { RotateCw } from 'lucide-react';
 import { ThreeScene } from './components/ThreeScene';
 import { GameUI } from './components/GameUI';
@@ -6,7 +6,7 @@ import { useGameLogic } from './hooks/useGameLogic';
 import { useDealerAI } from './hooks/useDealerAI';
 import { SettingsMenu } from './components/SettingsMenu';
 import { GameSettings } from './types';
-import { DEFAULT_SETTINGS, ACTIVE_ITEMS } from './constants';
+import { DEFAULT_SETTINGS, ACTIVE_ITEMS, TACTICAL_STICKERS, isUltraPerf } from './constants';
 import { DiscordSDK } from '@discord/embedded-app-sdk';
 
 import { LoadingScreen } from './components/LoadingScreen';
@@ -23,6 +23,7 @@ import { MultiplayerSelection } from './components/MultiplayerSelection';
 import { generateLootBatch, resolveJackpotOutcome } from './utils/game/inventory';
 import { randomInt } from './utils/gameUtils';
 import { ShellType, ItemType, TurnOwner, AimTarget } from './types';
+import { getCurrentUserProfile, UserProfile } from './utils/firebaseService';
 
 const urlParams = new URLSearchParams(window.location.search);
 
@@ -41,6 +42,29 @@ const SERVER_URL = isDiscordPlatform
 
 type AppState = 'MENU' | 'LOADING_SP' | 'LOADING_GAME' | 'GAME' | 'LOADING_MP' | 'MP_SELECTION' | 'LOBBY';
 
+interface NameTagItem {
+  name: string;
+  x: number;
+  y: number;
+  visible: boolean;
+}
+
+const NameTagsOverlay = React.memo(({ nameTags, isMobileNameTag }: { nameTags: NameTagItem[]; isMobileNameTag: boolean }) => (
+  <>
+    {nameTags.map((tag, i) => (
+      tag.visible && (
+        <div
+          key={i}
+          className={`absolute z-[40] pointer-events-none -translate-x-1/2 -translate-y-1/2 bg-black/80 border border-stone-800/80 ${isMobileNameTag ? 'px-2 py-0.5 text-[7px] sm:text-[8px]' : 'px-2.5 py-1 text-[8px] sm:text-[9px]'} font-black tracking-[0.25em] text-stone-200 uppercase rounded-lg shadow-2xl select-none transition-opacity duration-150`}
+          style={{ left: `${tag.x}%`, top: `${tag.y}%` }}
+        >
+          {tag.name}
+        </div>
+      )
+    ))}
+  </>
+));
+
 export default function App() {
   const spGame = useGameLogic();
   const mp = useMultiplayer();
@@ -49,11 +73,22 @@ export default function App() {
     const params = new URLSearchParams(window.location.search);
     return params.get('room');
   });
-  const [mobileActiveTab, setMobileActiveTab] = useState<'LOBBY' | 'CHAT'>('LOBBY');
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => getCurrentUserProfile());
   const lastTotalWins = useRef(0);
   const lastHoverRef = useRef<{ target: AimTarget; targetId?: string; time: number }>({ target: 'OPPONENT', time: 0 });
   const lastSyncBroadcastRef = useRef(0);
-  const gameStartTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const gameStartTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const audioInitializedRef = useRef(false);
+
+  // Refs for latest game/multiplayer state inside long-lived socket & round callbacks
+  const spGameRef = useRef(spGame);
+  spGameRef.current = spGame;
+  const mpRoomRef = useRef(mp.room);
+  mpRoomRef.current = mp.room;
+  const mpPlayerIdRef = useRef(mp.playerId);
+  mpPlayerIdRef.current = mp.playerId;
+  const appStateRef = useRef(appState);
+  appStateRef.current = appState;
 
   useEffect(() => {
     return () => {
@@ -66,12 +101,57 @@ export default function App() {
 
   // Ping the server to wake it up in case it's asleep on Hugging Face
   useEffect(() => {
-    fetch(`${SERVER_URL}/health`).then((res) => {
+    const controller = new AbortController();
+    fetch(`${SERVER_URL}/health`, { signal: controller.signal }).then((res) => {
       console.log("[Wakeup] Server response:", res.status);
     }).catch((err) => {
-      console.log("[Wakeup] Server wake-up ping attempted:", err.message);
+      if (err?.name !== 'AbortError') {
+        console.log("[Wakeup] Server wake-up ping attempted:", err.message);
+      }
     });
+    return () => controller.abort();
   }, []);
+
+  // Propagate real-time avatar / profile edits to active multiplayer rooms & chat
+  useEffect(() => {
+    const handleProfileUpdated = (event: Event) => {
+      const detail = (event as CustomEvent)?.detail;
+      const latestProfile = detail?.profile || getCurrentUserProfile();
+      setCurrentUser(latestProfile);
+
+      let avatarUrl = typeof detail?.avatarUrl === 'string' ? detail.avatarUrl : undefined;
+      let avatarStyle = typeof detail?.avatarStyle === 'string' ? detail.avatarStyle : undefined;
+      let avatarSeed = typeof detail?.avatarSeed === 'string' ? detail.avatarSeed : undefined;
+      let displayName = typeof detail?.displayName === 'string' ? detail.displayName : undefined;
+
+      if (avatarUrl === undefined && avatarStyle === undefined && avatarSeed === undefined && latestProfile) {
+        avatarUrl = typeof latestProfile.avatarUrl === 'string' ? latestProfile.avatarUrl : undefined;
+        avatarStyle = typeof latestProfile.avatarStyle === 'string' ? latestProfile.avatarStyle : undefined;
+        avatarSeed = typeof (latestProfile as any).avatarSeed === 'string' ? (latestProfile as any).avatarSeed : undefined;
+        displayName = typeof latestProfile.displayName === 'string' ? latestProfile.displayName : undefined;
+      }
+
+      if (mp.isConnected && (avatarUrl !== undefined || avatarStyle !== undefined || avatarSeed !== undefined || displayName !== undefined)) {
+        mp.updatePlayerAvatar(mpRoomRef.current?.id || '', {
+          avatarUrl,
+          avatarStyle,
+          avatarSeed,
+          displayName
+        });
+      }
+    };
+
+    const handleAuthChanged = () => {
+      setCurrentUser(getCurrentUserProfile());
+    };
+
+    window.addEventListener('bugshot_profile_updated', handleProfileUpdated);
+    window.addEventListener('bugshot_auth_state_changed', handleAuthChanged);
+    return () => {
+      window.removeEventListener('bugshot_profile_updated', handleProfileUpdated);
+      window.removeEventListener('bugshot_auth_state_changed', handleAuthChanged);
+    };
+  }, [mp.isConnected, mp.updatePlayerAvatar]);
 
   // Enable VirtualKeyboard overlaysContent if available
   useEffect(() => {
@@ -320,56 +400,19 @@ export default function App() {
 
   const [isHardModeSelected, setIsHardModeSelected] = useState(false);
 
-  // Global dynamic stickers list preloaded on multiplayer selection entry (memoized to run only once)
-  const [stickersList, setStickersList] = useState<string[]>([]);
+  // Verified tactical stickers list (preloaded lazily without blind HTTP HEAD probing)
+  const stickersList = useMemo(() => [...TACTICAL_STICKERS], []);
+  const stickersPreloadedRef = useRef(false);
   useEffect(() => {
-    if (appState !== 'LOADING_MP' || stickersList.length > 0) return;
-    let isMounted = true;
-
-    const preloadStickers = async () => {
-      const found: string[] = [];
-      let i = 1;
-      let consecutiveFails = 0;
-      while (consecutiveFails < 3 && i < 100 && isMounted) {
-        const webpName = `sticker${i}.webp`;
-        const gifName = `sticker${i}.gif`;
-        try {
-          // Probe webp with strict Content-Type header checking (prevents Vite redirect fallbacks)
-          const resWebp = await fetch(`/sticker/${webpName}`, { method: 'HEAD' });
-          const ctWebp = resWebp.headers.get('content-type') || '';
-          if (resWebp.ok && ctWebp.startsWith('image/')) {
-            found.push(webpName);
-            const img = new Image();
-            img.src = `/sticker/${webpName}`;
-            consecutiveFails = 0;
-          } else {
-            // Probe gif with strict Content-Type header checking
-            const resGif = await fetch(`/sticker/${gifName}`, { method: 'HEAD' });
-            const ctGif = resGif.headers.get('content-type') || '';
-            if (resGif.ok && ctGif.startsWith('image/')) {
-              found.push(gifName);
-              const img = new Image();
-              img.src = `/sticker/${gifName}`;
-              consecutiveFails = 0;
-            } else {
-              consecutiveFails++;
-            }
-          }
-        } catch (e) {
-          consecutiveFails++;
-        }
-        i++;
-      }
-      if (isMounted) {
-        console.log('Preloaded stickers:', found);
-        setStickersList(found);
-      }
-    };
-    preloadStickers();
-
-    return () => {
-      isMounted = false;
-    };
+    if ((appState !== 'LOADING_MP' && appState !== 'LOBBY') || stickersPreloadedRef.current) return;
+    const timer = setTimeout(() => {
+      stickersPreloadedRef.current = true;
+      TACTICAL_STICKERS.forEach((stk) => {
+        const img = new Image();
+        img.src = `/sticker/${stk}`;
+      });
+    }, 300);
+    return () => clearTimeout(timer);
   }, [appState]);
 
   // Dealer AI only for singleplayer
@@ -392,37 +435,40 @@ export default function App() {
     selectTarotCard: spGame.selectTarotCard
   });
 
-  const handleResetSettings = () => setSettings(DEFAULT_SETTINGS);
+  const handleResetSettings = useCallback(() => setSettings(DEFAULT_SETTINGS), []);
 
   const handleBootComplete = useCallback(() => {
-    spGame.setGamePhase('INTRO');
+    spGameRef.current.setGamePhase('INTRO');
     audioManager.playMusic('menu');
-  }, [spGame]);
+  }, []);
 
-  const handleStartSP = (name: string, hardMode: boolean = false) => {
+  const handleStartSP = useCallback((name: string, hardMode: boolean = false) => {
     setIsHardModeSelected(hardMode);
-    if (name) spGame.setPlayerName(name);
+    if (name) spGameRef.current.setPlayerName(name);
 
     audioManager.stopMusic();
     setAppState('LOADING_SP');
-  };
+  }, []);
 
-  const handleStartMP = (name: string) => {
-    spGame.setPlayerName(name);
+  const handleStartMP = useCallback((name: string) => {
+    spGameRef.current.setPlayerName(name);
     setAppState('LOADING_MP');
     mp.connect(name);
-  };
+  }, [mp.connect]);
 
   // Broadcast local actions to server
-  const handleFireShot = async (target: TurnOwner) => {
-    if (spGame.gameState.phase !== 'PLAYER_TURN' && spGame.gameState.phase !== 'DEALER_TURN' && spGame.gameState.phase !== 'PLAYER3_TURN' && spGame.gameState.phase !== 'RESOLVING') return;
-    if (spGame.gameState.turnOwner !== 'PLAYER') return;
-    if (spGame.isProcessing) return;
+  const handleFireShot = useCallback(async (target: TurnOwner) => {
+    const game = spGameRef.current;
+    const currentRoom = mpRoomRef.current;
+    const currentPlayerId = mpPlayerIdRef.current;
+    if (game.gameState.phase !== 'PLAYER_TURN' && game.gameState.phase !== 'DEALER_TURN' && game.gameState.phase !== 'PLAYER3_TURN' && game.gameState.phase !== 'RESOLVING') return;
+    if (game.gameState.turnOwner !== 'PLAYER') return;
+    if (game.isProcessing) return;
 
     const isMobile = window.matchMedia('(pointer: coarse)').matches;
-    const isMultiPlayerGame = spGame.gameState.isThreePlayer || spGame.gameState.isFourPlayer;
-    const playersList = mp.room?.players || [];
-    const myId = mp.playerId || '';
+    const isMultiPlayerGame = game.gameState.isThreePlayer || game.gameState.isFourPlayer;
+    const playersList = currentRoom?.players || [];
+    const myId = currentPlayerId || '';
     const opponentId = playersList.find((p: any) => p.id !== myId)?.id;
 
     if (isMultiPlayerGame) {
@@ -437,45 +483,48 @@ export default function App() {
       const intendedAim: AimTarget = target === 'PLAYER'
         ? 'SELF'
         : (target === 'PLAYER3' ? 'LEFT' : (target === 'PLAYER4' ? 'RIGHT' : 'OPPONENT'));
-      if (isMobile && spGame.aimTarget !== intendedAim) {
-        spGame.setAimTarget(intendedAim);
-        spGame.setCameraView('GUN');
-        if (mp.room) {
-          mp.sendImmediateAction(mp.room.id, { type: 'HOVER_TARGET', target: intendedAim, targetId: targetPlayerId });
+      if (isMobile && game.aimTarget !== intendedAim) {
+        game.setAimTarget(intendedAim);
+        game.setCameraView('GUN');
+        if (currentRoom) {
+          mp.sendImmediateAction(currentRoom.id, { type: 'HOVER_TARGET', target: intendedAim, targetId: targetPlayerId });
         }
         return;
       }
 
-      if (mp.room) {
-        mp.sendImmediateAction(mp.room.id, { type: 'SHOOT', shooterId: myId, targetId: targetPlayerId, target });
+      if (currentRoom) {
+        mp.sendImmediateAction(currentRoom.id, { type: 'SHOOT', shooterId: myId, targetId: targetPlayerId, target });
       }
-      await spGame.fireShot('PLAYER', target);
+      await game.fireShot('PLAYER', target);
       return;
     }
 
     const intendedAim = target === 'DEALER' ? 'OPPONENT' : 'SELF';
     const hoverTargetId = target === 'PLAYER' ? myId : opponentId;
 
-    if (isMobile && spGame.aimTarget !== intendedAim) {
-      spGame.setAimTarget(intendedAim);
-      spGame.setCameraView('GUN');
+    if (isMobile && game.aimTarget !== intendedAim) {
+      game.setAimTarget(intendedAim);
+      game.setCameraView('GUN');
       
-      if (appState === 'GAME' && spGame.gameState.isMultiplayer && mp.room) {
-        mp.sendImmediateAction(mp.room.id, { type: 'HOVER_TARGET', target: intendedAim, targetId: hoverTargetId });
+      if (appStateRef.current === 'GAME' && game.gameState.isMultiplayer && currentRoom) {
+        mp.sendImmediateAction(currentRoom.id, { type: 'HOVER_TARGET', target: intendedAim, targetId: hoverTargetId });
       }
       return;
     }
 
-    if (appState === 'GAME' && spGame.gameState.isMultiplayer && mp.room) {
-      mp.sendImmediateAction(mp.room.id, { type: 'SHOOT', shooter: 'PLAYER', target, targetId: hoverTargetId });
+    if (appStateRef.current === 'GAME' && game.gameState.isMultiplayer && currentRoom) {
+      mp.sendImmediateAction(currentRoom.id, { type: 'SHOOT', shooter: 'PLAYER', target, targetId: hoverTargetId });
     }
-    await spGame.fireShot('PLAYER', target);
-  };
+    await game.fireShot('PLAYER', target);
+  }, [mp.sendImmediateAction]);
 
-  const handleUseItem = async (index: number, targetPlayerId?: string) => {
-    if (appState === 'GAME' && spGame.gameState.isMultiplayer) {
-      if (spGame.gameState.turnOwner !== 'PLAYER') return;
-      const item = spGame.player.items[index];
+  const handleUseItem = useCallback(async (index: number, targetPlayerId?: string) => {
+    const game = spGameRef.current;
+    const currentRoom = mpRoomRef.current;
+    const currentPlayerId = mpPlayerIdRef.current;
+    if (appStateRef.current === 'GAME' && game.gameState.isMultiplayer) {
+      if (game.gameState.turnOwner !== 'PLAYER') return;
+      const item = game.player.items[index];
       
       let deckCards: string[] | undefined;
       let jackpotOutcome: 'JACKPOT' | 'NORMAL' | 'LOSE' | undefined;
@@ -483,7 +532,7 @@ export default function App() {
       let contractLoot: string[] | undefined;
       let phoneFutureIndex: number | undefined;
 
-      const isThreePlayer = spGame.gameState.isThreePlayer;
+      const isThreePlayer = game.gameState.isThreePlayer;
 
       if (item === 'DECK_CARD') {
         const allTarotNames = [
@@ -494,16 +543,16 @@ export default function App() {
         deckCards = shuffled.slice(0, 6);
       } else if (item === 'JACKPOT') {
         jackpotOutcome = resolveJackpotOutcome();
-        if (jackpotOutcome === 'JACKPOT' && mp.room) {
-          mp.sendMessage(mp.room.id, '[STICKER]:sticker9.gif');
+        if (jackpotOutcome === 'JACKPOT' && currentRoom) {
+          mp.sendMessage(currentRoom.id, '[STICKER]:sticker9.gif');
         }
       } else if (item === 'CRUSHER') {
         if (isThreePlayer) {
-          const playersList = mp.room?.players || [];
-          const myId = mp.playerId || '';
+          const playersList = currentRoom?.players || [];
+          const myId = currentPlayerId || '';
           
-          const resolveTargetOwner = (targetPlayerId: string, localPlayerId: string, players: any[]): TurnOwner => {
-            if (targetPlayerId === localPlayerId) return 'PLAYER';
+          const resolveTargetOwner = (targetId: string, localPlayerId: string, players: any[]): TurnOwner => {
+            if (targetId === localPlayerId) return 'PLAYER';
             const myIndex = players.findIndex(p => p.id === localPlayerId);
             const size = players.length;
             if (myIndex === -1) return 'DEALER';
@@ -511,24 +560,24 @@ export default function App() {
             const leftOpponent = players[(myIndex + 1) % size];
             const rightOpponent = size >= 4 ? players[(myIndex + 3) % size] : null;
             
-            if (frontOpponent && targetPlayerId === frontOpponent.id) return 'DEALER';
-            if (leftOpponent && targetPlayerId === leftOpponent.id) return 'PLAYER3';
-            if (rightOpponent && targetPlayerId === rightOpponent.id) return 'PLAYER4';
+            if (frontOpponent && targetId === frontOpponent.id) return 'DEALER';
+            if (leftOpponent && targetId === leftOpponent.id) return 'PLAYER3';
+            if (rightOpponent && targetId === rightOpponent.id) return 'PLAYER4';
             return 'DEALER';
           };
 
           const targetOwner = targetPlayerId ? resolveTargetOwner(targetPlayerId, myId, playersList) : 'DEALER';
-          const targetState = targetOwner === 'PLAYER3' ? spGame.player3 : (targetOwner === 'PLAYER4' ? spGame.player4 : spGame.dealer);
+          const targetState = targetOwner === 'PLAYER3' ? game.player3 : (targetOwner === 'PLAYER4' ? game.player4 : game.dealer);
           if (targetState && targetState.items.length > 0) {
             crushIndex = Math.floor(Math.random() * targetState.items.length);
           }
         } else {
-          if (spGame.dealer.items.length > 0) {
-            crushIndex = Math.floor(Math.random() * spGame.dealer.items.length);
+          if (game.dealer.items.length > 0) {
+            crushIndex = Math.floor(Math.random() * game.dealer.items.length);
           }
         }
       } else if (item === 'CONTRACT') {
-        const activeCharms = spGame.player.luckycharmsUsed || 0;
+        const activeCharms = game.player.luckycharmsUsed || 0;
         const highTier = ['CHOKE', 'CIGS', 'SAW', 'GLASS', 'ADRENALINE'];
         const lowTier = ['BEER', 'PHONE', 'INVERTER', 'BIG_INVERTER', 'CUFFS'];
         const highWeight = 5 + (10 * activeCharms);
@@ -541,8 +590,8 @@ export default function App() {
         const item2 = pool[Math.floor(Math.random() * pool.length)];
         contractLoot = [item1, item2];
       } else if (item === 'PHONE') {
-        const checkLimit = spGame.gameState.chamber.length;
-        const current = spGame.gameState.currentShellIndex;
+        const checkLimit = game.gameState.chamber.length;
+        const current = game.gameState.currentShellIndex;
         const available = [];
         for (let i = current + 2; i < checkLimit; i++) {
           available.push(i);
@@ -552,8 +601,8 @@ export default function App() {
         }
       }
 
-      if (mp.room) {
-        mp.sendAction(mp.room.id, {
+      if (currentRoom) {
+        mp.sendAction(currentRoom.id, {
           type: 'USE_ITEM',
           item,
           index,
@@ -565,17 +614,19 @@ export default function App() {
           targetPlayerId
         });
       }
-      await spGame.usePlayerItem(index, deckCards, jackpotOutcome, crushIndex, contractLoot as any, phoneFutureIndex, targetPlayerId);
+      await game.usePlayerItem(index, deckCards, jackpotOutcome, crushIndex, contractLoot as any, phoneFutureIndex, targetPlayerId);
     } else {
-      await spGame.usePlayerItem(index, undefined, undefined, undefined, undefined, undefined, targetPlayerId);
+      await game.usePlayerItem(index, undefined, undefined, undefined, undefined, undefined, targetPlayerId);
     }
-  };
+  }, [mp.sendAction, mp.sendMessage]);
 
-  const handleCardClick = async (index: number) => {
-    if (appState === 'GAME' && spGame.gameState.isMultiplayer) {
-      if (spGame.gameState.turnOwner !== 'PLAYER') return;
+  const handleCardClick = useCallback(async (index: number) => {
+    const game = spGameRef.current;
+    const currentRoom = mpRoomRef.current;
+    if (appStateRef.current === 'GAME' && game.gameState.isMultiplayer) {
+      if (game.gameState.turnOwner !== 'PLAYER') return;
       
-      const cards = spGame.gameState.deckCards;
+      const cards = game.gameState.deckCards;
       const chosenCard = cards ? cards[index] : null;
       const cardRandoms: any = {};
 
@@ -586,7 +637,7 @@ export default function App() {
         } else if (chosenCard.name === 'Judgment') {
           cardRandoms.judgmentSuccess = Math.random() < 0.5;
         } else if (chosenCard.name === 'The Moon') {
-          const oppItems = spGame.dealer.items;
+          const oppItems = game.dealer.items;
           const stealableIndices = [];
           for (let i = 0; i < oppItems.length; i++) {
             if (oppItems[i] !== null && oppItems[i] !== 'TOTEM' && oppItems[i] !== 'JACKPOT') {
@@ -597,7 +648,7 @@ export default function App() {
             cardRandoms.moonIndex = stealableIndices[Math.floor(Math.random() * stealableIndices.length)];
           }
         } else if (chosenCard.name === 'Death') {
-          const myItems = spGame.player.items;
+          const myItems = game.player.items;
           const destructibleIndices = [];
           for (let i = 0; i < myItems.length; i++) {
             if (myItems[i] !== null) {
@@ -608,7 +659,7 @@ export default function App() {
             cardRandoms.deathIndex = destructibleIndices[Math.floor(Math.random() * destructibleIndices.length)];
           }
         } else if (chosenCard.name === 'The Tower') {
-          const oppItems = spGame.dealer.items;
+          const oppItems = game.dealer.items;
           const destructibleIndices = [];
           for (let i = 0; i < oppItems.length; i++) {
             if (oppItems[i] !== null && oppItems[i] !== 'TOTEM') {
@@ -619,8 +670,8 @@ export default function App() {
             cardRandoms.towerIndex = destructibleIndices[Math.floor(Math.random() * destructibleIndices.length)];
           }
         } else if (chosenCard.name === 'Wheel of Fortune') {
-          const chamber = [...spGame.gameState.chamber];
-          const idx = spGame.gameState.currentShellIndex;
+          const chamber = [...game.gameState.chamber];
+          const idx = game.gameState.currentShellIndex;
           const remaining = chamber.slice(idx);
           if (remaining.length > 0) {
             const shuffledRemaining = [...remaining].sort(() => Math.random() - 0.5);
@@ -632,57 +683,65 @@ export default function App() {
         }
       }
 
-      if (mp.room) {
-        mp.sendAction(mp.room.id, { type: 'SELECT_CARD', index, cardRandoms });
+      if (currentRoom) {
+        mp.sendAction(currentRoom.id, { type: 'SELECT_CARD', index, cardRandoms });
       }
-      await spGame.selectTarotCard(index, cardRandoms);
+      await game.selectTarotCard(index, cardRandoms);
     } else {
-      await spGame.selectTarotCard(index);
+      await game.selectTarotCard(index);
     }
-  };
+  }, [mp.sendAction]);
 
-  const handlePickupGun = () => {
-    if (appState === 'GAME' && spGame.gameState.isMultiplayer && mp.room) {
-      if (spGame.gameState.turnOwner !== 'PLAYER') return;
-      mp.sendAction(mp.room.id, { type: 'PICKUP_GUN' });
+  const handlePickupGun = useCallback(() => {
+    const game = spGameRef.current;
+    const currentRoom = mpRoomRef.current;
+    if (appStateRef.current === 'GAME' && game.gameState.isMultiplayer && currentRoom) {
+      if (game.gameState.turnOwner !== 'PLAYER') return;
+      mp.sendAction(currentRoom.id, { type: 'PICKUP_GUN' });
     }
-    spGame.pickupGun('PLAYER');
-  };
+    game.pickupGun('PLAYER');
+  }, [mp.sendAction]);
 
-  const handleStealItem = (index: number) => {
-    if (spGame.isProcessing) return;
-    if (spGame.gameState.phase !== 'STEALING') return;
+  const handleStealItem = useCallback((index: number) => {
+    const game = spGameRef.current;
+    const currentRoom = mpRoomRef.current;
+    if (game.isProcessing) return;
+    if (game.gameState.phase !== 'STEALING') return;
 
-    if (appState === 'GAME' && spGame.gameState.isMultiplayer && mp.room) {
-      if (spGame.gameState.turnOwner !== 'PLAYER') return;
-      mp.sendAction(mp.room.id, { type: 'STEAL_ITEM', index });
+    if (appStateRef.current === 'GAME' && game.gameState.isMultiplayer && currentRoom) {
+      if (game.gameState.turnOwner !== 'PLAYER') return;
+      mp.sendAction(currentRoom.id, { type: 'STEAL_ITEM', index });
     }
-    spGame.stealItem(index, 'PLAYER');
-  };
+    game.stealItem(index, 'PLAYER');
+  }, [mp.sendAction]);
 
-  const handleHoverTarget = (target: AimTarget, targetId?: string) => {
-    spGame.setAimTarget(target);
-    if (appState === 'GAME' && spGame.gameState.isMultiplayer && mp.room) {
-      if (spGame.gameState.turnOwner === 'PLAYER') {
+  const handleHoverTarget = useCallback((target: AimTarget, targetId?: string) => {
+    const game = spGameRef.current;
+    const currentRoom = mpRoomRef.current;
+    game.setAimTarget(target);
+    if (appStateRef.current === 'GAME' && game.gameState.isMultiplayer && currentRoom) {
+      if (game.gameState.turnOwner === 'PLAYER') {
         const now = Date.now();
         const last = lastHoverRef.current;
         if (last.target === target && last.targetId === targetId && now - last.time < 50) return;
         lastHoverRef.current = { target, targetId, time: now };
-        mp.sendImmediateAction(mp.room.id, { type: 'HOVER_TARGET', target, targetId });
+        mp.sendImmediateAction(currentRoom.id, { type: 'HOVER_TARGET', target, targetId });
       }
     }
-  };
+  }, [mp.sendImmediateAction]);
 
   // Listen for remote actions
   useEffect(() => {
     if (appState === 'GAME' && spGame.gameState.isMultiplayer) {
       mp.setOnAction(async ({ playerId, action }) => {
-        if (playerId !== mp.playerId) {
+        const game = spGameRef.current;
+        const currentRoom = mpRoomRef.current;
+        const myId = mpPlayerIdRef.current || '';
+        if (playerId !== myId) {
           console.log('Received remote action:', action);
 
-          const isMultiplayerSeat = spGame.gameState.isThreePlayer || spGame.gameState.isFourPlayer;
-          const playersList = mp.room?.players || [];
-          const myId = mp.playerId || '';
+          const isMultiplayerSeat = game.gameState.isThreePlayer || game.gameState.isFourPlayer;
+          const playersList = currentRoom?.players || [];
 
           const resolveTargetOwner = (targetPlayerId: string, localPlayerId: string, players: any[]): TurnOwner => {
             if (!targetPlayerId) return 'DEALER';
@@ -730,10 +789,10 @@ export default function App() {
           };
 
           const getPlayerSetter = (owner: TurnOwner) => {
-            if (owner === 'PLAYER') return spGame.setPlayer;
-            if (owner === 'PLAYER3') return spGame.setPlayer3;
-            if (owner === 'PLAYER4') return spGame.setPlayer4;
-            return spGame.setDealer;
+            if (owner === 'PLAYER') return game.setPlayer;
+            if (owner === 'PLAYER3') return game.setPlayer3;
+            if (owner === 'PLAYER4') return game.setPlayer4;
+            return game.setDealer;
           };
 
           if (isMultiplayerSeat) {
@@ -741,7 +800,7 @@ export default function App() {
             switch (action.type) {
               case 'SHOOT': {
                 const relTarget = resolveTargetOwner(action.targetId, myId, playersList);
-                spGame.fireShot(relSender, relTarget);
+                game.fireShot(relSender, relTarget);
                 break;
               }
               case 'USE_ITEM': {
@@ -754,14 +813,14 @@ export default function App() {
                   }
                   return { ...d, items: newItems };
                 });
-                await spGame.processItemEffect(relSender, action.item, action.deckCards, action.jackpotOutcome, action.crushIndex, action.contractLoot, action.phoneFutureIndex, action.targetPlayerId, false);
+                await game.processItemEffect(relSender, action.item, action.deckCards, action.jackpotOutcome, action.crushIndex, action.contractLoot, action.phoneFutureIndex, action.targetPlayerId, false);
                 break;
               }
               case 'PICKUP_GUN':
-                spGame.pickupGun(relSender);
+                game.pickupGun(relSender);
                 break;
               case 'STEAL_ITEM':
-                spGame.stealItem(action.index, relSender);
+                game.stealItem(action.index, relSender);
                 break;
               case 'HOVER_TARGET': {
                 let aim: AimTarget = action.target;
@@ -790,7 +849,7 @@ export default function App() {
                   else if (action.target === 'SELF') aim = 'OPPONENT';
                   else if (action.target === 'OPPONENT') aim = 'SELF';
                 }
-                spGame.setAimTarget(aim);
+                game.setAimTarget(aim);
                 break;
               }
               case 'DEBUG_SYNC_THREE_PLAYER':
@@ -826,10 +885,10 @@ export default function App() {
                       leftState = absoluteStates[(myIndex + 1) % 3];
                     }
                     
-                    if (myState) spGame.setPlayer(myState);
-                    if (frontState) spGame.setDealer(frontState);
-                    if (leftState) spGame.setPlayer3(leftState);
-                    if (rightState) spGame.setPlayer4(rightState);
+                    if (myState) game.setPlayer(myState);
+                    if (frontState) game.setDealer(frontState);
+                    if (leftState) game.setPlayer3(leftState);
+                    if (rightState) game.setPlayer4(rightState);
 
                     if (action.gameState) {
                       const relTurnOwner = resolveTargetOwner(action.gameState.turnOwnerId || action.gameState.turnOwner, myId, playersList);
@@ -838,7 +897,7 @@ export default function App() {
                       if (action.gameState.phase === 'PLAYER_TURN' || action.gameState.phase === 'DEALER_TURN' || action.gameState.phase === 'PLAYER3_TURN' || action.gameState.phase === 'PLAYER4_TURN') {
                         nextPhase = relTurnOwner === 'PLAYER' ? 'PLAYER_TURN' : (relTurnOwner === 'PLAYER3' ? 'PLAYER3_TURN' : (relTurnOwner === 'PLAYER4' ? 'PLAYER4_TURN' : 'DEALER_TURN'));
                       }
-                      spGame.setGameState(prev => {
+                      game.setGameState(prev => {
                         const targetPhase = (prev.phase === 'STEALING' && prev.turnOwner === 'PLAYER') ? 'STEALING' : nextPhase;
                         return {
                           ...prev,
@@ -877,41 +936,41 @@ export default function App() {
                   const nextHp = action.hp;
 
                   if (action.resetItems) {
-                    spGame.setPlayer(p => ({ ...p, hp: nextHp, maxHp: nextHp, items: myItems }));
-                    spGame.setDealer(d => ({ ...d, hp: nextHp, maxHp: nextHp, items: frontItems }));
-                    spGame.setPlayer3(p3 => ({ ...p3, hp: nextHp, maxHp: nextHp, items: leftItems }));
+                    game.setPlayer(p => ({ ...p, hp: nextHp, maxHp: nextHp, items: myItems }));
+                    game.setDealer(d => ({ ...d, hp: nextHp, maxHp: nextHp, items: frontItems }));
+                    game.setPlayer3(p3 => ({ ...p3, hp: nextHp, maxHp: nextHp, items: leftItems }));
                     if (size >= 4) {
-                      spGame.setPlayer4(p4 => ({ ...p4, hp: nextHp, maxHp: nextHp, items: rightItems }));
+                      game.setPlayer4(p4 => ({ ...p4, hp: nextHp, maxHp: nextHp, items: rightItems }));
                     }
                   } else {
-                    spGame.setPlayer3(p3 => ({ ...p3, items: [...p3.items, ...leftItems].slice(0, 8) }));
+                    game.setPlayer3(p3 => ({ ...p3, items: [...p3.items, ...leftItems].slice(0, 8) }));
                     if (size >= 4) {
-                      spGame.setPlayer4(p4 => ({ ...p4, items: [...p4.items, ...rightItems].slice(0, 8) }));
+                      game.setPlayer4(p4 => ({ ...p4, items: [...p4.items, ...rightItems].slice(0, 8) }));
                     }
                   }
 
                   if (action.threePlayerWins) {
-                    spGame.setGameState(prev => ({ ...prev, threePlayerWins: action.threePlayerWins }));
+                    game.setGameState(prev => ({ ...prev, threePlayerWins: action.threePlayerWins }));
                   }
                   if (action.fourPlayerWins) {
-                    spGame.setGameState(prev => ({ ...prev, fourPlayerWins: action.fourPlayerWins }));
+                    game.setGameState(prev => ({ ...prev, fourPlayerWins: action.fourPlayerWins }));
                   }
 
                   const relTurnOwner = resolveTargetOwner(action.nextTurnOwnerId, myId, playersList);
-                  spGame.setOverlayText(action.resetItems ? `ROUND ${action.roundNum || 1}` : 'RELOADING NEW BATCH...');
+                  game.setOverlayText(action.resetItems ? `ROUND ${action.roundNum || 1}` : 'RELOADING NEW BATCH...');
 
-                  spGame.startRound(
+                  game.startRound(
                       action.resetItems || false,
                       false,
                       undefined,
                       action.chamber,
-                      action.resetItems ? myItems : [...spGame.player.items, ...myItems].slice(0, 8),
-                      action.resetItems ? frontItems : [...spGame.dealer.items, ...frontItems].slice(0, 8),
+                      action.resetItems ? myItems : [...game.player.items, ...myItems].slice(0, 8),
+                      action.resetItems ? frontItems : [...game.dealer.items, ...frontItems].slice(0, 8),
                       relTurnOwner,
                       action.hp,
                       undefined,
-                      action.resetItems ? leftItems : [...spGame.player3.items, ...leftItems].slice(0, 8),
-                      action.resetItems ? rightItems : [...spGame.player4.items, ...rightItems].slice(0, 8)
+                      action.resetItems ? leftItems : [...game.player3.items, ...leftItems].slice(0, 8),
+                      action.resetItems ? rightItems : [...game.player4.items, ...rightItems].slice(0, 8)
                   );
                 }
                 break;
@@ -922,15 +981,15 @@ export default function App() {
 
           switch (action.type) {
             case 'SHOOT': {
-              const targetOwner = action.targetId && mp.room?.players
-                ? resolveTargetOwner(action.targetId, myId, mp.room.players)
+              const targetOwner = action.targetId && currentRoom?.players
+                ? resolveTargetOwner(action.targetId, myId, currentRoom.players)
                 : (action.target === 'PLAYER' ? 'PLAYER' : 'DEALER');
-              spGame.setAimTarget(targetOwner === 'PLAYER' ? 'SELF' : 'OPPONENT');
-              spGame.fireShot('DEALER', targetOwner);
+              game.setAimTarget(targetOwner === 'PLAYER' ? 'SELF' : 'OPPONENT');
+              game.fireShot('DEALER', targetOwner);
               break;
             }
             case 'USE_ITEM':
-              spGame.setDealer(d => {
+              game.setDealer(d => {
                 const newItems = [...d.items];
                 const idx = action.index !== undefined ? action.index : newItems.indexOf(action.item);
                 if (idx !== -1) {
@@ -938,41 +997,42 @@ export default function App() {
                 }
                 return { ...d, items: newItems };
               });
-              await spGame.processItemEffect('DEALER', action.item, action.deckCards, action.jackpotOutcome, action.crushIndex, action.contractLoot, action.phoneFutureIndex);
+              await game.processItemEffect('DEALER', action.item, action.deckCards, action.jackpotOutcome, action.crushIndex, action.contractLoot, action.phoneFutureIndex);
               break;
             case 'SELECT_CARD':
-              spGame.selectTarotCard(action.index, action.cardRandoms);
+              game.selectTarotCard(action.index, action.cardRandoms);
               break;
             case 'PICKUP_GUN':
-              spGame.pickupGun('DEALER');
+              game.pickupGun('DEALER');
               break;
             case 'STEAL_ITEM':
-              spGame.stealItem(action.index, 'DEALER');
+              game.stealItem(action.index, 'DEALER');
               break;
             case 'HOVER_TARGET': {
               let remoteAim: AimTarget = action.target;
-              if (action.targetId && mp.room?.players) {
-                const relTarget = resolveTargetOwner(action.targetId, myId, mp.room.players);
+              if (action.targetId && currentRoom?.players) {
+                const relTarget = resolveTargetOwner(action.targetId, myId, currentRoom.players);
                 remoteAim = relTarget === 'DEALER' ? 'SELF' : 'OPPONENT';
               }
-              spGame.setAimTarget(remoteAim);
+              game.setAimTarget(remoteAim);
               break;
             }
-            case 'SYNC_ROUND':
-              const iAmHost = mp.playerId === (mp.room?.hostId || '');
-              spGame.setOverlayText(action.resetItems ? `ROUND ${(action.roundNum || 1)}` : 'RELOADING NEW BATCH...');
+            case 'SYNC_ROUND': {
+              const iAmHost = myId === (currentRoom?.hostId || '');
+              game.setOverlayText(action.resetItems ? `ROUND ${(action.roundNum || 1)}` : 'RELOADING NEW BATCH...');
               const pItems = iAmHost ? action.hostItems : action.clientItems;
               const dItems = iAmHost ? action.clientItems : action.hostItems;
               const clientNextTurn = action.nextTurnOwner === 'PLAYER' ? 'DEALER' : 'PLAYER';
               // @ts-ignore
-              await spGame.startRound(action.resetItems || false, false, undefined, action.chamber, pItems, dItems, clientNextTurn, action.hp);
+              await game.startRound(action.resetItems || false, false, undefined, action.chamber, pItems, dItems, clientNextTurn, action.hp);
               break;
+            }
             case 'DEBUG_SYNC_PLAYER':
-              spGame.setDealer(action.player);
+              game.setDealer(action.player);
               break;
             case 'DEBUG_SYNC_PLAYER_MODEL': {
               // Transient model override from a remote dev client — do not persist
-              spGame.setGameState(prev => {
+              game.setGameState(prev => {
                 const mpState = (prev.multiplayerState as any) || {};
                 const debugKey = action.playerId ?? (action.playerIndex !== undefined ? action.playerIndex : undefined);
                 const nextMpState = {
@@ -987,7 +1047,7 @@ export default function App() {
               break;
             }
             case 'DEBUG_SYNC_DEALER':
-              spGame.setPlayer(action.dealer);
+              game.setPlayer(action.dealer);
               break;
             case 'DEBUG_SYNC_GAMESTATE': {
               const invGameState = { ...action.gameState };
@@ -1001,7 +1061,7 @@ export default function App() {
               if (action.gameState.winner) {
                 invGameState.winner = action.gameState.winner === 'PLAYER' ? 'DEALER' : 'PLAYER';
               }
-              spGame.setGameState(prev => ({
+              game.setGameState(prev => ({
                 ...prev,
                 ...invGameState,
                 localPlayerId: prev.localPlayerId,
@@ -1015,11 +1075,11 @@ export default function App() {
               break;
             }
             case 'SYNC_MP_GAME_OVER': {
-              const resolvedWinner = mp.playerId === mp.room?.hostId
+              const resolvedWinner = myId === currentRoom?.hostId
                 ? action.winner
                 : (action.winner === 'PLAYER' ? 'DEALER' : 'PLAYER');
 
-              spGame.setGameState(prev => ({
+              game.setGameState(prev => ({
                 ...prev,
                 winner: resolvedWinner,
                 phase: 'GAME_OVER',
@@ -1027,7 +1087,7 @@ export default function App() {
               }));
               break;
             }
-            case 'SYNC_STATE':
+            case 'SYNC_STATE': {
               // Deep sync if host tells us the ground truth
               // CRITICAL: We must invert the perspective for the remote player
               const invertedGameState = { ...action.gameState };
@@ -1043,32 +1103,36 @@ export default function App() {
               }
 
               // Correct opponentName sync: opponent for client is host
-              const host = mp.room?.players?.find((p: any) => p.id === mp.room.hostId);
+              const host = currentRoom?.players?.find((p: any) => p.id === currentRoom.hostId);
               invertedGameState.opponentName = host ? host.name : 'OPPONENT';
 
-              spGame.syncState({
+              game.syncState({
                 player: action.player2State, // Remote's player 2 (our local player)
                 dealer: action.player1State, // Remote's player 1 (host / our dealer)
                 gameState: invertedGameState
               });
               break;
+            }
           }
         }
       });
+      return () => {
+        mp.setOnAction(() => {});
+      };
     }
-  }, [appState, spGame.gameState.isMultiplayer, mp.playerId, mp.setOnAction, mp.room, spGame]);
+  }, [appState, spGame.gameState.isMultiplayer, mp.setOnAction]);
 
   useEffect(() => {
     if (mp.isConnected && appState === 'LOADING_MP') {
       if (initialRoomId && /^[0-9]{4}$/.test(initialRoomId)) {
-        mp.joinRoom(initialRoomId, spGame.playerName);
+        mp.joinRoom(initialRoomId, spGameRef.current.playerName);
         window.history.replaceState({}, document.title, window.location.pathname);
         setInitialRoomId(null);
       } else {
         setAppState('MP_SELECTION');
       }
     }
-  }, [mp.isConnected, appState, initialRoomId, spGame.playerName]);
+  }, [mp.isConnected, appState, initialRoomId, mp.joinRoom]);
 
   useEffect(() => {
     if (mp.room && (appState === 'MP_SELECTION' || appState === 'LOADING_MP')) {
@@ -1079,149 +1143,162 @@ export default function App() {
   }, [mp.room, appState]);
 
   useEffect(() => {
-    if (mp.isConnected) {
-      // Handle Game Start from Server
-      mp.socket?.on('gameStarted', ({ room, gameData }: { room: any, gameData: any }) => {
-        console.log('Multiplayer game starting...', room, gameData);
+    if (!mp.isConnected || !mp.socket) return;
+    const activeSocket = mp.socket;
 
-        const playerCount = room.players?.length || 2;
-        const isMulti = playerCount >= 3;
-        const iAmHost = mp.playerId === room.hostId;
+    const handleGameStarted = ({ room, gameData }: { room: any, gameData: any }) => {
+      console.log('Multiplayer game starting...', room, gameData);
+      const game = spGameRef.current;
+      const myId = mpPlayerIdRef.current || '';
+      const playerCount = room.players?.length || 2;
+      const isMulti = playerCount >= 3;
+      const iAmHost = myId === room.hostId;
 
-        const resolveTargetOwner = (targetPlayerId: string, localPlayerId: string, players: any[]): TurnOwner => {
-          if (targetPlayerId === localPlayerId) return 'PLAYER';
-          const myIndex = players.findIndex(p => p.id === localPlayerId);
-          const size = players.length;
-          if (myIndex === -1) return 'DEALER';
-          const frontOpponent = players[(myIndex + 2) % size];
-          const leftOpponent = players[(myIndex + 1) % size];
-          const rightOpponent = size >= 4 ? players[(myIndex + 3) % size] : null;
-          
-          if (frontOpponent && targetPlayerId === frontOpponent.id) return 'DEALER';
-          if (leftOpponent && targetPlayerId === leftOpponent.id) return 'PLAYER3';
-          if (rightOpponent && targetPlayerId === rightOpponent.id) return 'PLAYER4';
-          return 'DEALER';
-        };
+      const resolveTargetOwner = (targetPlayerId: string, localPlayerId: string, players: any[]): TurnOwner => {
+        if (targetPlayerId === localPlayerId) return 'PLAYER';
+        const myIndex = players.findIndex(p => p.id === localPlayerId);
+        const size = players.length;
+        if (myIndex === -1) return 'DEALER';
+        const frontOpponent = players[(myIndex + 2) % size];
+        const leftOpponent = players[(myIndex + 1) % size];
+        const rightOpponent = size >= 4 ? players[(myIndex + 3) % size] : null;
+        
+        if (frontOpponent && targetPlayerId === frontOpponent.id) return 'DEALER';
+        if (leftOpponent && targetPlayerId === leftOpponent.id) return 'PLAYER3';
+        if (rightOpponent && targetPlayerId === rightOpponent.id) return 'PLAYER4';
+        return 'DEALER';
+      };
 
-        if (isMulti) {
-          const myIndex = room.players.findIndex((p: any) => p.id === mp.playerId);
-          const myItems = gameData[`items${myIndex}`] || [];
-          const frontItems = gameData[`items${(myIndex + 2) % playerCount}`] || [];
-          const leftItems = gameData[`items${(myIndex + 1) % playerCount}`] || [];
-          const rightItems = playerCount >= 4 ? gameData[`items${(myIndex + 3) % playerCount}`] : [];
+      if (isMulti) {
+        const myIndex = room.players.findIndex((p: any) => p.id === myId);
+        const myItems = gameData[`items${myIndex}`] || [];
+        const frontItems = gameData[`items${(myIndex + 2) % playerCount}`] || [];
+        const leftItems = gameData[`items${(myIndex + 1) % playerCount}`] || [];
+        const rightItems = playerCount >= 4 ? gameData[`items${(myIndex + 3) % playerCount}`] : [];
 
-          const frontOpponent = room.players[(myIndex + 2) % playerCount];
-          const opponentName = frontOpponent ? frontOpponent.name : 'OPPONENT';
+        const frontOpponent = room.players[(myIndex + 2) % playerCount];
+        const opponentName = frontOpponent ? frontOpponent.name : 'OPPONENT';
 
-          let initialTurnOwnerId = room.players[0].id;
-          const initialTurnOwner = resolveTargetOwner(initialTurnOwnerId, mp.playerId || '', room.players);
-
-          setAppState('LOADING_GAME');
-
-          if (gameStartTimeoutRef.current) clearTimeout(gameStartTimeoutRef.current);
-          gameStartTimeoutRef.current = setTimeout(() => {
-            gameStartTimeoutRef.current = null;
-            spGame.setPlayer3({ hp: gameData.hpOverride, maxHp: gameData.hpOverride, items: leftItems, isHandcuffed: false, isSawedActive: false });
-            if (playerCount >= 4) {
-              spGame.setPlayer4({ hp: gameData.hpOverride, maxHp: gameData.hpOverride, items: rightItems, isHandcuffed: false, isSawedActive: false });
-            }
-            spGame.startGame(
-              spGame.playerName,
-              false,
-              true,
-              opponentName,
-              initialTurnOwner,
-              gameData.chamber,
-              myItems,
-              frontItems,
-              gameData.hpOverride,
-              room.settings,
-              leftItems,
-              rightItems
-            );
-
-            spGame.setGameState(prev => ({
-                ...prev,
-                isThreePlayer: playerCount === 3,
-                isFourPlayer: playerCount === 4,
-                localPlayerId: mp.playerId || '',
-                turnOwner: initialTurnOwner,
-                multiplayerState: room
-              }));
-            }, 100);
-          return;
-        }
-
-        const opponent = room.players.find((p: any) => p.id !== mp.playerId);
-        const opponentName = opponent ? opponent.name : 'OPPONENT';
-
-        const chamberOverride = gameData.chamber;
-        const pItemsOverride = iAmHost ? gameData.hostItems : gameData.clientItems;
-        const dItemsOverride = iAmHost ? gameData.clientItems : gameData.hostItems;
-
-        let initialTurnOwner: import('./types').TurnOwner = 'PLAYER';
-        if (gameData.hostStarts) {
-          initialTurnOwner = iAmHost ? 'PLAYER' : 'DEALER';
-        } else {
-          initialTurnOwner = iAmHost ? 'DEALER' : 'PLAYER';
-        }
+        const initialTurnOwnerId = room.players[0].id;
+        const initialTurnOwner = resolveTargetOwner(initialTurnOwnerId, myId, room.players);
 
         setAppState('LOADING_GAME');
 
         if (gameStartTimeoutRef.current) clearTimeout(gameStartTimeoutRef.current);
         gameStartTimeoutRef.current = setTimeout(() => {
           gameStartTimeoutRef.current = null;
-          spGame.startGame(
-            spGame.playerName,
-            false, // hardMode
-            true, // isMultiplayer
+          const latestGame = spGameRef.current;
+          latestGame.setPlayer3({ hp: gameData.hpOverride, maxHp: gameData.hpOverride, items: leftItems, isHandcuffed: false, isSawedActive: false });
+          if (playerCount >= 4) {
+            latestGame.setPlayer4({ hp: gameData.hpOverride, maxHp: gameData.hpOverride, items: rightItems, isHandcuffed: false, isSawedActive: false });
+          }
+          latestGame.startGame(
+            latestGame.playerName,
+            false,
+            true,
             opponentName,
             initialTurnOwner,
-            chamberOverride,
-            pItemsOverride,
-            dItemsOverride,
-            gameData.hpOverride, // Apply HP from settings
-            room.settings
+            gameData.chamber,
+            myItems,
+            frontItems,
+            gameData.hpOverride,
+            room.settings,
+            leftItems,
+            rightItems
           );
-          spGame.setGameState(prev => ({
-            ...prev,
-            localPlayerId: mp.playerId || '',
-            multiplayerState: room
-          }));
-        }, 100);
-      });
 
-      // Handle Game Reset/Play Again from Server
-      mp.socket?.on('matchReset', () => {
-        console.log('Multiplayer match reset by host, returning to lobby...');
-        lastTotalWins.current = 0;
-        spGame.resetGame(true); // Reset game states cleanly
-        setAppState('LOBBY');   // Route back to lobby view
-      });
+          latestGame.setGameState(prev => ({
+              ...prev,
+              isThreePlayer: playerCount === 3,
+              isFourPlayer: playerCount === 4,
+              localPlayerId: mpPlayerIdRef.current || myId,
+              turnOwner: initialTurnOwner,
+              multiplayerState: room
+            }));
+          }, 100);
+        return;
+      }
 
-      // Handle kicked event routing
-      mp.socket?.on('kicked', () => {
-        setAppState('MP_SELECTION');
-      });
+      const opponent = room.players.find((p: any) => p.id !== myId);
+      const opponentName = opponent ? opponent.name : 'OPPONENT';
 
-      // Handle opponent disconnection mid-game
-      mp.socket?.on('matchAborted', ({ abortedBy }: { abortedBy: string }) => {
-        console.log(`Multiplayer match aborted: ${abortedBy} disconnected.`);
-        setAbortedByName(abortedBy);
-      });
+      const chamberOverride = gameData.chamber;
+      const pItemsOverride = iAmHost ? gameData.hostItems : gameData.clientItems;
+      const dItemsOverride = iAmHost ? gameData.clientItems : gameData.hostItems;
 
-      return () => {
-        if (gameStartTimeoutRef.current) {
-          clearTimeout(gameStartTimeoutRef.current);
-          gameStartTimeoutRef.current = null;
-        }
-        mp.socket?.off('gameStarted');
-        mp.socket?.off('matchReset');
-        mp.socket?.off('kicked');
-        mp.socket?.off('matchAborted');
-      };
-    }
-  }, [mp.isConnected, mp.socket, mp.playerId, spGame]);
+      let initialTurnOwner: import('./types').TurnOwner = 'PLAYER';
+      if (gameData.hostStarts) {
+        initialTurnOwner = iAmHost ? 'PLAYER' : 'DEALER';
+      } else {
+        initialTurnOwner = iAmHost ? 'DEALER' : 'PLAYER';
+      }
+
+      setAppState('LOADING_GAME');
+
+      if (gameStartTimeoutRef.current) clearTimeout(gameStartTimeoutRef.current);
+      gameStartTimeoutRef.current = setTimeout(() => {
+        gameStartTimeoutRef.current = null;
+        const latestGame = spGameRef.current;
+        latestGame.startGame(
+          latestGame.playerName,
+          false, // hardMode
+          true, // isMultiplayer
+          opponentName,
+          initialTurnOwner,
+          chamberOverride,
+          pItemsOverride,
+          dItemsOverride,
+          gameData.hpOverride, // Apply HP from settings
+          room.settings
+        );
+        latestGame.setGameState(prev => ({
+          ...prev,
+          localPlayerId: mpPlayerIdRef.current || myId,
+          multiplayerState: room
+        }));
+      }, 100);
+    };
+
+    const handleMatchReset = () => {
+      console.log('Multiplayer match reset by host, returning to lobby...');
+      if (gameStartTimeoutRef.current) {
+        clearTimeout(gameStartTimeoutRef.current);
+        gameStartTimeoutRef.current = null;
+      }
+      lastTotalWins.current = 0;
+      setAbortedByName(null);
+      setNameTags([]);
+      spGameRef.current.resetGame(true); // Reset game states cleanly
+      setAppState('LOBBY');   // Route back to lobby view
+    };
+
+    const handleKicked = () => {
+      if (gameStartTimeoutRef.current) {
+        clearTimeout(gameStartTimeoutRef.current);
+        gameStartTimeoutRef.current = null;
+      }
+      setAbortedByName(null);
+      setNameTags([]);
+      setAppState('MP_SELECTION');
+    };
+
+    const handleMatchAborted = ({ abortedBy }: { abortedBy: string }) => {
+      console.log(`Multiplayer match aborted: ${abortedBy} disconnected.`);
+      setAbortedByName(abortedBy);
+    };
+
+    activeSocket.on('gameStarted', handleGameStarted);
+    activeSocket.on('matchReset', handleMatchReset);
+    activeSocket.on('kicked', handleKicked);
+    activeSocket.on('matchAborted', handleMatchAborted);
+
+    return () => {
+      activeSocket.off('gameStarted', handleGameStarted);
+      activeSocket.off('matchReset', handleMatchReset);
+      activeSocket.off('kicked', handleKicked);
+      activeSocket.off('matchAborted', handleMatchAborted);
+    };
+  }, [mp.isConnected, mp.socket]);
 
   // Shared utility: Generate a randomized chamber and item batches for multiplayer rounds
   const generateMPBatch = useCallback((settings: any, playerCount: number, hostCharms: number = 0, clientCharms: number = 0) => {
@@ -1280,10 +1357,12 @@ export default function App() {
       return { chamber, lootBatches, lives, blanks };
   }, []);
 
-  const handleStartMPGame = () => {
-    if (mp.room && mp.playerId === mp.room.hostId) {
-      const settings = mp.room.settings || { rounds: 3, hp: 2, itemsPerShipment: 2 };
-      const playerCount = mp.room?.players?.length || 2;
+  const handleStartMPGame = useCallback(() => {
+    const currentRoom = mpRoomRef.current;
+    const currentPlayerId = mpPlayerIdRef.current;
+    if (currentRoom && currentPlayerId === currentRoom.hostId) {
+      const settings = currentRoom.settings || { rounds: 3, hp: 2, itemsPerShipment: 2 };
+      const playerCount = currentRoom?.players?.length || 2;
       const isMulti = playerCount >= 3;
 
       if (isMulti) {
@@ -1299,7 +1378,7 @@ export default function App() {
           gameData[`items${i}`] = lootBatches[i];
         }
         lastTotalWins.current = 0;
-        mp.startGame(mp.room.id, gameData);
+        mp.startGame(currentRoom.id, gameData);
       } else {
         const { chamber, hostItems, clientItems } = generateMPBatch(settings, playerCount, 0, 0);
         const hpVal = settings.hp === 9 ? randomInt(2, 8) : settings.hp;
@@ -1312,324 +1391,321 @@ export default function App() {
           hpOverride: hpVal
         };
         lastTotalWins.current = 0;
-        mp.startGame(mp.room.id, gameData);
+        mp.startGame(currentRoom.id, gameData);
       }
     }
-  };
+  }, [generateMPBatch, generateMultiPlayerBatch, mp.startGame]);
 
   // Sync subsequent rounds
   useEffect(() => {
-    if (spGame.gameState.isMultiplayer && mp.room) {
-      spGame.setOnBatchEnd((keepTurn: boolean) => {
-        if (mp.playerId === mp.room.hostId) {
-          const settings = mp.room.settings || { rounds: 3, hp: 2, itemsPerShipment: 2 };
-          const playerCount = mp.room?.players?.length || 2;
-          const isMulti = playerCount >= 3;
+    if (!spGame.gameState.isMultiplayer) return;
 
-          const resolveTargetOwner = (targetPlayerId: string, localPlayerId: string, players: any[]): TurnOwner => {
-            if (targetPlayerId === localPlayerId) return 'PLAYER';
-            const myIndex = players.findIndex(p => p.id === localPlayerId);
-            const size = players.length;
-            if (myIndex === -1) return 'DEALER';
-            const frontOpponent = players[(myIndex + 2) % size];
-            const leftOpponent = players[(myIndex + 1) % size];
-            const rightOpponent = size >= 4 ? players[(myIndex + 3) % size] : null;
-            
-            if (frontOpponent && targetPlayerId === frontOpponent.id) return 'DEALER';
-            if (leftOpponent && targetPlayerId === leftOpponent.id) return 'PLAYER3';
-            if (rightOpponent && targetPlayerId === rightOpponent.id) return 'PLAYER4';
-            return 'DEALER';
-          };
+    spGame.setOnBatchEnd((keepTurn: boolean) => {
+      const game = spGameRef.current;
+      const currentRoom = mpRoomRef.current;
+      const myId = mpPlayerIdRef.current || '';
+      if (!currentRoom) return;
 
-          if (isMulti) {
-            console.log(`Batch end detected (HOST, ${playerCount}-Player) - Generating new batch... keepTurn:`, keepTurn);
-            const p0Charms = spGame.player.luckycharmsUsed || 0;
-            const p1Charms = spGame.dealer.luckycharmsUsed || 0;
-            const p2Charms = spGame.player3?.luckycharmsUsed || 0;
-            const p3Charms = spGame.player4?.luckycharmsUsed || 0;
-
-            const { chamber, lootBatches, lives, blanks } = generateMultiPlayerBatch(settings, [p0Charms, p1Charms, p2Charms, p3Charms], playerCount);
-            
-            const myId = mp.playerId || '';
-            const mPlayers = mp.room.players;
-            const myIndex = mPlayers.findIndex((p: any) => p.id === myId);
-
-            let currentTurnOwnerId = myId;
-            if (spGame.gameState.turnOwner === 'DEALER') currentTurnOwnerId = mPlayers[(myIndex + 2) % playerCount].id;
-            else if (spGame.gameState.turnOwner === 'PLAYER3') currentTurnOwnerId = mPlayers[(myIndex + 1) % playerCount].id;
-            else if (spGame.gameState.turnOwner === 'PLAYER4') currentTurnOwnerId = mPlayers[(myIndex + 3) % playerCount].id;
-
-            const nextStartsId = currentTurnOwnerId;
-
-            const syncAction: any = {
-              type: 'SYNC_THREE_PLAYER_ROUND',
-              chamber,
-              nextTurnOwnerId: nextStartsId,
-              resetItems: false,
-              hp: undefined
-            };
-            for (let i = 0; i < playerCount; i++) {
-              syncAction[`items${i}`] = lootBatches[i];
-            }
-
-            mp.sendImmediateAction(mp.room.id, syncAction);
-            mp.sendMessage(mp.room.id, `SYSTEM: NEW BATCH REPLENISHED - ${lives} LIVE, ${blanks} BLANK`);
-            spGame.setOverlayText('RELOADING NEW BATCH...');
-
-            const myItems = syncAction[`items${myIndex}`] || [];
-            const frontItems = syncAction[`items${(myIndex + 2) % playerCount}`] || [];
-            const leftItems = syncAction[`items${(myIndex + 1) % playerCount}`] || [];
-            const rightItems = playerCount >= 4 ? syncAction[`items${(myIndex + 3) % playerCount}`] : [];
-
-            spGame.setPlayer3(p3 => ({ ...p3, items: [...p3.items, ...leftItems].slice(0, 8) }));
-            if (playerCount >= 4) {
-              spGame.setPlayer4(p4 => ({ ...p4, items: [...p4.items, ...rightItems].slice(0, 8) }));
-            }
-            spGame.startRound(
-              false,
-              false,
-              undefined,
-              chamber,
-              [...spGame.player.items, ...myItems].slice(0, 8),
-              [...spGame.dealer.items, ...frontItems].slice(0, 8),
-              spGame.gameState.turnOwner,
-              undefined,
-              undefined,
-              leftItems,
-              rightItems
-            );
-            return;
-          }
-
-          console.log("Batch end detected (HOST) - Generating new batch... keepTurn:", keepTurn);
-          const hostCharms = spGame.player.luckycharmsUsed || 0;
-          const clientCharms = spGame.dealer.luckycharmsUsed || 0;
-          const { chamber, hostItems, clientItems, lives, blanks } = generateMPBatch(settings, playerCount, hostCharms, clientCharms);
-
-          const lastWasHost = spGame.gameState.turnOwner === 'PLAYER';
-          const nextStarts = keepTurn ? lastWasHost : !lastWasHost;
-
-          const currentTotalWins = (spGame.gameState.multiModeState?.playerWins || 0) + (spGame.gameState.multiModeState?.opponentWins || 0);
-          const isNewRound = currentTotalWins > lastTotalWins.current;
-          lastTotalWins.current = currentTotalWins;
-
-          const hpVal = isNewRound ? (settings.hp === 9 ? randomInt(2, 8) : settings.hp) : undefined;
-
-          const syncAction = {
-            type: 'SYNC_ROUND',
-            chamber,
-            hostItems,
-            clientItems,
-            nextTurnOwner: nextStarts ? 'PLAYER' : 'DEALER',
-            resetItems: isNewRound,
-            hp: hpVal,
-            roundNum: currentTotalWins + 1
-          };
-
-          mp.sendImmediateAction(mp.room.id, syncAction);
-          mp.sendMessage(mp.room.id, isNewRound ? `SYSTEM: ROUND ${currentTotalWins + 1} STARTED!` : `SYSTEM: NEW BATCH REPLENISHED - ${lives} LIVE, ${blanks} BLANK`);
-          spGame.setOverlayText(isNewRound ? `ROUND ${currentTotalWins + 1}` : 'RELOADING NEW BATCH...');
-          spGame.startRound(isNewRound, false, undefined, chamber, hostItems, clientItems, nextStarts ? 'PLAYER' : 'DEALER', hpVal);
-        } else {
-          console.log("Batch end detected (CLIENT) - Waiting for host sync...");
-          spGame.setOverlayText('WAITING FOR HOST...');
-        }
-      });
-
-      spGame.setOnMPRoundEnd(async (winner: TurnOwner, pWinArg?: number, oWinArg?: number) => {
-        const isHost = mp.playerId === mp.room.hostId;
-        const playerCount = mp.room?.players?.length || 2;
+      if (myId === currentRoom.hostId) {
+        const settings = currentRoom.settings || { rounds: 3, hp: 2, itemsPerShipment: 2 };
+        const playerCount = currentRoom?.players?.length || 2;
         const isMulti = playerCount >= 3;
 
         if (isMulti) {
-          const room = mp.room;
-          const myIndex = room.players.findIndex((p: any) => p.id === mp.playerId);
-          let winnerIndex = myIndex;
-          if (winner === 'DEALER') winnerIndex = (myIndex + 2) % playerCount;
-          else if (winner === 'PLAYER3') winnerIndex = (myIndex + 1) % playerCount;
-          else if (winner === 'PLAYER4') winnerIndex = (myIndex + 3) % playerCount;
+          console.log(`Batch end detected (HOST, ${playerCount}-Player) - Generating new batch... keepTurn:`, keepTurn);
+          const p0Charms = game.player.luckycharmsUsed || 0;
+          const p1Charms = game.dealer.luckycharmsUsed || 0;
+          const p2Charms = game.player3?.luckycharmsUsed || 0;
+          const p3Charms = game.player4?.luckycharmsUsed || 0;
 
-          const winnerPlayerId = room.players[winnerIndex].id;
-          const currentWins = (playerCount === 4 ? spGame.gameState.fourPlayerWins : spGame.gameState.threePlayerWins) || Array(playerCount).fill(0);
-          const nextWins = [...currentWins];
-          nextWins[winnerIndex] = (nextWins[winnerIndex] || 0) + 1;
+          const { chamber, lootBatches, lives, blanks } = generateMultiPlayerBatch(settings, [p0Charms, p1Charms, p2Charms, p3Charms], playerCount);
+          
+          const mPlayers = currentRoom.players;
+          const myIndex = mPlayers.findIndex((p: any) => p.id === myId);
 
-          const settings = room.settings || { rounds: 3, hp: 4 };
-          const winsNeeded = Math.ceil(settings.rounds / 2) || 1;
+          let currentTurnOwnerId = myId;
+          if (game.gameState.turnOwner === 'DEALER') currentTurnOwnerId = mPlayers[(myIndex + 2) % playerCount].id;
+          else if (game.gameState.turnOwner === 'PLAYER3') currentTurnOwnerId = mPlayers[(myIndex + 1) % playerCount].id;
+          else if (game.gameState.turnOwner === 'PLAYER4') currentTurnOwnerId = mPlayers[(myIndex + 3) % playerCount].id;
 
-          if (nextWins[winnerIndex] >= winsNeeded) {
-            if (isHost) {
-              mp.sendImmediateAction(room.id, {
-                type: 'SYNC_THREE_PLAYER_STATE',
-                playerState: spGame.player,
-                dealerState: spGame.dealer,
-                player3State: spGame.player3,
-                player4State: spGame.player4,
-                gameState: {
-                  ...spGame.gameState,
-                  winnerId: winnerPlayerId,
-                  threePlayerWins: playerCount === 3 ? nextWins : undefined,
-                  fourPlayerWins: playerCount === 4 ? nextWins : undefined,
-                  phase: 'GAME_OVER'
-                }
-              });
-            }
-            spGame.setGameState(prev => ({
-              ...prev,
-              winnerId: winnerPlayerId,
-              winner,
-              threePlayerWins: playerCount === 3 ? nextWins : undefined,
-              fourPlayerWins: playerCount === 4 ? nextWins : undefined,
-              phase: 'GAME_OVER'
-            }));
-            return;
+          const syncAction: any = {
+            type: 'SYNC_THREE_PLAYER_ROUND',
+            chamber,
+            nextTurnOwnerId: currentTurnOwnerId,
+            resetItems: false,
+            hp: undefined
+          };
+          for (let i = 0; i < playerCount; i++) {
+            syncAction[`items${i}`] = lootBatches[i];
           }
 
-          if (isHost) {
-            const { chamber, lootBatches, lives, blanks } = generateMultiPlayerBatch(settings, Array(playerCount).fill(0), playerCount);
-            const hpVal = settings.hp === 9 ? randomInt(2, 8) : settings.hp;
-            const nextRoundNum = nextWins.reduce((a, b) => a + b, 0) + 1;
+          mp.sendImmediateAction(currentRoom.id, syncAction);
+          mp.sendMessage(currentRoom.id, `SYSTEM: NEW BATCH REPLENISHED - ${lives} LIVE, ${blanks} BLANK`);
+          game.setOverlayText('RELOADING NEW BATCH...');
 
-            const syncAction: any = {
-              type: 'SYNC_THREE_PLAYER_ROUND',
-              chamber,
-              nextTurnOwnerId: winnerPlayerId,
-              resetItems: true,
-              hp: hpVal,
-              roundNum: nextRoundNum,
-              threePlayerWins: playerCount === 3 ? nextWins : undefined,
-              fourPlayerWins: playerCount === 4 ? nextWins : undefined
-            };
-            for (let i = 0; i < playerCount; i++) {
-              syncAction[`items${i}`] = lootBatches[i];
-            }
+          const myItems = syncAction[`items${myIndex}`] || [];
+          const frontItems = syncAction[`items${(myIndex + 2) % playerCount}`] || [];
+          const leftItems = syncAction[`items${(myIndex + 1) % playerCount}`] || [];
+          const rightItems = playerCount >= 4 ? syncAction[`items${(myIndex + 3) % playerCount}`] : [];
 
-            mp.sendImmediateAction(room.id, syncAction);
-            mp.sendMessage(room.id, `SYSTEM: ROUND ${nextRoundNum} STARTED!`);
-
-            const myItems = syncAction[`items${myIndex}`];
-            const frontItems = syncAction[`items${(myIndex + 2) % playerCount}`];
-            const leftItems = syncAction[`items${(myIndex + 1) % playerCount}`];
-            const rightItems = playerCount >= 4 ? syncAction[`items${(myIndex + 3) % playerCount}`] : [];
-
-            spGame.setPlayer({ hp: hpVal, maxHp: hpVal, items: myItems, isHandcuffed: false, isSawedActive: false });
-            spGame.setDealer({ hp: hpVal, maxHp: hpVal, items: frontItems, isHandcuffed: false, isSawedActive: false });
-            spGame.setPlayer3({ hp: hpVal, maxHp: hpVal, items: leftItems, isHandcuffed: false, isSawedActive: false });
-            if (playerCount >= 4) {
-              spGame.setPlayer4({ hp: hpVal, maxHp: hpVal, items: rightItems, isHandcuffed: false, isSawedActive: false });
-            }
-
-            spGame.setGameState(prev => ({
-              ...prev,
-              threePlayerWins: playerCount === 3 ? nextWins : undefined,
-              fourPlayerWins: playerCount === 4 ? nextWins : undefined
-            }));
-
-            spGame.setOverlayText(`ROUND ${nextRoundNum}`);
-            await spGame.startRound(
-              true,
-              false,
-              undefined,
-              chamber,
-              myItems,
-              frontItems,
-              winner,
-              hpVal,
-              undefined,
-              leftItems,
-              rightItems
-            );
-          } else {
-            console.log("Client waiting for next round host sync...");
-            spGame.setOverlayText('WAITING FOR HOST...');
+          game.setPlayer3(p3 => ({ ...p3, items: [...p3.items, ...leftItems].slice(0, 8) }));
+          if (playerCount >= 4) {
+            game.setPlayer4(p4 => ({ ...p4, items: [...p4.items, ...rightItems].slice(0, 8) }));
           }
+          game.startRound(
+            false,
+            false,
+            undefined,
+            chamber,
+            [...game.player.items, ...myItems].slice(0, 8),
+            [...game.dealer.items, ...frontItems].slice(0, 8),
+            game.gameState.turnOwner,
+            undefined,
+            undefined,
+            leftItems,
+            rightItems
+          );
           return;
         }
 
-        const pWin = pWinArg !== undefined ? pWinArg : ((spGame.gameState.multiModeState?.playerWins || 0) + (winner === 'PLAYER' ? 1 : 0));
-        const oWin = oWinArg !== undefined ? oWinArg : ((spGame.gameState.multiModeState?.opponentWins || 0) + (winner === 'PLAYER' ? 0 : 1));
-        const currentTotalWins = pWin + oWin;
-        const nextRoundNum = currentTotalWins + 1;
+        console.log("Batch end detected (HOST) - Generating new batch... keepTurn:", keepTurn);
+        const hostCharms = game.player.luckycharmsUsed || 0;
+        const clientCharms = game.dealer.luckycharmsUsed || 0;
+        const { chamber, hostItems, clientItems, lives, blanks } = generateMPBatch(settings, playerCount, hostCharms, clientCharms);
 
-        const mSettings = mp.room.settings || { rounds: 3, hp: 2, itemsPerShipment: 2 };
-        const winsNeeded = Math.ceil(mSettings.rounds / 2) || 1;
+        const lastWasHost = game.gameState.turnOwner === 'PLAYER';
+        const nextStarts = keepTurn ? lastWasHost : !lastWasHost;
 
-        // If match is over, don't start a new round
-        if (pWin >= winsNeeded || oWin >= winsNeeded) {
+        const currentTotalWins = (game.gameState.multiModeState?.playerWins || 0) + (game.gameState.multiModeState?.opponentWins || 0);
+        const isNewRound = currentTotalWins > lastTotalWins.current;
+        lastTotalWins.current = currentTotalWins;
+
+        const hpVal = isNewRound ? (settings.hp === 9 ? randomInt(2, 8) : settings.hp) : undefined;
+
+        const syncAction = {
+          type: 'SYNC_ROUND',
+          chamber,
+          hostItems,
+          clientItems,
+          nextTurnOwner: nextStarts ? 'PLAYER' : 'DEALER',
+          resetItems: isNewRound,
+          hp: hpVal,
+          roundNum: currentTotalWins + 1
+        };
+
+        mp.sendImmediateAction(currentRoom.id, syncAction);
+        mp.sendMessage(currentRoom.id, isNewRound ? `SYSTEM: ROUND ${currentTotalWins + 1} STARTED!` : `SYSTEM: NEW BATCH REPLENISHED - ${lives} LIVE, ${blanks} BLANK`);
+        game.setOverlayText(isNewRound ? `ROUND ${currentTotalWins + 1}` : 'RELOADING NEW BATCH...');
+        game.startRound(isNewRound, false, undefined, chamber, hostItems, clientItems, nextStarts ? 'PLAYER' : 'DEALER', hpVal);
+      } else {
+        console.log("Batch end detected (CLIENT) - Waiting for host sync...");
+        game.setOverlayText('WAITING FOR HOST...');
+      }
+    });
+
+    spGame.setOnMPRoundEnd(async (winner: TurnOwner, pWinArg?: number, oWinArg?: number) => {
+      const game = spGameRef.current;
+      const currentRoom = mpRoomRef.current;
+      const myId = mpPlayerIdRef.current || '';
+      if (!currentRoom) return;
+
+      const isHost = myId === currentRoom.hostId;
+      const playerCount = currentRoom?.players?.length || 2;
+      const isMulti = playerCount >= 3;
+
+      if (isMulti) {
+        const myIndex = currentRoom.players.findIndex((p: any) => p.id === myId);
+        let winnerIndex = myIndex;
+        if (winner === 'DEALER') winnerIndex = (myIndex + 2) % playerCount;
+        else if (winner === 'PLAYER3') winnerIndex = (myIndex + 1) % playerCount;
+        else if (winner === 'PLAYER4') winnerIndex = (myIndex + 3) % playerCount;
+
+        const winnerPlayerId = currentRoom.players[winnerIndex].id;
+        const currentWins = (playerCount === 4 ? game.gameState.fourPlayerWins : game.gameState.threePlayerWins) || Array(playerCount).fill(0);
+        const nextWins = [...currentWins];
+        nextWins[winnerIndex] = (nextWins[winnerIndex] || 0) + 1;
+
+        const settings = currentRoom.settings || { rounds: 3, hp: 4 };
+        const winsNeeded = Math.ceil(settings.rounds / 2) || 1;
+
+        if (nextWins[winnerIndex] >= winsNeeded) {
           if (isHost) {
-            mp.sendImmediateAction(mp.room.id, {
-              type: 'SYNC_MP_GAME_OVER',
-              winner,
-              multiModeState: { playerWins: pWin, opponentWins: oWin }
+            mp.sendImmediateAction(currentRoom.id, {
+              type: 'SYNC_THREE_PLAYER_STATE',
+              playerState: game.player,
+              dealerState: game.dealer,
+              player3State: game.player3,
+              player4State: game.player4,
+              gameState: {
+                ...game.gameState,
+                winnerId: winnerPlayerId,
+                threePlayerWins: playerCount === 3 ? nextWins : undefined,
+                fourPlayerWins: playerCount === 4 ? nextWins : undefined,
+                phase: 'GAME_OVER'
+              }
             });
           }
-
-          const resolvedWinner = mp.playerId === mp.room.hostId
-            ? winner
-            : (winner === 'PLAYER' ? 'DEALER' : 'PLAYER');
-
-          spGame.setGameState(prev => ({
+          game.setGameState(prev => ({
             ...prev,
-            winner: resolvedWinner,
-            phase: 'GAME_OVER',
-            multiModeState: { playerWins: pWin, opponentWins: oWin }
+            winnerId: winnerPlayerId,
+            winner,
+            threePlayerWins: playerCount === 3 ? nextWins : undefined,
+            fourPlayerWins: playerCount === 4 ? nextWins : undefined,
+            phase: 'GAME_OVER'
           }));
           return;
         }
 
         if (isHost) {
-          const settings = mp.room.settings || { rounds: 3, hp: 2, itemsPerShipment: 2 };
-          const { chamber, hostItems, clientItems, lives, blanks } = generateMPBatch(settings, playerCount, 0, 0);
-
+          const { chamber, lootBatches } = generateMultiPlayerBatch(settings, Array(playerCount).fill(0), playerCount);
           const hpVal = settings.hp === 9 ? randomInt(2, 8) : settings.hp;
-          // Alternate starting turn for the next round
-          const lastTurnOwner = spGame.gameState.turnOwner;
-          const nextStarts = lastTurnOwner === 'PLAYER' ? 'DEALER' : 'PLAYER';
+          const nextRoundNum = nextWins.reduce((a, b) => a + b, 0) + 1;
 
-          lastTotalWins.current = currentTotalWins;
-
-          const syncAction = {
-            type: 'SYNC_ROUND',
+          const syncAction: any = {
+            type: 'SYNC_THREE_PLAYER_ROUND',
             chamber,
-            hostItems,
-            clientItems,
-            nextTurnOwner: nextStarts,
+            nextTurnOwnerId: winnerPlayerId,
             resetItems: true,
             hp: hpVal,
-            roundNum: nextRoundNum
+            roundNum: nextRoundNum,
+            threePlayerWins: playerCount === 3 ? nextWins : undefined,
+            fourPlayerWins: playerCount === 4 ? nextWins : undefined
           };
+          for (let i = 0; i < playerCount; i++) {
+            syncAction[`items${i}`] = lootBatches[i];
+          }
 
-          mp.sendImmediateAction(mp.room.id, syncAction);
-          mp.sendMessage(mp.room.id, `SYSTEM: ROUND ${nextRoundNum} STARTED!`);
+          mp.sendImmediateAction(currentRoom.id, syncAction);
+          mp.sendMessage(currentRoom.id, `SYSTEM: ROUND ${nextRoundNum} STARTED!`);
 
-          spGame.setOverlayText(`ROUND ${nextRoundNum}`);
-          await spGame.startRound(true, false, undefined, chamber, hostItems, clientItems, nextStarts, hpVal, { playerWins: pWin, opponentWins: oWin });
+          const myItems = syncAction[`items${myIndex}`];
+          const frontItems = syncAction[`items${(myIndex + 2) % playerCount}`];
+          const leftItems = syncAction[`items${(myIndex + 1) % playerCount}`];
+          const rightItems = playerCount >= 4 ? syncAction[`items${(myIndex + 3) % playerCount}`] : [];
+
+          game.setPlayer({ hp: hpVal, maxHp: hpVal, items: myItems, isHandcuffed: false, isSawedActive: false });
+          game.setDealer({ hp: hpVal, maxHp: hpVal, items: frontItems, isHandcuffed: false, isSawedActive: false });
+          game.setPlayer3({ hp: hpVal, maxHp: hpVal, items: leftItems, isHandcuffed: false, isSawedActive: false });
+          if (playerCount >= 4) {
+            game.setPlayer4({ hp: hpVal, maxHp: hpVal, items: rightItems, isHandcuffed: false, isSawedActive: false });
+          }
+
+          game.setGameState(prev => ({
+            ...prev,
+            threePlayerWins: playerCount === 3 ? nextWins : undefined,
+            fourPlayerWins: playerCount === 4 ? nextWins : undefined
+          }));
+
+          game.setOverlayText(`ROUND ${nextRoundNum}`);
+          await game.startRound(
+            true,
+            false,
+            undefined,
+            chamber,
+            myItems,
+            frontItems,
+            winner,
+            hpVal,
+            undefined,
+            leftItems,
+            rightItems
+          );
         } else {
           console.log("Client waiting for next round host sync...");
-          spGame.setOverlayText('WAITING FOR HOST...');
+          game.setOverlayText('WAITING FOR HOST...');
         }
-      });
-    }
-  }, [spGame.gameState.isMultiplayer, mp.room, mp.playerId, spGame, generateMPBatch, generateMultiPlayerBatch]);
+        return;
+      }
 
-  const onLoadingComplete = () => {
-    if (appState === 'LOADING_SP') {
+      const pWin = pWinArg !== undefined ? pWinArg : ((game.gameState.multiModeState?.playerWins || 0) + (winner === 'PLAYER' ? 1 : 0));
+      const oWin = oWinArg !== undefined ? oWinArg : ((game.gameState.multiModeState?.opponentWins || 0) + (winner === 'PLAYER' ? 0 : 1));
+      const currentTotalWins = pWin + oWin;
+      const nextRoundNum = currentTotalWins + 1;
+
+      const mSettings = currentRoom.settings || { rounds: 3, hp: 2, itemsPerShipment: 2 };
+      const winsNeeded = Math.ceil(mSettings.rounds / 2) || 1;
+
+      // If match is over, don't start a new round
+      if (pWin >= winsNeeded || oWin >= winsNeeded) {
+        if (isHost) {
+          mp.sendImmediateAction(currentRoom.id, {
+            type: 'SYNC_MP_GAME_OVER',
+            winner,
+            multiModeState: { playerWins: pWin, opponentWins: oWin }
+          });
+        }
+
+        const resolvedWinner = isHost
+          ? winner
+          : (winner === 'PLAYER' ? 'DEALER' : 'PLAYER');
+
+        game.setGameState(prev => ({
+          ...prev,
+          winner: resolvedWinner,
+          phase: 'GAME_OVER',
+          multiModeState: { playerWins: pWin, opponentWins: oWin }
+        }));
+        return;
+      }
+
+      if (isHost) {
+        const settings = currentRoom.settings || { rounds: 3, hp: 2, itemsPerShipment: 2 };
+        const { chamber, hostItems, clientItems } = generateMPBatch(settings, playerCount, 0, 0);
+
+        const hpVal = settings.hp === 9 ? randomInt(2, 8) : settings.hp;
+        // Alternate starting turn for the next round
+        const lastTurnOwner = game.gameState.turnOwner;
+        const nextStarts = lastTurnOwner === 'PLAYER' ? 'DEALER' : 'PLAYER';
+
+        lastTotalWins.current = currentTotalWins;
+
+        const syncAction = {
+          type: 'SYNC_ROUND',
+          chamber,
+          hostItems,
+          clientItems,
+          nextTurnOwner: nextStarts,
+          resetItems: true,
+          hp: hpVal,
+          roundNum: nextRoundNum
+        };
+
+        mp.sendImmediateAction(currentRoom.id, syncAction);
+        mp.sendMessage(currentRoom.id, `SYSTEM: ROUND ${nextRoundNum} STARTED!`);
+
+        game.setOverlayText(`ROUND ${nextRoundNum}`);
+        await game.startRound(true, false, undefined, chamber, hostItems, clientItems, nextStarts, hpVal, { playerWins: pWin, opponentWins: oWin });
+      } else {
+        console.log("Client waiting for next round host sync...");
+        game.setOverlayText('WAITING FOR HOST...');
+      }
+    });
+  }, [spGame.gameState.isMultiplayer, spGame.setOnBatchEnd, spGame.setOnMPRoundEnd, mp.sendImmediateAction, mp.sendMessage, generateMPBatch, generateMultiPlayerBatch]);
+
+  const onLoadingComplete = useCallback(() => {
+    const currentAppState = appStateRef.current;
+    if (currentAppState === 'LOADING_SP') {
       // For singleplayer, force-reset any debug model overrides from the previous session.
       setSettings(prev => ({ ...prev, debugHeadModel: 'DEFAULT' }));
-      spGame.startGame(spGame.playerName, isHardModeSelected);
+      spGameRef.current.startGame(spGameRef.current.playerName, isHardModeSelected);
+      setAppState('GAME');
+    } else if (currentAppState === 'LOADING_GAME') {
       setAppState('GAME');
     }
-    if (appState === 'LOADING_GAME') {
-      setAppState('GAME');
-    }
-  };
+  }, [isHardModeSelected]);
 
-  const handleBackToMenu = () => {
+  const handleBackToMenu = useCallback(() => {
+    if (gameStartTimeoutRef.current) {
+      clearTimeout(gameStartTimeoutRef.current);
+      gameStartTimeoutRef.current = null;
+    }
+    setAbortedByName(null);
+    setNameTags([]);
     mp.disconnect();
     mp.clearError();
     setAppState('MENU');
-    spGame.resetGame(true);
-  };
+    spGameRef.current.resetGame(true);
+  }, [mp.disconnect, mp.clearError]);
 
   useEffect(() => {
     if (appState === 'MENU') {
@@ -1640,7 +1716,7 @@ export default function App() {
   // Sync multiplayerState and localPlayerId in gameState with mp.room dynamically
   useEffect(() => {
     if (appState === 'GAME' && mp.room) {
-      spGame.setGameState(prev => {
+      spGameRef.current.setGameState(prev => {
         const nextLocalPlayerId = mp.playerId || prev.localPlayerId || '';
         if (prev.multiplayerState === mp.room && prev.localPlayerId === nextLocalPlayerId) return prev;
         return {
@@ -1650,51 +1726,53 @@ export default function App() {
         };
       });
     }
-  }, [mp.room, appState, mp.playerId, spGame.setGameState]);
+  }, [mp.room, appState, mp.playerId]);
 
   // Sync state broadcast from host to keep clients in sync
   // Throttled to at most once per 350ms to prevent spam during rapid item-use chains
   const broadcastHostSync = useCallback((force = false) => {
-    if (appState !== 'GAME' || !spGame.gameState.isMultiplayer || !mp.room || mp.room.hostId !== mp.playerId) return;
-    if (spGame.isProcessing || spGame.gameState.phase === 'RESOLVING' || spGame.gameState.phase === 'GAME_OVER') return;
+    const game = spGameRef.current;
+    const currentRoom = mpRoomRef.current;
+    const myId = mpPlayerIdRef.current;
+    if (appStateRef.current !== 'GAME' || !game.gameState.isMultiplayer || !currentRoom || currentRoom.hostId !== myId) return;
+    if (game.isProcessing || game.gameState.phase === 'RESOLVING' || game.gameState.phase === 'GAME_OVER') return;
 
     const now = Date.now();
     if (!force && now - lastSyncBroadcastRef.current < 350) return;
     lastSyncBroadcastRef.current = now;
 
-    const playerCount = mp.room?.players?.length || 2;
+    const playerCount = currentRoom?.players?.length || 2;
     const isMulti = playerCount >= 3;
     if (isMulti) {
-      const room = mp.room;
-      const myIndex = room?.players ? room.players.findIndex((p: any) => p.id === mp.playerId) : -1;
+      const myIndex = currentRoom?.players ? currentRoom.players.findIndex((p: any) => p.id === myId) : -1;
       let turnOwnerIndex = myIndex;
-      if (myIndex !== -1 && room?.players) {
-        if (spGame.gameState.turnOwner === 'DEALER') turnOwnerIndex = (myIndex + 2) % playerCount;
-        else if (spGame.gameState.turnOwner === 'PLAYER3') turnOwnerIndex = (myIndex + 1) % playerCount;
-        else if (spGame.gameState.turnOwner === 'PLAYER4') turnOwnerIndex = (myIndex + 3) % playerCount;
+      if (myIndex !== -1 && currentRoom?.players) {
+        if (game.gameState.turnOwner === 'DEALER') turnOwnerIndex = (myIndex + 2) % playerCount;
+        else if (game.gameState.turnOwner === 'PLAYER3') turnOwnerIndex = (myIndex + 1) % playerCount;
+        else if (game.gameState.turnOwner === 'PLAYER4') turnOwnerIndex = (myIndex + 3) % playerCount;
       }
-      const turnOwnerId = room?.players && turnOwnerIndex !== -1 ? room.players[turnOwnerIndex]?.id : '';
+      const turnOwnerId = currentRoom?.players && turnOwnerIndex !== -1 ? currentRoom.players[turnOwnerIndex]?.id : '';
 
-      mp.sendImmediateAction(mp.room.id, {
+      mp.sendImmediateAction(currentRoom.id, {
         type: 'SYNC_THREE_PLAYER_STATE',
-        playerState: spGame.player,
-        dealerState: spGame.dealer,
-        player3State: spGame.player3,
-        player4State: spGame.player4,
+        playerState: game.player,
+        dealerState: game.dealer,
+        player3State: game.player3,
+        player4State: game.player4,
         gameState: {
-          ...spGame.gameState,
+          ...game.gameState,
           turnOwnerId
         }
       });
     } else {
-      mp.sendImmediateAction(mp.room.id, {
+      mp.sendImmediateAction(currentRoom.id, {
         type: 'SYNC_STATE',
-        player1State: spGame.player,
-        player2State: spGame.dealer,
-        gameState: spGame.gameState
+        player1State: game.player,
+        player2State: game.dealer,
+        gameState: game.gameState
       });
     }
-  }, [appState, mp.room, mp.playerId, mp.sendImmediateAction, spGame]);
+  }, [mp.sendImmediateAction]);
 
   useEffect(() => {
     broadcastHostSync();
@@ -1815,22 +1893,203 @@ export default function App() {
     spGame.gameState.currentShellIndex
   ]);
 
-  // handleMainMenu is aliased to handleBackToMenu for consistency
-  const handleMainMenu = handleBackToMenu;
+  const handleRootInteraction = useCallback(() => {
+    if (!audioInitializedRef.current) {
+      audioInitializedRef.current = true;
+      audioManager.initialize().catch(() => {
+        audioInitializedRef.current = false;
+      });
+    }
+  }, []);
 
-  const handleRestartSP = () => {
-    setAppState('LOADING_SP');
-    spGame.resetGame(false, false);
-  };
+  const handleGunClick = useCallback(() => {}, []);
+
+  const handleLowPerformance = useCallback((fps: number) => {
+    if (sessionStorage.getItem('aadish_roulette_perf_warning_shown') === 'true') return;
+    try {
+      sessionStorage.setItem('aadish_roulette_perf_warning_shown', 'true');
+    } catch (e) {
+      console.warn("sessionStorage failed:", e);
+    }
+    setDetectedLowFps(Math.round(fps));
+    setShowPerformancePopup(true);
+  }, []);
+
+  const handleUpdateNameTags = useCallback((tags: NameTagItem[]) => {
+    if (appStateRef.current === 'GAME' && spGameRef.current.gameState.isMultiplayer) {
+      setNameTags(tags.map(t => ({ ...t })));
+    }
+  }, []);
+
+  const handleOpenSettings = useCallback(() => setIsSettingsOpen(true), []);
+  const handleCloseSettings = useCallback(() => setIsSettingsOpen(false), []);
+  const handleOpenGuide = useCallback(() => setIsGuideOpen(true), []);
+  const handleCloseGuide = useCallback(() => setIsGuideOpen(false), []);
+  const handleOpenScoreboard = useCallback(() => setIsScoreboardOpen(true), []);
+  const handleCloseScoreboard = useCallback(() => setIsScoreboardOpen(false), []);
+
+  const handleResetGameProp = useCallback((toMenu: boolean) => {
+    const game = spGameRef.current;
+    const currentRoom = mpRoomRef.current;
+    const myId = mpPlayerIdRef.current;
+    if (game.gameState.isMultiplayer) {
+      if (toMenu) {
+        if (gameStartTimeoutRef.current) {
+          clearTimeout(gameStartTimeoutRef.current);
+          gameStartTimeoutRef.current = null;
+        }
+        setAbortedByName(null);
+        setNameTags([]);
+        mp.disconnect();
+        game.resetGame(true);
+        setAppState('MENU');
+      } else if (currentRoom && myId === currentRoom.hostId) {
+        mp.resetRoomState(currentRoom.id);
+      }
+    } else {
+      if (toMenu) {
+        setNameTags([]);
+        setAppState('MENU');
+        game.resetGame(true);
+      } else {
+        setAppState('LOADING_SP');
+        game.resetGame(false, false);
+      }
+    }
+  }, [mp.disconnect, mp.resetRoomState]);
+
+  const handleSendChatMessage = useCallback((text: string) => {
+    const roomId = mpRoomRef.current?.id;
+    if (roomId) mp.sendMessage(roomId, text);
+  }, [mp.sendMessage]);
+
+  const handleLobbyUpdateSettings = useCallback((s: any) => {
+    const roomId = mpRoomRef.current?.id;
+    if (roomId) mp.updateSettings(roomId, s);
+  }, [mp.updateSettings]);
+
+  const handleLobbyReadyUp = useCallback((r: boolean) => {
+    const roomId = mpRoomRef.current?.id;
+    if (roomId) mp.readyUp(roomId, r);
+  }, [mp.readyUp]);
+
+  const handleLobbyKick = useCallback((targetPlayerId: string) => {
+    const roomId = mpRoomRef.current?.id;
+    if (roomId) mp.kickPlayer(roomId, targetPlayerId);
+  }, [mp.kickPlayer]);
+
+  const handleLobbyJoinRoom = useCallback((code: string) => {
+    mp.joinRoom(code, spGameRef.current.playerName);
+  }, [mp.joinRoom]);
+
+  const handleQuickJoin = useCallback(() => {
+    mp.quickJoin(spGameRef.current.playerName);
+  }, [mp.quickJoin]);
+
+  const handleCreateRoom = useCallback(() => {
+    mp.createRoom(spGameRef.current.playerName);
+  }, [mp.createRoom]);
+
+  const handleJoinRoom = useCallback((code: string) => {
+    mp.joinRoom(code, spGameRef.current.playerName);
+  }, [mp.joinRoom]);
+
+  const handleRetryLoadingMP = useCallback(() => {
+    if (appStateRef.current === 'LOADING_MP') {
+      mp.connect(spGameRef.current.playerName || 'Operator');
+    }
+  }, [mp.connect]);
+
+  const handleExitToMenuFromSettings = useCallback(() => {
+    setIsSettingsOpen(false);
+    const game = spGameRef.current;
+    if (!game.gameState.isMultiplayer && appStateRef.current === 'GAME' && game.gameState.phase !== 'INTRO' && game.gameState.phase !== 'BOOT') {
+      setNameTags([]);
+      game.resetGame(true);
+      setAppState('MENU');
+    }
+  }, []);
+
+  const handleSyncDebugState = useCallback((type: any, state: any) => {
+    const game = spGameRef.current;
+    const currentRoom = mpRoomRef.current;
+    const myId = mpPlayerIdRef.current;
+    if (appStateRef.current === 'GAME' && game.gameState.isMultiplayer && currentRoom) {
+      if (type === 'MULTIPLAYER_MODEL') {
+        mp.sendImmediateAction(currentRoom.id, { type: 'DEBUG_SYNC_PLAYER_MODEL', playerId: state.playerId, playerIndex: state.playerIndex, modelKey: state.modelKey });
+        return;
+      }
+
+      const playerCount = currentRoom?.players?.length || 2;
+      const isMulti = playerCount >= 3;
+      if (isMulti) {
+        // Key names match the receiver: playerState/dealerState/player3State/player4State
+        mp.sendImmediateAction(currentRoom.id, {
+          type: 'DEBUG_SYNC_THREE_PLAYER',
+          senderId: myId,
+          playerState: type === 'PLAYER' ? state : game.player,
+          dealerState: type === 'DEALER' ? state : game.dealer,
+          player3State: type === 'PLAYER3' ? state : game.player3,
+          player4State: type === 'PLAYER4' ? state : game.player4,
+          gameState: type === 'GAMESTATE' ? state : game.gameState
+        });
+      } else {
+        if (type === 'PLAYER') {
+          mp.sendImmediateAction(currentRoom.id, { type: 'DEBUG_SYNC_PLAYER', player: state });
+        } else if (type === 'DEALER') {
+          mp.sendImmediateAction(currentRoom.id, { type: 'DEBUG_SYNC_DEALER', dealer: state });
+        } else if (type === 'GAMESTATE') {
+          mp.sendImmediateAction(currentRoom.id, { type: 'DEBUG_SYNC_GAMESTATE', gameState: state });
+        }
+      }
+    }
+  }, [mp.sendImmediateAction]);
+
+  const matchData = useMemo(() => {
+    if (spGame.gameState.isMultiplayer && mp.room) {
+      return {
+        ...spGame.matchStats,
+        isMultiplayer: true,
+        result: spGame.gameState.winner === 'PLAYER' || (spGame.gameState.winner === null && spGame.gameState.turnOwner === 'PLAYER')
+          ? 'WIN'
+          : 'LOSS',
+        mpPlayers: mp.room.players.map((p: any) => {
+          const isMe = p.id === mp.playerId;
+          const isHost = p.id === mp.room.hostId;
+          const activeOpponentId = mp.playerId === mp.room.hostId
+            ? (mp.room.players.find((pl: any) => pl.id !== mp.room.hostId)?.id || '')
+            : mp.room.hostId;
+          
+          let playerResult: 'WIN' | 'LOSS' | 'SPECTATED' = 'SPECTATED';
+          if (isMe) {
+            playerResult = spGame.gameState.winner === 'PLAYER' ? 'WIN' : 'LOSS';
+          } else if (p.id === activeOpponentId) {
+            playerResult = spGame.gameState.winner === 'PLAYER' ? 'LOSS' : 'WIN';
+          }
+          
+          return {
+            name: p.name,
+            id: p.id,
+            isHost,
+            isMe,
+            result: playerResult
+          };
+        })
+      };
+    }
+    return spGame.matchStats;
+  }, [spGame.gameState.isMultiplayer, spGame.gameState.winner, spGame.gameState.turnOwner, spGame.matchStats, mp.room, mp.playerId]);
+
+  const isPotatoMode = isUltraPerf(settings);
 
   return (
     <div
-      className={`relative w-full h-[100dvh] bg-black overflow-hidden select-none crt text-stone-200 cursor-crosshair animate-in fade-in duration-1000 ${spGame.gameState.isHardMode ? 'hardmode-scanline' : ''} ${settings.ultraPerformance ? 'ultra-perf' : ''}`}
+      className={`relative w-full h-[100dvh] bg-black overflow-hidden select-none crt text-stone-200 cursor-crosshair animate-in fade-in duration-1000 ${spGame.gameState.isHardMode ? 'hardmode-scanline' : ''} ${isPotatoMode ? 'ultra-perf' : ''}`}
       style={{ height: '100dvh' }}
-      onClick={() => audioManager.initialize()}
-      onKeyDown={() => audioManager.initialize()}
+      onClick={handleRootInteraction}
+      onKeyDown={handleRootInteraction}
     >
-      {!settings.ultraPerformance && appState !== 'MP_SELECTION' && appState !== 'LOBBY' && appState !== 'LOADING_MP' && (
+      {!isPotatoMode && appState !== 'MP_SELECTION' && appState !== 'LOBBY' && appState !== 'LOADING_MP' && (
         <>
           <div className="crt-overlay opacity-[0.15] pointer-events-none" />
           <div className="vhs-static" />
@@ -1864,7 +2123,7 @@ export default function App() {
           isChokeActive={spGame.player.isChokeActive || spGame.dealer.isChokeActive}
           isPlayerCuffed={spGame.player.isHandcuffed}
           knownShell={spGame.knownShell}
-          onGunClick={() => { }}
+          onGunClick={handleGunClick}
           aimTarget={spGame.aimTarget}
           cameraView={spGame.cameraView}
           animState={spGame.animState}
@@ -1877,18 +2136,9 @@ export default function App() {
           player4={spGame.player4}
           gameState={spGame.gameState}
           onCardClick={handleCardClick}
-          onLowPerformance={(fps) => {
-            if (sessionStorage.getItem('aadish_roulette_perf_warning_shown') === 'true') return;
-            try {
-              sessionStorage.setItem('aadish_roulette_perf_warning_shown', 'true');
-            } catch (e) {
-              console.warn("sessionStorage failed:", e);
-            }
-            setDetectedLowFps(Math.round(fps));
-            setShowPerformancePopup(true);
-          }}
+          onLowPerformance={handleLowPerformance}
           isPaused={false}
-          onUpdateNameTags={setNameTags}
+          onUpdateNameTags={handleUpdateNameTags}
         />
       )}
 
@@ -1917,76 +2167,22 @@ export default function App() {
         isRecovering={spGame.animState.playerHit || spGame.animState.playerRecovering || spGame.animState.dealerDropping || spGame.animState.dealerRecovering}
         settings={settings}
         onStartGame={handleStartSP}
-        onResetGame={(toMenu) => {
-          if (spGame.gameState.isMultiplayer) {
-            if (toMenu) {
-              mp.disconnect();
-              spGame.resetGame(true);
-              setAppState('MENU');
-            } else {
-              if (mp.room && mp.playerId === mp.room.hostId) {
-                mp.resetRoomState(mp.room.id);
-              }
-            }
-          } else {
-            if (toMenu) {
-              // @ts-ignore
-              setAppState('LOADING_GAME');
-              spGame.resetGame(true);
-            } else {
-              // @ts-ignore
-              setAppState('LOADING_SP');
-              spGame.resetGame(false, false);
-            }
-          }
-        }}
+        onResetGame={handleResetGameProp}
         onFireShot={handleFireShot}
         onUseItem={handleUseItem}
         onHoverTarget={handleHoverTarget}
         onPickupGun={handlePickupGun}
-        onOpenSettings={() => setIsSettingsOpen(true)}
-        onOpenGuide={() => setIsGuideOpen(true)}
-        onOpenScoreboard={() => setIsScoreboardOpen(true)}
+        onOpenSettings={handleOpenSettings}
+        onOpenGuide={handleOpenGuide}
+        onOpenScoreboard={handleOpenScoreboard}
         onUpdateName={spGame.setPlayerName}
         onStealItem={handleStealItem}
         onBootComplete={handleBootComplete}
-        matchData={
-          spGame.gameState.isMultiplayer && mp.room
-            ? {
-                ...spGame.matchStats,
-                isMultiplayer: true,
-                result: spGame.gameState.winner === 'PLAYER' || (spGame.gameState.winner === null && spGame.gameState.turnOwner === 'PLAYER')
-                  ? 'WIN'
-                  : 'LOSS',
-                mpPlayers: mp.room.players.map((p: any) => {
-                  const isMe = p.id === mp.playerId;
-                  const isHost = p.id === mp.room.hostId;
-                  const activeOpponentId = mp.playerId === mp.room.hostId
-                    ? (mp.room.players.find((pl: any) => pl.id !== mp.room.hostId)?.id || '')
-                    : mp.room.hostId;
-                  
-                  let playerResult: 'WIN' | 'LOSS' | 'SPECTATED' = 'SPECTATED';
-                  if (isMe) {
-                    playerResult = spGame.gameState.winner === 'PLAYER' ? 'WIN' : 'LOSS';
-                  } else if (p.id === activeOpponentId) {
-                    playerResult = spGame.gameState.winner === 'PLAYER' ? 'LOSS' : 'WIN';
-                  }
-                  
-                  return {
-                    name: p.name,
-                    id: p.id,
-                    isHost,
-                    isMe,
-                    result: playerResult
-                  };
-                })
-              }
-            : spGame.matchStats
-        }
+        matchData={matchData}
         onStartMultiplayer={handleStartMP}
         isMultiplayer={spGame.gameState.isMultiplayer}
         messages={mp.messages}
-        onSendMessage={(t) => mp.sendMessage(mp.room?.id || '', t)}
+        onSendMessage={handleSendChatMessage}
         mpGameState={mp.room}
         mpMyPlayerId={mp.playerId}
         stickers={stickersList}
@@ -2000,15 +2196,12 @@ export default function App() {
               <MultiplayerLobby
                 room={mp.room}
                 playerId={mp.playerId!}
-                onUpdateSettings={(s) => mp.updateSettings(mp.room.id, s)}
-                onReadyUp={(r) => mp.readyUp(mp.room.id, r)}
+                onUpdateSettings={handleLobbyUpdateSettings}
+                onReadyUp={handleLobbyReadyUp}
                 onStartGame={handleStartMPGame}
-                onKick={(targetPlayerId) => mp.kickPlayer(mp.room.id, targetPlayerId)}
-                onBack={() => {
-                  mp.disconnect();
-                  setAppState('GAME');
-                  spGame.resetGame(true);
-                }}
+                onKick={handleLobbyKick}
+                onJoinRoom={handleLobbyJoinRoom}
+                onBack={handleBackToMenu}
               />
             </div>
             
@@ -2016,9 +2209,12 @@ export default function App() {
             <div className="h-full min-h-0 flex border-l border-stone-900 lobby-chat-view">
               <ChatBox
                 messages={mp.messages}
-                onSendMessage={(t) => mp.sendMessage(mp.room.id, t)}
+                onSendMessage={handleSendChatMessage}
                 playerName={spGame.playerName}
                 stickers={stickersList}
+                onJoinRoom={handleLobbyJoinRoom}
+                players={mp.room.players}
+                currentUser={currentUser}
               />
             </div>
           </div>
@@ -2030,13 +2226,10 @@ export default function App() {
           <MultiplayerSelection
             playerName={spGame.playerName}
             getActiveRooms={mp.getActiveRooms}
-            onQuickJoin={() => mp.quickJoin(spGame.playerName)}
-            onCreateRoom={() => mp.createRoom(spGame.playerName)}
-            onJoinRoom={(code) => mp.joinRoom(code, spGame.playerName)}
-            onBack={() => {
-              mp.disconnect();
-              setAppState('MENU');
-            }}
+            onQuickJoin={handleQuickJoin}
+            onCreateRoom={handleCreateRoom}
+            onJoinRoom={handleJoinRoom}
+            onBack={handleBackToMenu}
             error={mp.error}
             clearError={mp.clearError}
             isConnecting={mp.isConnecting}
@@ -2052,9 +2245,7 @@ export default function App() {
             duration={appState === 'LOADING_GAME' ? 800 : appState === 'LOADING_MP' ? 800 : 1200}
             onBack={handleBackToMenu}
             error={appState === 'LOADING_MP' ? mp.error : null}
-            onRetry={() => {
-              if (appState === 'LOADING_MP') mp.connect(spGame.playerName || 'Operator');
-            }}
+            onRetry={handleRetryLoadingMP}
             showClose={appState === 'LOADING_MP'}
             progress={(appState === 'LOADING_GAME' || appState === 'LOADING_SP') ? Math.round((audioManager.getAudioLoadingProgress() + getGLBLoadingProgress()) / 2) : undefined}
           />
@@ -2063,7 +2254,7 @@ export default function App() {
 
       {isScoreboardOpen && (
         <Scoreboard
-          onClose={() => setIsScoreboardOpen(false)}
+          onClose={handleCloseScoreboard}
         />
       )}
 
@@ -2071,17 +2262,11 @@ export default function App() {
         <SettingsMenu
           settings={settings}
           onUpdateSettings={setSettings}
-          onClose={() => setIsSettingsOpen(false)}
+          onClose={handleCloseSettings}
           onResetDefaults={handleResetSettings}
           isMultiplayer={spGame.gameState.isMultiplayer}
           showExitToMenu={true}
-          onExitToMenu={() => {
-            setIsSettingsOpen(false);
-            if (!spGame.gameState.isMultiplayer && appState === 'GAME' && spGame.gameState.phase !== 'INTRO' && spGame.gameState.phase !== 'BOOT') {
-              spGame.resetGame(true);
-              setAppState('MENU');
-            }
-          }}
+          onExitToMenu={handleExitToMenuFromSettings}
         />
       )}
 
@@ -2111,9 +2296,7 @@ export default function App() {
             <button
               onClick={() => {
                 audioManager.playSound('click');
-                mp.disconnect();
-                setAppState('MENU');
-                spGame.resetGame(true);
+                handleBackToMenu();
               }}
               className="w-full bg-stone-900 hover:bg-stone-850 border border-stone-800 hover:border-red-500/50 rounded-xl py-3 text-[10px] font-black tracking-[0.25em] text-stone-400 hover:text-red-400 uppercase active:scale-95 transition-all duration-150 cursor-pointer shadow-lg"
             >
@@ -2224,37 +2407,7 @@ export default function App() {
           selectTarotCard={spGame.selectTarotCard}
           setCameraView={spGame.setCameraView}
           processItemEffect={spGame.processItemEffect}
-          onSyncDebugState={(type, state) => {
-            if (appState === 'GAME' && spGame.gameState.isMultiplayer) {
-              if (type === 'MULTIPLAYER_MODEL') {
-                mp.sendImmediateAction(mp.room.id, { type: 'DEBUG_SYNC_PLAYER_MODEL', playerId: state.playerId, playerIndex: state.playerIndex, modelKey: state.modelKey });
-                return;
-              }
-
-              const playerCount = mp.room?.players?.length || 2;
-              const isMulti = playerCount >= 3;
-              if (isMulti) {
-                // Key names match the receiver: playerState/dealerState/player3State/player4State
-                mp.sendImmediateAction(mp.room.id, {
-                  type: 'DEBUG_SYNC_THREE_PLAYER',
-                  senderId: mp.playerId,
-                  playerState: type === 'PLAYER' ? state : spGame.player,
-                  dealerState: type === 'DEALER' ? state : spGame.dealer,
-                  player3State: type === 'PLAYER3' ? state : spGame.player3,
-                  player4State: type === 'PLAYER4' ? state : spGame.player4,
-                  gameState: type === 'GAMESTATE' ? state : spGame.gameState
-                });
-              } else {
-                if (type === 'PLAYER') {
-                  mp.sendImmediateAction(mp.room.id, { type: 'DEBUG_SYNC_PLAYER', player: state });
-                } else if (type === 'DEALER') {
-                  mp.sendImmediateAction(mp.room.id, { type: 'DEBUG_SYNC_DEALER', dealer: state });
-                } else if (type === 'GAMESTATE') {
-                  mp.sendImmediateAction(mp.room.id, { type: 'DEBUG_SYNC_GAMESTATE', gameState: state });
-                }
-              }
-            }
-          }}
+          onSyncDebugState={handleSyncDebugState}
         />
       )}
 
@@ -2283,7 +2436,8 @@ export default function App() {
               onClick={() => {
                 audioManager.playSound('click');
                 setAbortedByName(null);
-                spGame.resetGame(true);
+                setNameTags([]);
+                spGameRef.current.resetGame(true);
                 setAppState('LOBBY');
               }}
               className="w-full py-3 bg-red-900/20 hover:bg-red-900 border border-red-800 text-red-500 hover:text-white font-black text-xs sm:text-sm tracking-[0.35em] uppercase rounded-xl transition-all active:scale-95 cursor-pointer shadow-lg shadow-red-950/50"
@@ -2314,7 +2468,7 @@ export default function App() {
               {(mp.room.players.find((p: any) => p.disconnected)?.name || 'ANOTHER OPERATOR').toUpperCase()} lost connection.
             </p>
             <p className="text-stone-500 text-xs mt-4 uppercase tracking-widest font-black">
-              Attempting reconnection (15s grace)...
+              Attempting reconnection (25s grace)...
             </p>
           </div>
         </div>
@@ -2322,21 +2476,13 @@ export default function App() {
 
       {/* Tutorial Guide Modal */}
       {isGuideOpen && (
-        <TutorialGuide onClose={() => setIsGuideOpen(false)} />
+        <TutorialGuide onClose={handleCloseGuide} />
       )}
 
       {/* Crisp HTML Player Name Tags (Multiplayer only) */}
-      {appState === 'GAME' && spGame.gameState.isMultiplayer && nameTags.map((tag, i) => (
-        tag.visible && (
-          <div
-            key={i}
-            className={`absolute z-[40] pointer-events-none -translate-x-1/2 -translate-y-1/2 bg-black/80 border border-stone-800/80 ${isMobileNameTag ? 'px-2 py-0.5 text-[7px] sm:text-[8px]' : 'px-2.5 py-1 text-[8px] sm:text-[9px]'} font-black tracking-[0.25em] text-stone-200 uppercase rounded-lg shadow-2xl select-none transition-opacity duration-150`}
-            style={{ left: `${tag.x}%`, top: `${tag.y}%` }}
-          >
-            {tag.name}
-          </div>
-        )
-      ))}
+      {appState === 'GAME' && spGame.gameState.isMultiplayer && nameTags.length > 0 && (
+        <NameTagsOverlay nameTags={nameTags} isMobileNameTag={isMobileNameTag} />
+      )}
     </div>
   );
 }

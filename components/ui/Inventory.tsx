@@ -14,9 +14,11 @@ interface InventoryProps {
     disabled?: boolean; // For multiplayer when not your turn
     isGunHeld?: boolean;
     settings?: GameSettings;
+    isCompact?: boolean;
 }
 
-const InventoryComponent: React.FC<InventoryProps> = ({ player, dealer, gameState, cameraView, isProcessing, onUseItem, disabled = false, isGunHeld = false, settings }) => {
+const InventoryComponent: React.FC<InventoryProps> = ({ player, dealer, gameState, cameraView, isProcessing, onUseItem, disabled = false, isGunHeld = false, settings, isCompact: isCompactProp }) => {
+    const isCompact = isCompactProp ?? (typeof window !== 'undefined' && (window.innerWidth < 768 || window.innerHeight < 540));
     const [hoveredIdx, setHoveredIdx] = React.useState<number | null>(null);
     const [selectedIdx, setSelectedIdx] = React.useState<number | null>(null);
     const [isMobileView, setIsMobileView] = React.useState(false);
@@ -202,13 +204,19 @@ const InventoryComponent: React.FC<InventoryProps> = ({ player, dealer, gameStat
         'JACKPOT': 'JACKPOT'
     };
 
-    let containerClass = "relative flex gap-1 md:gap-3 p-2 md:p-4 bg-gradient-to-t from-black/95 to-black/70 border-t border-l border-r border-white/10 backdrop-blur-3xl min-h-[48px] md:min-h-[100px] items-end overflow-x-auto overflow-y-visible md:overflow-visible max-w-full [&::-webkit-scrollbar]:hidden [scrollbar-width:none] rounded-t-[2rem]";
-    if (isPotato) {
-        containerClass = "relative flex gap-1 md:gap-3 p-2 md:p-3 bg-neutral-950 border-t border-neutral-800 min-h-[48px] md:min-h-[100px] items-end overflow-x-auto overflow-y-visible md:overflow-visible max-w-full [&::-webkit-scrollbar]:hidden [scrollbar-width:none] rounded-none";
-    } else if (isBalanced) {
-        containerClass += " shadow-none";
-    } else {
-        containerClass += " shadow-[0_-20px_80px_rgba(0,0,0,0.8)]";
+    let containerClass = isCompact
+        ? (isPotato
+            ? "relative flex gap-1.5 px-2 py-1.5 bg-neutral-950/90 border border-neutral-800 min-h-[48px] items-center overflow-x-auto max-w-full [&::-webkit-scrollbar]:hidden [scrollbar-width:none] rounded-xl"
+            : "relative flex gap-1.5 px-2 py-1.5 bg-black/55 border border-white/10 backdrop-blur-md min-h-[48px] items-center overflow-x-auto max-w-full [&::-webkit-scrollbar]:hidden [scrollbar-width:none] rounded-2xl")
+        : "relative flex gap-1 md:gap-3 p-2 md:p-4 bg-gradient-to-t from-black/95 to-black/70 border-t border-l border-r border-white/10 backdrop-blur-3xl min-h-[48px] md:min-h-[100px] items-end overflow-x-auto overflow-y-visible md:overflow-visible max-w-full [&::-webkit-scrollbar]:hidden [scrollbar-width:none] rounded-t-[2rem]";
+    if (!isCompact) {
+        if (isPotato) {
+            containerClass = "relative flex gap-1 md:gap-3 p-2 md:p-3 bg-neutral-950 border-t border-neutral-800 min-h-[48px] md:min-h-[100px] items-end overflow-x-auto overflow-y-visible md:overflow-visible max-w-full [&::-webkit-scrollbar]:hidden [scrollbar-width:none] rounded-none";
+        } else if (isBalanced) {
+            containerClass += " shadow-none";
+        } else {
+            containerClass += " shadow-[0_-20px_80px_rgba(0,0,0,0.8)]";
+        }
     }
 
     const hoveredItem = hoveredIdx !== null ? player.items[hoveredIdx] : null;
@@ -216,30 +224,49 @@ const InventoryComponent: React.FC<InventoryProps> = ({ player, dealer, gameStat
     const mobileTooltipItem = isMobileView ? hoveredItem ?? selectedItem : hoveredItem;
     const isHoveredCuffDisabled = (hoveredItem ?? selectedItem) === 'CUFFS' && dealer.isHandcuffed;
 
+    if (isCompact && player.items.length === 0 && !player.isFlashbanged) {
+        return (
+            <div className="flex justify-center pointer-events-none w-full">
+                <div className="px-2.5 py-0.5 rounded-full bg-black/40 border border-white/5 text-[8px] font-bold tracking-[0.2em] text-stone-500 uppercase">
+                    NO ITEMS
+                </div>
+            </div>
+        );
+    }
+
     return (
-        <div className="flex-1 flex justify-center gap-1 pointer-events-auto h-full items-end relative w-full">
+        <div className={`flex justify-center gap-1 pointer-events-auto items-end relative w-full ${isCompact ? '' : 'flex-1 h-full'}`}>
             {/* Left scroll mask */}
             {showLeftMask && (
-                <div className={`absolute left-0 bottom-0 top-0 w-8 bg-gradient-to-r from-black to-transparent pointer-events-none z-40 transition-opacity duration-300 ${isPotato ? '' : 'rounded-l-[2rem]'}`} />
+                <div className={`absolute left-0 bottom-0 top-0 w-6 bg-gradient-to-r from-black/80 to-transparent pointer-events-none z-40 transition-opacity duration-300 ${isPotato ? '' : (isCompact ? 'rounded-l-2xl' : 'rounded-l-[2rem]')}`} />
             )}
             {/* Right scroll mask */}
             {showRightMask && (
-                <div className={`absolute right-0 bottom-0 top-0 w-8 bg-gradient-to-l from-black to-transparent pointer-events-none z-40 transition-opacity duration-300 ${isPotato ? '' : 'rounded-r-[2rem]'}`} />
+                <div className={`absolute right-0 bottom-0 top-0 w-6 bg-gradient-to-l from-black/80 to-transparent pointer-events-none z-40 transition-opacity duration-300 ${isPotato ? '' : (isCompact ? 'rounded-r-2xl' : 'rounded-r-[2rem]')}`} />
             )}
 
-            {/* Bottom-right tooltip panel for hovered inventory items */}
+            {/* Tooltip panel for hovered/selected inventory items */}
             {(mobileTooltipItem || hoveredIdx !== null) && (
-                <div style={{ bottom: tooltipBottom }} className="fixed right-4 sm:right-6 z-[999] w-[min(22rem,calc(100vw-2rem))] max-w-[22rem] bg-stone-950/95 border border-stone-800 rounded-3xl p-4 text-left text-stone-300 shadow-[0_25px_70px_rgba(0,0,0,0.8)] backdrop-blur-2xl pointer-events-none">
-                    <div className="flex items-center justify-between gap-3 mb-3">
-                        <div className="font-black text-white text-sm uppercase tracking-[0.35em]">{ITEM_NAMES[mobileTooltipItem || hoveredItem!]}</div>
-                        <span className="text-[10px] text-stone-400 uppercase tracking-[0.35em]">Description</span>
+                <div
+                    style={{ bottom: tooltipBottom }}
+                    className={isCompact
+                        ? "fixed right-2 sm:right-4 z-[999] w-[min(17rem,calc(100vw-1rem))] bg-stone-950/95 border border-stone-700/80 rounded-xl p-2.5 text-left text-stone-300 shadow-2xl backdrop-blur-xl pointer-events-none"
+                        : "fixed right-4 sm:right-6 z-[999] w-[min(22rem,calc(100vw-2rem))] max-w-[22rem] bg-stone-950/95 border border-stone-800 rounded-3xl p-4 text-left text-stone-300 shadow-[0_25px_70px_rgba(0,0,0,0.8)] backdrop-blur-2xl pointer-events-none"
+                    }
+                >
+                    <div className={`flex items-center justify-between gap-2 ${isCompact ? 'mb-1' : 'mb-3'}`}>
+                        <div className={`font-black text-white uppercase ${isCompact ? 'text-[11px] tracking-[0.18em]' : 'text-sm tracking-[0.35em]'}`}>{ITEM_NAMES[mobileTooltipItem || hoveredItem!]}</div>
+                        {!isCompact && <span className="text-[10px] text-stone-400 uppercase tracking-[0.35em]">Description</span>}
                     </div>
-                    <div className="text-stone-400 text-[11px] leading-relaxed break-words whitespace-pre-wrap">
+                    <div className={`text-stone-300 leading-snug break-words whitespace-pre-wrap ${isCompact ? 'text-[10px]' : 'text-[11px] text-stone-400 leading-relaxed'}`}>
                         {ITEM_DESCRIPTIONS[mobileTooltipItem || hoveredItem!]}
                     </div>
-                    {isHoveredCuffDisabled && <div className="text-red-500 mt-3 font-bold border-t border-stone-800 pt-3 tracking-wider uppercase text-[8px]">ALREADY CUFFED</div>}
-                    {isGunHeld && <div className="text-red-500 mt-3 tracking-wider uppercase text-[8px] border-t border-stone-800 pt-3">DROP GUN FIRST</div>}
-                    {player.isFlashbanged && <div className="text-red-500 mt-3 font-bold border-t border-stone-800 pt-3 tracking-wider uppercase text-[8px]">FLASHBANGED</div>}
+                    {isMobileView && selectedIdx !== null && (
+                        <div className="text-purple-300 mt-1.5 pt-1 border-t border-stone-800/80 font-bold tracking-wider uppercase text-[8px]">TAP AGAIN TO USE</div>
+                    )}
+                    {isHoveredCuffDisabled && <div className="text-red-500 mt-1.5 font-bold border-t border-stone-800 pt-1.5 tracking-wider uppercase text-[8px]">ALREADY CUFFED</div>}
+                    {isGunHeld && <div className="text-red-500 mt-1.5 tracking-wider uppercase text-[8px] border-t border-stone-800 pt-1.5">DROP GUN FIRST</div>}
+                    {player.isFlashbanged && <div className="text-red-500 mt-1.5 font-bold border-t border-stone-800 pt-1.5 tracking-wider uppercase text-[8px]">FLASHBANGED</div>}
                 </div>
             )}
 
@@ -251,12 +278,17 @@ const InventoryComponent: React.FC<InventoryProps> = ({ player, dealer, gameStat
                     const isSelected = selectedIdx === idx;
                     const isMouseHovered = hoveredIdx === idx;
                     const isHovered = ((isMouseHovered && (!isUsageDisabled || isTotem)) || (isLongPressing && hoveredIdx === idx) || (isMobileView && isSelected));
-                    const showTooltip = isMouseHovered && !isMobileView;
                     const glowColor = GLOW_COLORS[item];
                     
-                    let activeStyle = {};
+                    let activeStyle: React.CSSProperties = {};
                     if (isHovered || isSelected) {
-                        if (isPotato) {
+                        if (isCompact) {
+                            activeStyle = {
+                                transform: 'translateY(-4px) scale(1.03)',
+                                borderColor: '#c084fc',
+                                backgroundColor: 'rgba(88, 28, 135, 0.35)'
+                            };
+                        } else if (isPotato) {
                             activeStyle = {
                                 transform: 'translateY(-8px)',
                                 borderColor: '#f59e0b',
@@ -277,7 +309,11 @@ const InventoryComponent: React.FC<InventoryProps> = ({ player, dealer, gameStat
                     }
 
                     let btnClass = "";
-                    if (isPotato) {
+                    if (isCompact) {
+                        btnClass = isPotato
+                            ? `w-11 h-12 min-w-[44px] min-h-[44px] bg-neutral-900 border ${isCuffDisabled ? 'border-red-900 bg-red-950/30' : 'border-stone-700'} flex flex-col items-center justify-center disabled:opacity-25 disabled:cursor-not-allowed relative overflow-hidden rounded-lg transition-transform duration-150 touch-manipulation px-0.5`
+                            : `w-11 h-12 min-w-[44px] min-h-[44px] bg-zinc-950/75 border ${isCuffDisabled ? 'border-red-900/50 bg-red-950/15' : BORDER_COLORS[item]} flex flex-col items-center justify-center disabled:opacity-25 disabled:cursor-not-allowed transition-transform duration-150 relative overflow-hidden rounded-lg touch-manipulation px-0.5`;
+                    } else if (isPotato) {
                         btnClass = `w-12 h-16 min-w-[48px] min-h-[48px] md:w-24 md:h-24 bg-neutral-900 border ${isCuffDisabled ? 'border-red-900 bg-red-950/30' : 'border-stone-850'} flex flex-col items-center justify-center hover:bg-neutral-850 disabled:opacity-25 disabled:cursor-not-allowed relative overflow-hidden rounded-md transition-all duration-150 touch-manipulation`;
                     } else {
                         btnClass = `w-12 h-16 min-w-[48px] min-h-[48px] md:w-24 md:h-24 bg-zinc-950/60 border-2 ${isCuffDisabled ? 'border-red-900/50 bg-red-950/10' : BORDER_COLORS[item]} flex flex-col items-center justify-center hover:bg-stone-900/40 disabled:opacity-20 disabled:cursor-not-allowed transition-all duration-300 relative overflow-hidden rounded-xl touch-manipulation ${isBalanced ? '' : 'shadow-[0_10px_30px_rgba(0,0,0,0.5)]'}`;
@@ -287,9 +323,13 @@ const InventoryComponent: React.FC<InventoryProps> = ({ player, dealer, gameStat
                         if (isPotato) {
                             btnClass += " border-amber-500 bg-amber-950/40";
                         } else {
-                            btnClass += " ring-2 ring-purple-500/90 border-purple-400 animate-[pulse_1.5s_infinite]";
+                            btnClass += isCompact ? " ring-2 ring-purple-400 border-purple-400" : " ring-2 ring-purple-500/90 border-purple-400 animate-[pulse_1.5s_infinite]";
                         }
                     }
+
+                    const iconSizeClass = isCompact
+                        ? "w-4 h-4 mb-0.5 shrink-0"
+                        : "mb-0 md:mb-2 w-4 h-4 md:w-6 md:h-6 transition-transform group-hover:scale-110 duration-300";
 
                     return (
                         <div
@@ -319,7 +359,7 @@ const InventoryComponent: React.FC<InventoryProps> = ({ player, dealer, gameStat
                                         onUseItem(idx);
                                     }
                                 }}
-                                onTouchStart={(e) => {
+                                onTouchStart={() => {
                                     touchStartTime.current = Date.now();
                                     setIsLongPressing(false);
                                     setHoveredIdx(idx);
@@ -363,43 +403,46 @@ const InventoryComponent: React.FC<InventoryProps> = ({ player, dealer, gameStat
                                 }}
                                 className={btnClass}
                             >
-                                {!isPotato && (
+                                {!isPotato && !isCompact && (
                                     <>
                                         <div className="absolute inset-0 bg-gradient-to-b from-white/[0.04] to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                                         <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-white/20 to-transparent" />
                                     </>
                                 )}
 
-                                {!isPotato && (
+                                {!isPotato && !isCompact && (
                                     <div className="absolute inset-0 bg-[linear-gradient(transparent_0%,rgba(255,255,255,0.01)_50%,transparent_100%)] bg-[length:100%_3px] pointer-events-none" />
                                 )}
 
-                                {item === 'BEER' && <Icons.Beer className="text-amber-500 mb-0 md:mb-2 w-4 h-4 md:w-6 md:h-6 transition-transform group-hover:scale-110 duration-300" />}
-                                {item === 'CIGS' && <Icons.Cigs className="text-red-500 mb-0 md:mb-2 w-4 h-4 md:w-6 md:h-6 transition-transform group-hover:scale-110 duration-300" />}
-                                {item === 'GLASS' && <Icons.Glass className="text-cyan-500 mb-0 md:mb-2 w-4 h-4 md:w-6 md:h-6 transition-transform group-hover:scale-110 duration-300" />}
-                                {item === 'CUFFS' && <Icons.Cuffs className="text-stone-400 mb-0 md:mb-2 w-4 h-4 md:w-6 md:h-6 transition-transform group-hover:scale-110 duration-300" />}
-                                {item === 'SAW' && <Icons.Saw className="text-orange-600 mb-0 md:mb-2 w-4 h-4 md:w-6 md:h-6 transition-transform group-hover:scale-110 duration-300" />}
-                                {item === 'PHONE' && <Icons.Phone className="text-blue-200 mb-0 md:mb-2 w-4 h-4 md:w-6 md:h-6 transition-transform group-hover:scale-110 duration-300" />}
-                                {item === 'INVERTER' && <Icons.Inverter className="text-green-400 mb-0 md:mb-2 w-4 h-4 md:w-6 md:h-6 transition-transform group-hover:scale-110 duration-300" />}
-                                {item === 'ADRENALINE' && <Icons.Adrenaline className="text-pink-600 mb-0 md:mb-2 w-4 h-4 md:w-6 md:h-6 transition-transform group-hover:scale-110 duration-300" />}
-                                {item === 'CHOKE' && <Icons.Choke className="text-stone-300 mb-0 md:mb-2 w-4 h-4 md:w-6 md:h-6 transition-transform group-hover:scale-110 duration-300" />}
-                                {item === 'REMOTE' && <Icons.Remote className="text-red-500 mb-0 md:mb-2 w-4 h-4 md:w-6 md:h-6 transition-transform group-hover:scale-110 duration-300" />}
-                                {item === 'BIG_INVERTER' && <Icons.BigInverter className="text-orange-500 mb-0 md:mb-2 w-4 h-4 md:w-6 md:h-6 transition-transform group-hover:scale-110 duration-300" />}
-                                {item === 'CONTRACT' && <Icons.Contract className="text-red-700 mb-0 md:mb-2 w-4 h-4 md:w-6 md:h-6 transition-transform group-hover:scale-110 duration-300" />}
-                                {item === 'LUCKYCHARM' && <Icons.Luckycharm className="text-emerald-500 mb-0 md:mb-2 w-4 h-4 md:w-6 md:h-6 transition-transform group-hover:scale-110 duration-300" />}
-                                {item === 'FLASHBANG' && <Icons.Flashbang className="text-zinc-300 mb-0 md:mb-2 w-4 h-4 md:w-6 md:h-6 transition-transform group-hover:scale-110 duration-300" />}
-                                {item === 'CRUSHER' && <Icons.Crusher className="text-amber-600 mb-0 md:mb-2 w-4 h-4 md:w-6 md:h-6 transition-transform group-hover:scale-110 duration-300" />}
-                                {item === 'TOTEM' && <Icons.Totem className="text-amber-400 mb-0 md:mb-2 w-4 h-4 md:w-6 md:h-6 transition-transform group-hover:scale-110 duration-300" />}
-                                {item === 'MIRROR' && <Icons.Mirror className="text-indigo-400 mb-0 md:mb-2 w-4 h-4 md:w-6 md:h-6 transition-transform group-hover:scale-110 duration-300" />}
-                                {item === 'DECK_CARD' && <Icons.DeckCard className="text-purple-400 mb-0 md:mb-2 w-4 h-4 md:w-6 md:h-6 transition-transform group-hover:scale-110 duration-300" />}
-                                {item === 'JACKPOT' && <Icons.Jackpot className="text-yellow-500 mb-0 md:mb-2 w-4 h-4 md:w-6 md:h-6 transition-transform group-hover:scale-110 duration-300" />}
+                                {item === 'BEER' && <Icons.Beer className={`text-amber-500 ${iconSizeClass}`} />}
+                                {item === 'CIGS' && <Icons.Cigs className={`text-red-500 ${iconSizeClass}`} />}
+                                {item === 'GLASS' && <Icons.Glass className={`text-cyan-500 ${iconSizeClass}`} />}
+                                {item === 'CUFFS' && <Icons.Cuffs className={`text-stone-400 ${iconSizeClass}`} />}
+                                {item === 'SAW' && <Icons.Saw className={`text-orange-600 ${iconSizeClass}`} />}
+                                {item === 'PHONE' && <Icons.Phone className={`text-blue-200 ${iconSizeClass}`} />}
+                                {item === 'INVERTER' && <Icons.Inverter className={`text-green-400 ${iconSizeClass}`} />}
+                                {item === 'ADRENALINE' && <Icons.Adrenaline className={`text-pink-600 ${iconSizeClass}`} />}
+                                {item === 'CHOKE' && <Icons.Choke className={`text-stone-300 ${iconSizeClass}`} />}
+                                {item === 'REMOTE' && <Icons.Remote className={`text-red-500 ${iconSizeClass}`} />}
+                                {item === 'BIG_INVERTER' && <Icons.BigInverter className={`text-orange-500 ${iconSizeClass}`} />}
+                                {item === 'CONTRACT' && <Icons.Contract className={`text-red-700 ${iconSizeClass}`} />}
+                                {item === 'LUCKYCHARM' && <Icons.Luckycharm className={`text-emerald-500 ${iconSizeClass}`} />}
+                                {item === 'FLASHBANG' && <Icons.Flashbang className={`text-zinc-300 ${iconSizeClass}`} />}
+                                {item === 'CRUSHER' && <Icons.Crusher className={`text-amber-600 ${iconSizeClass}`} />}
+                                {item === 'TOTEM' && <Icons.Totem className={`text-amber-400 ${iconSizeClass}`} />}
+                                {item === 'MIRROR' && <Icons.Mirror className={`text-indigo-400 ${iconSizeClass}`} />}
+                                {item === 'DECK_CARD' && <Icons.DeckCard className={`text-purple-400 ${iconSizeClass}`} />}
+                                {item === 'JACKPOT' && <Icons.Jackpot className={`text-yellow-500 ${iconSizeClass}`} />}
 
-                                <span className={`text-[6px] md:text-[8px] text-stone-300 font-black tracking-widest block text-center px-1 truncate w-full relative z-10 transition-colors group-hover:text-white ${isPotato ? '' : 'animate-pulse'}`}>
+                                <span className={isCompact
+                                    ? "text-[7px] text-stone-200 font-bold tracking-tight block text-center px-0.5 truncate w-full leading-none relative z-10"
+                                    : `text-[6px] md:text-[8px] text-stone-300 font-black tracking-widest block text-center px-1 truncate w-full relative z-10 transition-colors group-hover:text-white ${isPotato ? '' : 'animate-pulse'}`
+                                }>
                                     {ITEM_LABELS[item]}
                                 </span>
 
                                 {isCuffDisabled && (
-                                    <div className="absolute inset-0 flex items-center justify-center bg-black/70 text-red-600 font-bold text-lg pointer-events-none z-20">
+                                    <div className="absolute inset-0 flex items-center justify-center bg-black/70 text-red-600 font-bold text-sm md:text-lg pointer-events-none z-20">
                                         🚫
                                     </div>
                                 )}
@@ -409,8 +452,8 @@ const InventoryComponent: React.FC<InventoryProps> = ({ player, dealer, gameStat
                     );
                 })}
                 {player.isFlashbanged && (
-                    <div className={`absolute inset-0 bg-red-950/40 backdrop-blur-sm flex items-center justify-center z-30 pointer-events-none border border-red-500/20 ${isPotato ? 'rounded-none' : 'rounded-t-[2rem]'}`}>
-                        <span className="text-red-500 font-black tracking-widest text-xs md:text-sm uppercase animate-pulse">⚡ FLASHBANGED - CANNOT USE ITEMS ⚡</span>
+                    <div className={`absolute inset-0 bg-red-950/40 backdrop-blur-sm flex items-center justify-center z-30 pointer-events-none border border-red-500/20 ${isPotato ? 'rounded-none' : (isCompact ? 'rounded-2xl' : 'rounded-t-[2rem]')}`}>
+                        <span className="text-red-500 font-black tracking-widest text-[10px] md:text-sm uppercase animate-pulse px-2 text-center">⚡ FLASHBANGED - CANNOT USE ITEMS ⚡</span>
                     </div>
                 )}
             </div>

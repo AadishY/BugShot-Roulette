@@ -1,17 +1,47 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Send, Terminal, Smile } from 'lucide-react';
 import { ChatMessage } from '../types';
 import { audioManager } from '../utils/audioManager';
 import { LinkPreviewCard } from './ui/LinkPreviewCard';
 import { MatchInviteCard, parseMessageInvite } from './ui/MessagesModal';
 import { TACTICAL_STICKERS } from '../constants';
+import { resolvePlayerAvatar } from '../utils/messagingService';
+import {
+    getUsersByUsernames,
+    getCachedUserSync,
+    getCurrentUserProfile,
+    type UserProfile
+} from '../utils/firebaseService';
+import { presenceClient } from '../utils/presenceService';
+import { DEFAULT_FALLBACK_AVATAR } from '../utils/dicebear';
+
+type ChatBoxMessage = ChatMessage & {
+    senderUsername?: string;
+    avatarUrl?: string;
+    avatarStyle?: string;
+    avatarSeed?: string;
+    isDeveloper?: boolean;
+};
+
+interface ChatBoxPlayerRef {
+    id?: string;
+    name: string;
+    username?: string;
+    displayName?: string;
+    avatarUrl?: string;
+    avatarStyle?: string;
+    avatarSeed?: string;
+    isDeveloper?: boolean;
+}
 
 interface ChatBoxProps {
-    messages: ChatMessage[];
+    messages: ChatBoxMessage[];
     onSendMessage: (text: string) => void;
     playerName?: string;
     stickers?: string[] | readonly string[];
     onJoinRoom?: (roomId: string) => void;
+    players?: ChatBoxPlayerRef[];
+    currentUser?: UserProfile | null;
 }
 
 export const ChatBox: React.FC<ChatBoxProps> = ({
@@ -19,12 +49,129 @@ export const ChatBox: React.FC<ChatBoxProps> = ({
     onSendMessage,
     playerName: _playerName,
     stickers = TACTICAL_STICKERS,
-    onJoinRoom
+    onJoinRoom,
+    players,
+    currentUser
 }) => {
     const [inputText, setInputText] = useState('');
     const [showStickerPicker, setShowStickerPicker] = useState(false);
+    const [resolvedProfiles, setResolvedProfiles] = useState<Record<string, UserProfile>>({});
+    const [, setAvatarTick] = useState(0);
     const scrollRef = useRef<HTMLDivElement>(null);
     const shouldAutoScrollRef = useRef(true);
+    const attemptedLookupsRef = useRef<Set<string>>(new Set());
+
+    useEffect(() => {
+        const handleProfileUpdated = (e: any) => {
+            const prof = e?.detail?.profile;
+            if (prof?.username) {
+                setResolvedProfiles(prev => ({
+                    ...prev,
+                    [prof.username.toLowerCase()]: prof
+                }));
+            }
+            setAvatarTick(t => t + 1);
+        };
+        window.addEventListener('bugshot_profile_updated', handleProfileUpdated);
+        const unsubPresence = presenceClient.subscribe(() => setAvatarTick(t => t + 1));
+        return () => {
+            window.removeEventListener('bugshot_profile_updated', handleProfileUpdated);
+            unsubPresence();
+        };
+    }, []);
+
+    // Asynchronously resolve Firestore profiles for any senders not yet in presence or local cache
+    useEffect(() => {
+        const missing = new Set<string>();
+        for (const msg of messages || []) {
+            if (!msg || msg.sender === 'SYSTEM') continue;
+            const rawKey = (msg.senderUsername || msg.sender || '').trim();
+            if (!rawKey) continue;
+            const cleanKey = rawKey.toLowerCase().replace(/\(\d+\)$/, '').trim();
+            if (!cleanKey || attemptedLookupsRef.current.has(cleanKey)) continue;
+            const inPresence = presenceClient.getPresenceByNameOrUsername(rawKey);
+            const inCache = resolvedProfiles[cleanKey] || getCachedUserSync(cleanKey);
+            if (!inPresence && !inCache) {
+                attemptedLookupsRef.current.add(cleanKey);
+                missing.add(cleanKey);
+            }
+        }
+        if (missing.size === 0) return;
+        let cancelled = false;
+        getUsersByUsernames(Array.from(missing)).then((fetched) => {
+            if (cancelled || !fetched || Object.keys(fetched).length === 0) return;
+            setResolvedProfiles(prev => ({ ...prev, ...fetched }));
+        }).catch(() => {});
+        return () => {
+            cancelled = true;
+        };
+    }, [messages, resolvedProfiles]);
+
+    const getSenderAvatar = useCallback((msg: ChatBoxMessage): string => {
+        const rawSender = (msg.sender || '').trim();
+        const senderKey = (msg.senderUsername || rawSender).trim();
+        const clean = senderKey.toLowerCase();
+        const stripped = clean.replace(/\(\d+\)$/, '').trim();
+
+        // 1. Check active current user (prop or session)
+        const activeUser = currentUser || getCurrentUserProfile();
+        if (activeUser?.username) {
+            const uLower = activeUser.username.toLowerCase();
+            const dLower = (activeUser.displayName || '').toLowerCase();
+            if (clean === uLower || stripped === uLower || (dLower && (clean === dLower || stripped === dLower))) {
+                return resolvePlayerAvatar(activeUser);
+            }
+        }
+
+        // 2. Check optional room players list if provided
+        if (Array.isArray(players)) {
+            const roomMatch = players.find(p => {
+                const pName = (p.name || '').toLowerCase();
+                const pUser = (p.username || '').toLowerCase();
+                const pDisp = (p.displayName || '').toLowerCase();
+                return pName === clean || pUser === clean || pDisp === clean || pName === stripped || pUser === stripped;
+            });
+            if (roomMatch && (roomMatch.avatarUrl || roomMatch.avatarStyle || roomMatch.avatarSeed)) {
+                return resolvePlayerAvatar({
+                    username: roomMatch.username || stripped || roomMatch.name,
+                    displayName: roomMatch.displayName || roomMatch.name,
+                    avatarUrl: roomMatch.avatarUrl,
+                    avatarStyle: roomMatch.avatarStyle,
+                    avatarSeed: roomMatch.avatarSeed,
+                    isDeveloper: roomMatch.isDeveloper
+                });
+            }
+        }
+
+        // 3. Check live presence (updated in real time when players change avatar)
+        const pres = presenceClient.getPresenceByNameOrUsername(senderKey);
+        if (pres && (pres.avatarUrl || pres.avatarStyle || pres.avatarSeed)) {
+            return resolvePlayerAvatar({
+                username: pres.username || stripped,
+                displayName: pres.displayName || rawSender,
+                avatarUrl: pres.avatarUrl,
+                avatarStyle: pres.avatarStyle,
+                avatarSeed: pres.avatarSeed,
+                isDeveloper: pres.isDeveloper
+            });
+        }
+
+        // 4. Check resolved Firestore profile / local cache
+        const cached = resolvedProfiles[stripped] || getCachedUserSync(senderKey) || getCachedUserSync(stripped);
+        if (cached) {
+            return resolvePlayerAvatar(cached);
+        }
+
+        // 5. Fallback to any avatar metadata on the message payload itself or canonical DiceBear
+        return resolvePlayerAvatar({
+            username: msg.senderUsername || stripped || rawSender,
+            displayName: rawSender,
+            avatarUrl: msg.avatarUrl,
+            avatarStyle: msg.avatarStyle,
+            avatarSeed: msg.avatarSeed,
+            isDeveloper: msg.isDeveloper
+        });
+    }, [currentUser, players, resolvedProfiles]);
 
     const handleScroll = () => {
         if (!scrollRef.current) return;
@@ -94,9 +241,10 @@ export const ChatBox: React.FC<ChatBoxProps> = ({
                             : !(m.text || '').startsWith('SYSTEM:'))) // Lobby displays stickers inline in the feed list
                         .map((msg, i) => {
                         const isSystem = msg.sender === 'SYSTEM';
+                        const senderAvatar = !isSystem ? getSenderAvatar(msg) : '';
                         return (
                             <div 
-                                key={i} 
+                                key={`${msg.timestamp}-${msg.sender}-${i}`} 
                                 className={`text-[10px] sm:text-xs leading-relaxed animate-in fade-in slide-in-from-left-1 duration-200 ${
                                     isSystem 
                                         ? 'py-1.5 border-y border-stone-900/20 my-1.5 bg-stone-950/40 px-2 rounded-lg italic text-amber-500/80 font-medium' 
@@ -104,52 +252,70 @@ export const ChatBox: React.FC<ChatBoxProps> = ({
                                     }`}
                             >
                                 {!isSystem ? (
-                                    <>
-                                        <span 
-                                            style={{ color: msg.color }} 
-                                            className="font-black mr-2 uppercase tracking-wide transition-opacity opacity-90 group-hover:opacity-100 select-none"
-                                        >
-                                            {msg.sender}:
-                                        </span>
-                                        {msg.text.startsWith('[STICKER]:') ? (
-                                            <div className="my-2 p-1.5 bg-stone-900/10 border border-stone-900/20 rounded-lg w-[90px] h-[90px] sm:w-[130px] sm:h-[130px] select-none">
-                                                <img 
-                                                    src={`/sticker/${msg.text.split(':')[1]}`} 
-                                                    alt="Sticker" 
-                                                    className="w-full h-full object-contain rounded-md animate-in zoom-in-95 duration-200" 
-                                                    loading="lazy"
-                                                    onError={(e) => {
-                                                        e.currentTarget.style.display = 'none';
-                                                    }}
-                                                />
-                                            </div>
-                                        ) : (() => {
-                                            const { roomId, cleanText } = parseMessageInvite(msg.text);
-                                            if (roomId) {
+                                    <div className="flex items-start gap-2">
+                                        <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full overflow-hidden bg-stone-900 border border-stone-800 shrink-0 mt-0.5">
+                                            <img
+                                                src={senderAvatar}
+                                                alt={msg.sender}
+                                                className="w-full h-full object-cover"
+                                                loading="lazy"
+                                                decoding="async"
+                                                onError={(e) => {
+                                                    const img = e.currentTarget;
+                                                    if (img.src !== DEFAULT_FALLBACK_AVATAR && !img.dataset.fallbackApplied) {
+                                                        img.dataset.fallbackApplied = '1';
+                                                        img.src = DEFAULT_FALLBACK_AVATAR;
+                                                    }
+                                                }}
+                                            />
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <span 
+                                                style={{ color: msg.color }} 
+                                                className="font-black mr-2 uppercase tracking-wide transition-opacity opacity-90 group-hover:opacity-100 select-none"
+                                            >
+                                                {msg.sender}:
+                                            </span>
+                                            {msg.text.startsWith('[STICKER]:') ? (
+                                                <div className="my-2 p-1.5 bg-stone-900/10 border border-stone-900/20 rounded-lg w-[90px] h-[90px] sm:w-[130px] sm:h-[130px] select-none">
+                                                    <img 
+                                                        src={`/sticker/${msg.text.split(':')[1]}`} 
+                                                        alt="Sticker" 
+                                                        className="w-full h-full object-contain rounded-md animate-in zoom-in-95 duration-200" 
+                                                        loading="lazy"
+                                                        onError={(e) => {
+                                                            e.currentTarget.style.display = 'none';
+                                                        }}
+                                                    />
+                                                </div>
+                                            ) : (() => {
+                                                const { roomId, cleanText } = parseMessageInvite(msg.text);
+                                                if (roomId) {
+                                                    return (
+                                                        <div className="flex flex-col">
+                                                            {cleanText && (
+                                                                <span className="text-stone-300 font-medium select-text break-all">
+                                                                    {cleanText}
+                                                                </span>
+                                                            )}
+                                                            <MatchInviteCard roomId={roomId} onJoinRoom={onJoinRoom} />
+                                                        </div>
+                                                    );
+                                                }
                                                 return (
-                                                    <div className="flex flex-col">
-                                                        {cleanText && (
-                                                            <span className="text-stone-300 font-medium select-text break-all">
-                                                                {cleanText}
-                                                            </span>
-                                                        )}
-                                                        <MatchInviteCard roomId={roomId} onJoinRoom={onJoinRoom} />
-                                                    </div>
+                                                    <span className="text-stone-300 font-medium select-text break-all">
+                                                        {msg.text}
+                                                    </span>
                                                 );
-                                            }
-                                            return (
-                                                <span className="text-stone-300 font-medium select-text break-all">
-                                                    {msg.text}
-                                                </span>
-                                            );
-                                        })()}
-                                        {(() => {
-                                            const { roomId } = parseMessageInvite(msg.text);
-                                            if (roomId) return null;
-                                            const url = msg.text.match(/https?:\/\/[^\s]+/)?.[0];
-                                            return url ? <LinkPreviewCard url={url} /> : null;
-                                        })()}
-                                    </>
+                                            })()}
+                                            {(() => {
+                                                const { roomId } = parseMessageInvite(msg.text);
+                                                if (roomId) return null;
+                                                const url = msg.text.match(/https?:\/\/[^\s]+/)?.[0];
+                                                return url ? <LinkPreviewCard url={url} /> : null;
+                                            })()}
+                                        </div>
+                                    </div>
                                 ) : (
                                     <span className="tracking-wider select-text flex items-center gap-1.5">
                                         <span className="w-1 h-1 bg-amber-500 rounded-full animate-ping shrink-0" />

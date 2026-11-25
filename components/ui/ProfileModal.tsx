@@ -47,11 +47,11 @@ import {
     DICEBEAR_STYLES,
     DicebearStyle,
     getDicebearUrl,
-    generateRandomAvatar
+    parseDicebearUrl
 } from '../../utils/dicebear';
 import { audioManager } from '../../utils/audioManager';
 import { presenceClient, formatLastSeen, UserPresence } from '../../utils/presenceService';
-import { sendFriendRequest, subscribeToFriends, removeFriend } from '../../utils/messagingService';
+import { sendFriendRequest, subscribeToFriends, removeFriend, resolvePlayerAvatar } from '../../utils/messagingService';
 import { showConfirm } from '../../utils/modalService';
 
 interface ProfileModalProps {
@@ -67,15 +67,16 @@ interface ProfileModalProps {
     onRequireLogin?: () => void;
 }
 
-// Clean avatar URL resolver that ignores obsolete procedural data URIs
-const getEffectiveAvatarUrl = (prof: any, style: DicebearStyle, seed: string) => {
-    const isUserDev = prof?.username?.toLowerCase() === 'aadish' || Boolean(prof?.isDeveloper);
-    if (isUserDev) return 'https://avatars.githubusercontent.com/u/101470733';
-    const raw = prof?.avatarUrl;
-    if (raw && typeof raw === 'string' && !raw.startsWith('data:image/svg+xml') && (raw.startsWith('http') || raw.startsWith('/'))) {
-        return raw;
-    }
-    return getDicebearUrl(style, seed);
+// Unified avatar config & URL helpers backed by resolvePlayerAvatar
+const getProfileAvatarConfig = (prof: any): { style: DicebearStyle; seed: string } => {
+    const parsedFromUrl = parseDicebearUrl(prof?.avatarUrl);
+    const style: DicebearStyle = (prof?.avatarStyle as DicebearStyle) || parsedFromUrl?.style || 'thumbs';
+    const seed: string = prof?.avatarSeed || parsedFromUrl?.seed || prof?.username || 'operator';
+    return { style, seed };
+};
+
+const getEffectiveAvatarUrl = (prof: any) => {
+    return resolvePlayerAvatar(prof);
 };
 
 // Multi-page curated and randomized avatar catalog generator supporting style filters & active selection
@@ -147,9 +148,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     
     // Avatar editor state
     const isDev = profile?.username?.toLowerCase() === 'aadish' || Boolean(profile?.isDeveloper);
-    const initialStyle: DicebearStyle = (profile as any)?.avatarStyle || 'thumbs';
-    const initialSeed: string = (profile as any)?.avatarSeed || profile?.username || 'operator';
-    const initialAvatarUrl = getEffectiveAvatarUrl(profile, initialStyle, initialSeed);
+    const { style: initialStyle, seed: initialSeed } = getProfileAvatarConfig(profile);
+    const initialAvatarUrl = getEffectiveAvatarUrl(profile);
 
     const [selectedStyle, setSelectedStyle] = useState<DicebearStyle>(initialStyle);
     const [avatarSeed, setAvatarSeed] = useState<string>(initialSeed);
@@ -202,9 +202,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     useEffect(() => {
         if (profile) {
             setDisplayNameInput(profile.displayName || profile.username);
-            const curStyle: DicebearStyle = (profile as any).avatarStyle || 'thumbs';
-            const curSeed: string = (profile as any).avatarSeed || profile.username || 'operator';
-            const currentUrl = getEffectiveAvatarUrl(profile, curStyle, curSeed);
+            const { style: curStyle, seed: curSeed } = getProfileAvatarConfig(profile);
+            const currentUrl = getEffectiveAvatarUrl(profile);
 
             setSelectedStyle(curStyle);
             setAvatarSeed(curSeed);
@@ -481,22 +480,29 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 
     const handleCancelAvatarEdit = () => {
         audioManager.playSound('click');
-        const originalStyle: DicebearStyle = (profile as any)?.avatarStyle || 'thumbs';
-        const originalSeed: string = (profile as any)?.avatarSeed || profile?.username || 'operator';
+        const { style: originalStyle, seed: originalSeed } = getProfileAvatarConfig(profile);
         setSelectedStyle(originalStyle);
         setAvatarSeed(originalSeed);
         setCustomSeedInput(originalSeed);
-        setPreviewAvatarUrl(getEffectiveAvatarUrl(profile, originalStyle, originalSeed));
+        setPreviewAvatarUrl(getEffectiveAvatarUrl(profile));
         setIsEditingAvatar(false);
     };
 
     const handleSaveAvatar = async () => {
+        if (!profile?.username) return;
         audioManager.playSound('confirm');
         setIsSavingAvatar(true);
         try {
-            const updated = await updateUserAvatar(profile.username, selectedStyle, avatarSeed);
-            if (updated && onProfileUpdated) {
-                onProfileUpdated(updated);
+            const finalSeed = customSeedInput.trim() || avatarSeed || profile.username || 'operator';
+            setAvatarSeed(finalSeed);
+            const updated = await updateUserAvatar(profile.username, selectedStyle, finalSeed);
+            if (updated) {
+                setPreviewAvatarUrl(resolvePlayerAvatar(updated));
+                if (onProfileUpdated) {
+                    onProfileUpdated(updated);
+                }
+                setMessageToast('Avatar saved & synced across leaderboard and chat!');
+                setTimeout(() => setMessageToast(null), 3000);
             }
             setIsEditingAvatar(false);
         } catch (err) {
@@ -1528,10 +1534,14 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                                         {selectedMatchDetail.mpPlayers.map((p: any, pIdx: number) => {
                                             const pName = p.name || `Player ${pIdx + 1}`;
                                             const pId = p.playerId || getPlayerId({ username: p.username || pName });
-                                            const isDev = pName.toLowerCase() === 'aadish' || (p.username && p.username.toLowerCase() === 'aadish');
-                                            const avatarUrl = isDev
-                                                ? 'https://avatars.githubusercontent.com/u/101470733'
-                                                : (p.avatarUrl || getDicebearUrl(p.avatarStyle || 'thumbs', p.username || pName));
+                                            const avatarUrl = resolvePlayerAvatar({
+                                                username: p.username || pName,
+                                                displayName: p.displayName || pName,
+                                                avatarUrl: p.avatarUrl,
+                                                avatarStyle: p.avatarStyle,
+                                                avatarSeed: p.avatarSeed,
+                                                isDeveloper: p.isDeveloper
+                                            });
 
                                             return (
                                                 <div key={pIdx} className="p-2 bg-stone-950 border border-stone-800 rounded-xl flex items-center justify-between text-[9px]">

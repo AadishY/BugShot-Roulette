@@ -1,12 +1,69 @@
 import * as THREE from 'three';
-import { SceneContext } from '../../types';
+import { SceneContext, GraphicsPresetTier } from '../../types';
 import { getDeviceType } from '../gameUtils';
-import { getGraphicsPreset, isUltraPerf, isBalancedPerf, isLowPerf, isHighPerf } from '../../constants';
-import { setupLighting, createTable, createGunModel, createDealerModel, createPlayerAvatar, createProjectiles, createEnvironment, createDust, createBeerCan, createCigarette, createSaw, createHandcuffs, createMagnifyingGlass, createPhone, createInverter, createAdrenaline, createRemote, createBigInverter, createContract, createLuckycharm, createFlashbang, createCrusher, createTotem, createMirror, createTarotCard, createJackpotMachine } from '../threeHelpers';
+import { getGraphicsPreset } from '../../constants';
+import { setupLighting, createTable, createGunModel, createDealerModel, createPlayerAvatar, createProjectiles, createEnvironment, createDust, createBunkerEnvTexture, createBeerCan, createCigarette, createSaw, createHandcuffs, createMagnifyingGlass, createPhone, createInverter, createAdrenaline, createRemote, createBigInverter, createContract, createLuckycharm, createFlashbang, createCrusher, createTotem, createMirror, createTarotCard, createJackpotMachine, optimizeItemForPreset } from '../threeHelpers';
 
+export const getPresetPixelScale = (settings: any, width: number): number => {
+    const ua = typeof navigator !== 'undefined' ? navigator.userAgent.toLowerCase() : '';
+    const isMobileUA = /android|webos|iphone|ipod|blackberry|iemobile|opera mini/i.test(ua);
+    const isTabletUA = /ipad|tablet|playbook|silk/i.test(ua) || (ua.includes('macintosh') && typeof document !== 'undefined' && 'ontouchend' in document);
+    const hasTouch = typeof window !== 'undefined' && ('ontouchstart' in window || (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0));
+
+    let isMob = false;
+    let isTab = false;
+    if (isTabletUA || (width >= 768 && width <= 1024 && hasTouch)) {
+        isTab = true;
+    } else if (isMobileUA || (width < 768 && hasTouch)) {
+        isMob = true;
+    }
+
+    const preset = getGraphicsPreset(settings);
+    let mobilePixelScale = 2.4;
+    if (isMob) {
+        mobilePixelScale = preset === 'potato' ? 4.6 : (preset === 'low' ? 3.2 : (preset === 'balanced' ? 2.4 : 1.8));
+    } else if (isTab) {
+        mobilePixelScale = preset === 'potato' ? 3.6 : (preset === 'low' ? 2.6 : (preset === 'balanced' ? 2.0 : 1.5));
+    }
+    mobilePixelScale = Math.max(mobilePixelScale, settings?.pixelScale || 0);
+
+    const desktopProfileMin = preset === 'potato' ? 4.0 : (preset === 'low' ? 2.8 : (preset === 'balanced' ? 2.4 : 1.8));
+    const desktopPixelScale = settings?.pixelScale || 2.4;
+    const desktopBaseScale = Math.max(desktopProfileMin, desktopPixelScale);
+
+    const baseScale = (isMob || isTab) ? mobilePixelScale : desktopBaseScale;
+    return Math.max(1.0, baseScale * 0.45);
+};
+
+export const getPresetMaxPixelRatio = (preset: GraphicsPresetTier, nativeDpr: number, isAndroid: boolean): number => {
+    if (isAndroid) {
+        switch (preset) {
+            case 'potato':
+                return Math.min(nativeDpr, 0.85);
+            case 'low':
+                return Math.min(nativeDpr, 1.0);
+            case 'balanced':
+                return Math.min(nativeDpr, 1.15);
+            case 'high':
+                return Math.min(nativeDpr, 1.35);
+        }
+    }
+    switch (preset) {
+        case 'potato':
+            return Math.min(nativeDpr, 0.85);
+        case 'low':
+            return Math.min(nativeDpr, 0.95);
+        case 'balanced':
+            return Math.min(nativeDpr, 1.15);
+        case 'high':
+            return Math.min(nativeDpr, 1.6);
+    }
+};
 
 export const cleanScene = (scene: THREE.Scene) => {
-    if (scene.userData?._removeContextListeners) {
+    scene.userData = scene.userData || {};
+    scene.userData._disposed = true;
+    if (scene.userData._removeContextListeners) {
         try {
             scene.userData._removeContextListeners();
         } catch (e) {}
@@ -97,16 +154,19 @@ export const cleanScene = (scene: THREE.Scene) => {
         }
     });
 
-    // Clean scene background and environment if textures
+    // Clean scene background, environment, and fog
     if (scene.background && (scene.background as any) instanceof THREE.Texture) {
         disposeResource(scene.background);
     }
     if (scene.environment && (scene.environment as any) instanceof THREE.Texture) {
         disposeResource(scene.environment);
     }
+    scene.background = null;
+    scene.environment = null;
+    scene.fog = null;
 
     scene.clear();
-    scene.userData = {};
+    scene.userData = { _disposed: true };
     disposedResources.clear();
 };
 
@@ -182,23 +242,22 @@ export const initThreeScene = (container: HTMLElement, props: any): SceneContext
     const pixelRatio = window.devicePixelRatio || 1;
 
     // 4 Standardized Graphics Presets:
-    // Preset 1: Potato ('potato') - Flat shading, zero shadows, linear tone mapping, bare minimum
-    // Preset 2: Low ('low') - Fast with preserved processing: ACES tone mapping, fog, subtle lights & materials
-    // Preset 3: Balanced ('balanced') - Solid 60fps target, PCF shadows, crisp lighting
-    // Preset 4: High ('high') - Rich PBR materials, PCFSoft shadows, full lighting & reflections
+    // Preset 1: Potato ('potato') - Ultra-fast barebones playable, zero shadows, linear tone mapping
+    // Preset 2: Low ('low') - Real atmospheric lighting, bunker fog, subtle contrast & shadows, fast on Android
+    // Preset 3: Balanced ('balanced') - Rich 60fps default with sharp key/fill, PCF shadows, specular metal/wood
+    // Preset 4: High ('high') - Cinematic ACESFilmic, warm/cool rims, crisp shadows, volumetric dust/muzzle & reflections
     const preset = getGraphicsPreset(props.settings);
     const isPotato = preset === 'potato';
     const isLow = preset === 'low';
     const isBalanced = preset === 'balanced';
     const isHigh = preset === 'high';
-    const isUltra = false;
 
     const isLowEndDevice = (isMobile && (isAndroid || width < 600 || pixelRatio < 2 || (typeof navigator !== 'undefined' && navigator.hardwareConcurrency < 6))) || isPotato;
 
     // Android Mobile GPU optimization (Adreno and Mali architectures):
     const shaderPrecision: 'highp' | 'mediump' | 'lowp' = isAndroid
         ? (isPotato ? 'lowp' : 'mediump')
-        : (isHigh ? 'highp' : (isBalanced || isLow ? 'mediump' : 'lowp'));
+        : (isHigh || isBalanced ? 'highp' : (isLow ? 'mediump' : 'lowp'));
 
     const renderer = new THREE.WebGLRenderer({
         antialias: isHigh && !isMobile && !isAndroid,
@@ -209,57 +268,12 @@ export const initThreeScene = (container: HTMLElement, props: any): SceneContext
         precision: shaderPrecision
     });
 
-    // Mobile Optimization: Crisp rendering while ensuring high performance
-    let mobilePixelScale = 2.0; // Default mobile
-    if (isMobile) {
-        mobilePixelScale = isPotato ? 4.8 : (isLow ? 3.2 : (isBalanced ? 2.4 : 1.6));
-    } else if (isTablet) {
-        mobilePixelScale = isPotato ? 3.6 : (isLow ? 2.6 : (isBalanced ? 2.0 : 1.4));
-    }
-
-    // Desktop pixel scale
-    const desktopBaseScale = isPotato ? 4.2 : (isLow ? 3.0 : (isBalanced ? 2.4 : 1.8));
-    const basePixelScale = (isMobile || isTablet) ? mobilePixelScale : desktopBaseScale;
-    const debugHeadModel = props.settings.debugHeadModel ?? 'DEFAULT';
-    const isCustomDebugHead = debugHeadModel !== 'DEFAULT';
-    const pixelScale = isCustomDebugHead ? Math.max(1.0, basePixelScale * 0.45) : basePixelScale;
-
-    // Clamped DPR per preset:
-    let maxPixelRatio = 1.0;
-    if (isAndroid) {
-        switch (preset) {
-            case 'potato':
-                maxPixelRatio = Math.min(pixelRatio, 0.75);
-                break;
-            case 'low':
-                maxPixelRatio = Math.min(pixelRatio, 0.88);
-                break;
-            case 'balanced':
-                maxPixelRatio = Math.min(pixelRatio, 1.0);
-                break;
-            case 'high':
-                maxPixelRatio = Math.min(pixelRatio, 1.25);
-                break;
-        }
-    } else {
-        switch (preset) {
-            case 'potato':
-                maxPixelRatio = Math.min(pixelRatio, 0.85);
-                break;
-            case 'low':
-                maxPixelRatio = Math.min(pixelRatio, 0.95);
-                break;
-            case 'balanced':
-                maxPixelRatio = Math.min(pixelRatio, 1.1);
-                break;
-            case 'high':
-                maxPixelRatio = Math.min(pixelRatio, 1.6);
-                break;
-        }
-    }
+    const pixelScale = getPresetPixelScale(props.settings, width);
+    const maxPixelRatio = getPresetMaxPixelRatio(preset, pixelRatio, isAndroid);
 
     renderer.setPixelRatio(maxPixelRatio);
     scene.userData.basePixelRatio = maxPixelRatio;
+    scene.userData._lastResolutionPreset = preset;
     renderer.setSize(width / pixelScale, height / pixelScale, false);
 
     renderer.domElement.style.width = '100%';
@@ -285,13 +299,9 @@ export const initThreeScene = (container: HTMLElement, props: any): SceneContext
             renderer.shadowMap.autoUpdate = false;
             break;
         case 'low':
-            renderer.shadowMap.enabled = !isMobile && !isAndroid;
-            renderer.shadowMap.autoUpdate = !isMobile && !isAndroid;
-            renderer.shadowMap.type = THREE.PCFShadowMap;
-            break;
         case 'balanced':
-            renderer.shadowMap.enabled = !isAndroid;
-            renderer.shadowMap.autoUpdate = !isAndroid;
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.autoUpdate = true;
             renderer.shadowMap.type = THREE.PCFShadowMap;
             break;
         case 'high':
@@ -301,11 +311,16 @@ export const initThreeScene = (container: HTMLElement, props: any): SceneContext
             break;
     }
 
-    // Tone mapping
+    // Tone mapping & exposure stored per preset so render loop respects it
     renderer.toneMapping = isPotato
         ? THREE.LinearToneMapping
         : THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = isPotato ? 1.0 : (isLow ? 1.45 : (isBalanced ? 1.6 : 1.85));
+    const baseExposure = isPotato ? 1.05 : (isLow ? 1.48 : (isBalanced ? 1.62 : 1.85));
+    renderer.toneMappingExposure = baseExposure;
+    scene.userData.baseExposure = baseExposure;
+
+    // Smooth bunker reflections for metal & wood in Balanced and High
+    scene.environment = (isHigh || isBalanced) ? createBunkerEnvTexture() : null;
 
     scene.userData.isMobile = isMobile;
     scene.userData.isAndroid = isAndroid;
@@ -325,24 +340,38 @@ export const initThreeScene = (container: HTMLElement, props: any): SceneContext
     const handleContextRestored = () => {
         console.info('[Three] WebGL context restored. Re-establishing WebGL state...');
         scene.userData.isContextLost = false;
-        // Invalidate cached textures and materials so WebGL GPU handles are properly re-allocated
+        renderer.resetState();
+        if (renderer.shadowMap.enabled) {
+            renderer.shadowMap.needsUpdate = true;
+        }
+        if (scene.environment instanceof THREE.Texture) {
+            scene.environment.needsUpdate = true;
+        }
+        if (scene.background instanceof THREE.Texture) {
+            scene.background.needsUpdate = true;
+        }
+        const textureKeys = ['map', 'alphaMap', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap', 'aoMap', 'bumpMap', 'displacementMap', 'envMap'];
         scene.traverse((obj: any) => {
-            if (obj.isMesh && obj.material) {
+            if ((obj.isMesh || obj.isSprite || obj.isPoints) && obj.material) {
                 const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-                mats.forEach((m: any) => {
-                    const textureKeys = ['map', 'alphaMap', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap', 'aoMap', 'bumpMap', 'displacementMap', 'envMap'];
-                    textureKeys.forEach((key) => {
-                        if (m[key] && m[key].isTexture) {
-                            m[key].needsUpdate = true;
+                for (let mi = 0; mi < mats.length; mi++) {
+                    const m = mats[mi];
+                    if (!m) continue;
+                    for (let ki = 0; ki < textureKeys.length; ki++) {
+                        const tex = m[textureKeys[ki]];
+                        if (tex && tex.isTexture) {
+                            tex.needsUpdate = true;
                         }
-                    });
+                    }
                     m.needsUpdate = true;
-                });
+                }
             }
         });
         try {
-            renderer.compile(scene, camera);
-            renderer.render(scene, camera);
+            if (!renderer.getContext().isContextLost()) {
+                renderer.compile(scene, camera);
+                renderer.render(scene, camera);
+            }
         } catch (e) {
             console.warn('[Three] Render warmup after context restore:', e);
         }
@@ -412,6 +441,7 @@ export const initThreeScene = (container: HTMLElement, props: any): SceneContext
     for (let i = 0; i < 6; i++) {
         const card = createTarotCard('Death');
         card.visible = false;
+        optimizeItemForPreset(card, preset);
         scene.add(card);
         itemDeckCards.push(card);
     }
@@ -421,6 +451,10 @@ export const initThreeScene = (container: HTMLElement, props: any): SceneContext
     scene.add(itemLight);
 
     const itemsGroup = { itemBeer, itemCigs, itemSaw, itemCuffs, itemGlass, itemPhone, itemInverter, itemAdrenaline, itemRemote, itemBigInverter, itemContract, itemLuckycharm, itemFlashbang, itemCrusher, itemTotem, itemMirror, itemJackpot, itemLight };
+    const itemGroups = [itemBeer, itemCigs, itemSaw, itemCuffs, itemGlass, itemPhone, itemInverter, itemAdrenaline, itemRemote, itemBigInverter, itemContract, itemLuckycharm, itemFlashbang, itemCrusher, itemTotem, itemMirror, itemJackpot];
+    for (let i = 0; i < itemGroups.length; i++) {
+        optimizeItemForPreset(itemGroups[i], preset);
+    }
 
 
     // Multiplayer vs Singleplayer representation
@@ -617,7 +651,9 @@ export const initThreeScene = (container: HTMLElement, props: any): SceneContext
     bloodParticles.frustumCulled = false;
     scene.add(bloodParticles);
 
-    const sparkCount = isUltra ? (isAndroid ? 40 : 80) : (isHigh ? (isAndroid ? 30 : 50) : (isBalanced ? (isMobileOrAndroid ? 15 : 25) : 10));
+    const sparkCount = isHigh
+        ? (isAndroid ? 30 : 55)
+        : (isBalanced ? (isMobileOrAndroid ? 16 : 28) : (isLow ? 12 : 8));
     const sparkGeo = new THREE.BufferGeometry();
     const sPos = new Float32Array(sparkCount * 3);
     const sVel = new Float32Array(sparkCount * 3);

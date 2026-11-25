@@ -30,6 +30,7 @@ interface ControlsProps {
     mpMyPlayerId?: string | null;
     onMpShoot?: (targetId: string) => void;
     settings?: GameSettings;
+    isCompact?: boolean;
 }
 
 const ControlsComponent: React.FC<ControlsProps> = ({
@@ -46,10 +47,13 @@ const ControlsComponent: React.FC<ControlsProps> = ({
     mpGameState,
     mpMyPlayerId,
     onMpShoot,
-    settings
+    settings,
+    isCompact: isCompactProp
 }) => {
     const isBalanced = !!settings?.balancedPerformance || !!settings?.ultraPerformance;
     const isPotato = !!settings?.ultraPerformance;
+    const isCompact = isCompactProp ?? (typeof window !== 'undefined' && (window.innerWidth < 768 || window.innerHeight < 540));
+    const isMobileTouch = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
 
     const mpOpponents = isMultiplayer && mpGameState && mpMyPlayerId
         ? Object.values(mpGameState.players).filter(p => p.id !== mpMyPlayerId && p.isAlive !== false)
@@ -65,9 +69,25 @@ const ControlsComponent: React.FC<ControlsProps> = ({
         onFireShot('PLAYER');
     };
 
+    const isOppAimed = isMobileTouch && currentAimTarget === 'OPPONENT';
+    const isSelfAimed = isMobileTouch && currentAimTarget === 'SELF';
+
+    const grabBtnClass = isCompact
+        ? (isPotato
+            ? `bg-neutral-900 border ${isRecovering ? 'border-red-800 text-red-500' : 'border-stone-500 text-stone-100'} px-4 py-2 min-h-[44px] rounded-xl font-black text-[11px] tracking-wider flex items-center gap-1.5 disabled:opacity-50 touch-manipulation`
+            : `bg-black/75 backdrop-blur-md border px-4 py-2 min-h-[44px] rounded-xl font-black text-[11px] transition-all active:scale-95 tracking-wider flex items-center gap-1.5 disabled:opacity-50 touch-manipulation ${
+                isRecovering ? 'border-red-800 text-red-500' : 'border-stone-400/70 text-stone-100 hover:bg-stone-800/90 hover:border-white'
+            }`)
+        : (isPotato
+            ? `bg-neutral-900 border ${isRecovering ? 'border-red-800 text-red-500' : 'border-stone-700 text-stone-300 hover:bg-neutral-800'} px-6 py-4 lg:px-10 lg:py-6 min-h-[48px] min-w-[48px] font-black text-xs lg:text-xl tracking-wider flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation`
+            : `bg-black/90 border px-6 py-4 lg:px-10 lg:py-6 min-h-[48px] min-w-[48px] font-black text-xs lg:text-xl transition-all active:scale-95 tracking-wider flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation ${isRecovering
+                ? 'border-red-800 text-red-500 disabled:animate-none'
+                : `border-stone-500 text-stone-200 hover:bg-stone-800 hover:text-white hover:border-white ${isBalanced ? '' : 'animate-pulse shadow-lg'}`
+            }`);
+
     return (
-        <div className="flex-1 flex items-end justify-center pointer-events-none pb-1 md:pb-4 controls-enter">
-            <div className="flex gap-2 md:gap-6 pointer-events-auto flex-wrap justify-center px-2">
+        <div className={`w-full flex items-end justify-center pointer-events-none controls-enter ${isCompact ? 'pb-0.5' : 'flex-1 pb-1 lg:pb-4'}`}>
+            <div className={`flex pointer-events-auto justify-center ${isCompact ? 'gap-2 px-1 flex-nowrap max-w-full' : 'gap-2 md:gap-6 flex-wrap px-2'}`}>
                 {/* Grab Gun */}
                 {!isGunHeld && (
                     <button
@@ -78,19 +98,13 @@ const ControlsComponent: React.FC<ControlsProps> = ({
                             }
                         }}
                         disabled={isProcessing || isRecovering}
-                        className={isPotato
-                            ? `bg-neutral-900 border ${isRecovering ? 'border-red-800 text-red-500' : 'border-stone-700 text-stone-300 hover:bg-neutral-800'} px-6 py-4 lg:px-10 lg:py-6 min-h-[48px] min-w-[48px] font-black text-xs lg:text-xl tracking-wider flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed translate-y-4 sm:translate-y-0 touch-manipulation`
-                            : `bg-black/90 border px-6 py-4 lg:px-10 lg:py-6 min-h-[48px] min-w-[48px] font-black text-xs lg:text-xl transition-all active:scale-95 tracking-wider flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed translate-y-4 sm:translate-y-0 touch-manipulation ${isRecovering
-                                ? 'border-red-800 text-red-500 disabled:animate-none'
-                                : `border-stone-500 text-stone-200 hover:bg-stone-800 hover:text-white hover:border-white ${isBalanced ? '' : 'animate-pulse shadow-lg'}`
-                            }`
-                        }
+                        className={grabBtnClass}
                     >
-                        <Hand size={18} className="lg:w-6 lg:h-6" />
+                        <Hand size={isCompact ? 15 : 18} className="lg:w-6 lg:h-6 shrink-0" />
                         {isRecovering ? (
-                            <><span className="hidden md:inline">WAIT </span>RECOVERING...</>
+                            <><span className={isCompact ? 'hidden' : 'hidden md:inline'}>WAIT </span>RECOVERING...</>
                         ) : (
-                            <><span className="hidden md:inline">GRAB </span>SHOTGUN</>
+                            <>GRAB SHOTGUN</>
                         )}
                     </button>
                 )}
@@ -110,10 +124,8 @@ const ControlsComponent: React.FC<ControlsProps> = ({
                             const rightOpponent = size >= 4 ? players[(myIndex + 3) % size] : null;
                             const sidePos = myIndex === 1 ? 'right' : 'left';
 
-                            const isMobile = window.matchMedia('(pointer: coarse)').matches;
-
                             const handleChooseOpponent = (relTarget: TurnOwner, intendedAim: AimTarget, oppId: string) => {
-                                if (isMobile && currentAimTarget !== intendedAim) {
+                                if (isMobileTouch && currentAimTarget !== intendedAim) {
                                     onHoverTarget(intendedAim, oppId);
                                     return;
                                 }
@@ -121,25 +133,29 @@ const ControlsComponent: React.FC<ControlsProps> = ({
                             };
 
                             const handleChooseSelf = () => {
-                                if (isMobile && currentAimTarget !== 'SELF') {
+                                if (isMobileTouch && currentAimTarget !== 'SELF') {
                                     onHoverTarget('SELF', mpMyPlayerId || undefined);
                                     return;
                                 }
                                 onFireShot('PLAYER');
                             };
 
-                            let shootFrontBtnClass = isPotato
-                                ? "bg-neutral-900 border border-red-800 px-4 py-2.5 min-h-[44px] sm:min-h-[48px] text-red-400 font-black text-xs hover:bg-neutral-850 hover:text-white tracking-wide flex items-center gap-1 disabled:opacity-50 touch-manipulation"
-                                : "bg-black/90 border border-red-800 px-4 py-2.5 min-h-[44px] sm:min-h-[48px] text-red-400 font-black text-xs hover:bg-red-900 hover:text-white transition-all active:scale-95 tracking-wide flex items-center gap-1.5 disabled:opacity-50 shadow-lg rounded-lg touch-manipulation";
+                            const getMultiOppBtnClass = (aim: AimTarget) => {
+                                const isAimed = isMobileTouch && currentAimTarget === aim;
+                                if (isPotato) {
+                                    return `bg-neutral-900 border ${isAimed ? 'border-red-400 ring-2 ring-red-500/70 text-white' : 'border-red-800 text-red-400'} px-2.5 py-1.5 min-h-[44px] font-black text-[10px] sm:text-xs tracking-wide flex items-center gap-1 disabled:opacity-50 rounded-lg touch-manipulation`;
+                                }
+                                return `${isAimed ? 'bg-red-900/90 border-red-400 ring-2 ring-red-500/70 text-white' : 'bg-black/80 border-red-800/80 text-red-400 hover:bg-red-900 hover:text-white'} border px-2.5 py-1.5 min-h-[44px] font-black text-[10px] sm:text-xs transition-all active:scale-95 tracking-wide flex items-center gap-1 disabled:opacity-50 shadow-lg rounded-lg touch-manipulation`;
+                            };
 
-                            let shootSelfBtnClass = isPotato
-                                ? "bg-neutral-900 border border-stone-850 px-4 py-2.5 min-h-[44px] sm:min-h-[48px] text-stone-300 font-black text-xs hover:bg-neutral-850 hover:text-white tracking-wide flex items-center gap-1 disabled:opacity-50 touch-manipulation"
-                                : "bg-black/90 border border-stone-700 px-4 py-2.5 min-h-[44px] sm:min-h-[48px] text-stone-300 font-black text-xs hover:bg-stone-800 hover:text-white transition-all active:scale-95 tracking-wide flex items-center gap-1.5 disabled:opacity-50 shadow-lg rounded-lg touch-manipulation";
+                            const multiSelfBtnClass = isPotato
+                                ? `bg-neutral-900 border ${isSelfAimed ? 'border-cyan-400 ring-2 ring-cyan-500/60 text-white' : 'border-stone-700 text-stone-300'} px-2.5 py-1.5 min-h-[44px] font-black text-[10px] sm:text-xs tracking-wide flex items-center gap-1 disabled:opacity-50 rounded-lg touch-manipulation`
+                                : `${isSelfAimed ? 'bg-stone-800/95 border-cyan-400 ring-2 ring-cyan-500/60 text-white' : 'bg-black/80 border-stone-700 text-stone-300 hover:bg-stone-800 hover:text-white'} border px-2.5 py-1.5 min-h-[44px] font-black text-[10px] sm:text-xs transition-all active:scale-95 tracking-wide flex items-center gap-1 disabled:opacity-50 shadow-lg rounded-lg touch-manipulation`;
 
                             return (
-                                <div className="grid grid-cols-3 gap-3 max-w-md w-full justify-center items-center">
+                                <div className={`grid grid-cols-3 ${isCompact ? 'gap-1.5 max-w-[330px]' : 'gap-3 max-w-md'} w-full justify-center items-center`}>
                                     {/* Row 1: Front Player */}
-                                    <div className="col-start-2 flex justify-center">
+                                    <div className="col-start-2 flex justify-center min-w-0">
                                         {frontOpponent && (
                                             <button
                                                 onClick={() => {
@@ -147,18 +163,18 @@ const ControlsComponent: React.FC<ControlsProps> = ({
                                                     handleChooseOpponent('DEALER', 'OPPONENT', frontOpponent.id);
                                                 }}
                                                 disabled={isProcessing}
-                                                onMouseEnter={() => !isMobile && !isProcessing && onHoverTarget('OPPONENT', frontOpponent.id)}
-                                                onMouseLeave={() => !isMobile && !isProcessing && onHoverTarget('CHOOSING')}
-                                                className={`${shootFrontBtnClass} w-full justify-center`}
+                                                onMouseEnter={() => !isMobileTouch && !isProcessing && onHoverTarget('OPPONENT', frontOpponent.id)}
+                                                onMouseLeave={() => !isMobileTouch && !isProcessing && onHoverTarget('CHOOSING')}
+                                                className={`${getMultiOppBtnClass('OPPONENT')} w-full justify-center`}
                                             >
-                                                <Target size={14} />
-                                                {frontOpponent.name.toUpperCase()}
+                                                <Target size={13} className="shrink-0" />
+                                                <span className="truncate">{frontOpponent.name.toUpperCase()}</span>
                                             </button>
                                         )}
                                     </div>
 
                                     {/* Row 2: Left Player, Self, Right Player */}
-                                    <div className="col-start-1 row-start-2 flex justify-center">
+                                    <div className="col-start-1 row-start-2 flex justify-center min-w-0">
                                         {((size === 4 && leftOpponent) || (size === 3 && sidePos === 'left' && sideOpponent)) && (
                                             <button
                                                 onClick={() => {
@@ -166,33 +182,33 @@ const ControlsComponent: React.FC<ControlsProps> = ({
                                                     handleChooseOpponent('PLAYER3', 'LEFT', (size === 4 ? leftOpponent! : sideOpponent).id);
                                                 }}
                                                 disabled={isProcessing}
-                                                onMouseEnter={() => !isMobile && !isProcessing && onHoverTarget('LEFT', (size === 4 ? leftOpponent! : sideOpponent).id)}
-                                                onMouseLeave={() => !isMobile && !isProcessing && onHoverTarget('CHOOSING')}
-                                                className={`${shootFrontBtnClass} w-full justify-center`}
+                                                onMouseEnter={() => !isMobileTouch && !isProcessing && onHoverTarget('LEFT', (size === 4 ? leftOpponent! : sideOpponent).id)}
+                                                onMouseLeave={() => !isMobileTouch && !isProcessing && onHoverTarget('CHOOSING')}
+                                                className={`${getMultiOppBtnClass('LEFT')} w-full justify-center`}
                                             >
-                                                <Target size={14} />
-                                                {(size === 4 ? leftOpponent! : sideOpponent).name.toUpperCase()}
+                                                <Target size={13} className="shrink-0" />
+                                                <span className="truncate">{(size === 4 ? leftOpponent! : sideOpponent).name.toUpperCase()}</span>
                                             </button>
                                         )}
                                     </div>
 
-                                    <div className="col-start-2 row-start-2 flex justify-center">
+                                    <div className="col-start-2 row-start-2 flex justify-center min-w-0">
                                         <button
                                             onClick={() => {
                                                 audioManager.playSound('click');
                                                 handleChooseSelf();
                                             }}
                                             disabled={isProcessing}
-                                            onMouseEnter={() => !isMobile && !isProcessing && onHoverTarget('SELF')}
-                                            onMouseLeave={() => !isMobile && !isProcessing && onHoverTarget('CHOOSING')}
-                                            className={`${shootSelfBtnClass} w-full justify-center`}
+                                            onMouseEnter={() => !isMobileTouch && !isProcessing && onHoverTarget('SELF')}
+                                            onMouseLeave={() => !isMobileTouch && !isProcessing && onHoverTarget('CHOOSING')}
+                                            className={`${multiSelfBtnClass} w-full justify-center`}
                                         >
-                                            <User size={14} />
-                                            SELF
+                                            <User size={13} className="shrink-0" />
+                                            <span>SELF</span>
                                         </button>
                                     </div>
 
-                                    <div className="col-start-3 row-start-2 flex justify-center">
+                                    <div className="col-start-3 row-start-2 flex justify-center min-w-0">
                                         {((size === 4 && rightOpponent) || (size === 3 && sidePos === 'right' && sideOpponent)) && (
                                             <button
                                                 onClick={() => {
@@ -200,12 +216,12 @@ const ControlsComponent: React.FC<ControlsProps> = ({
                                                     handleChooseOpponent(size === 4 ? 'PLAYER4' : 'PLAYER3', 'RIGHT', (size === 4 ? rightOpponent! : sideOpponent).id);
                                                 }}
                                                 disabled={isProcessing}
-                                                onMouseEnter={() => !isMobile && !isProcessing && onHoverTarget('RIGHT', (size === 4 ? rightOpponent! : sideOpponent).id)}
-                                                onMouseLeave={() => !isMobile && !isProcessing && onHoverTarget('CHOOSING')}
-                                                className={`${shootFrontBtnClass} w-full justify-center`}
+                                                onMouseEnter={() => !isMobileTouch && !isProcessing && onHoverTarget('RIGHT', (size === 4 ? rightOpponent! : sideOpponent).id)}
+                                                onMouseLeave={() => !isMobileTouch && !isProcessing && onHoverTarget('CHOOSING')}
+                                                className={`${getMultiOppBtnClass('RIGHT')} w-full justify-center`}
                                             >
-                                                <Target size={14} />
-                                                {(size === 4 ? rightOpponent! : sideOpponent).name.toUpperCase()}
+                                                <Target size={13} className="shrink-0" />
+                                                <span className="truncate">{(size === 4 ? rightOpponent! : sideOpponent).name.toUpperCase()}</span>
                                             </button>
                                         )}
                                     </div>
@@ -215,12 +231,13 @@ const ControlsComponent: React.FC<ControlsProps> = ({
                             <>
                                 {isMultiplayer && mpOpponents.length > 0 ? (
                                     mpOpponents.map((opp) => {
-                                        let oppBtnClass = "";
-                                        if (isPotato) {
-                                            oppBtnClass = "bg-neutral-900 border border-red-800 px-5 py-3 lg:px-6 lg:py-4 min-h-[48px] text-red-400 font-black text-xs lg:text-lg hover:bg-neutral-850 hover:text-white tracking-wide flex items-center gap-1 lg:gap-2 disabled:opacity-50 touch-manipulation";
-                                        } else {
-                                            oppBtnClass = `bg-black/90 border border-red-800 px-5 py-3 lg:px-6 lg:py-4 min-h-[48px] text-red-400 font-black text-xs lg:text-lg hover:bg-red-900 hover:text-white transition-all active:scale-95 tracking-wide flex items-center gap-1 lg:gap-2 disabled:opacity-50 touch-manipulation ${isBalanced ? '' : 'shadow-lg'}`;
-                                        }
+                                        const oppBtnClass = isCompact
+                                            ? (isPotato
+                                                ? `bg-neutral-900 border ${isOppAimed ? 'border-red-400 ring-2 ring-red-500/70 text-white' : 'border-red-800 text-red-400'} px-3.5 py-2 min-h-[44px] rounded-xl font-black text-[11px] tracking-wide flex items-center gap-1.5 disabled:opacity-50 touch-manipulation`
+                                                : `${isOppAimed ? 'bg-red-900/85 border-red-400 ring-2 ring-red-500/70 text-white' : 'bg-black/75 border-red-700/80 text-red-300 hover:bg-red-900 hover:text-white'} backdrop-blur-md border px-3.5 py-2 min-h-[44px] rounded-xl font-black text-[11px] transition-all active:scale-95 tracking-wide flex items-center gap-1.5 disabled:opacity-50 touch-manipulation`)
+                                            : (isPotato
+                                                ? "bg-neutral-900 border border-red-800 px-5 py-3 lg:px-6 lg:py-4 min-h-[48px] text-red-400 font-black text-xs lg:text-lg hover:bg-neutral-850 hover:text-white tracking-wide flex items-center gap-1 lg:gap-2 disabled:opacity-50 touch-manipulation"
+                                                : `bg-black/90 border border-red-800 px-5 py-3 lg:px-6 lg:py-4 min-h-[48px] text-red-400 font-black text-xs lg:text-lg hover:bg-red-900 hover:text-white transition-all active:scale-95 tracking-wide flex items-center gap-1 lg:gap-2 disabled:opacity-50 touch-manipulation ${isBalanced ? '' : 'shadow-lg'}`);
                                         return (
                                             <button
                                                 key={opp.id}
@@ -233,8 +250,8 @@ const ControlsComponent: React.FC<ControlsProps> = ({
                                                 onMouseLeave={() => window.matchMedia('(hover: hover)').matches && !isProcessing && onHoverTarget('CHOOSING')}
                                                 className={oppBtnClass}
                                             >
-                                                <Target size={18} className="lg:w-5 lg:h-5" />
-                                                {opp.name}
+                                                <Target size={isCompact ? 15 : 18} className="lg:w-5 lg:h-5 shrink-0" />
+                                                <span className="truncate max-w-[120px]">{isOppAimed ? `FIRE: ${opp.name}` : opp.name}</span>
                                             </button>
                                         );
                                     })
@@ -247,13 +264,17 @@ const ControlsComponent: React.FC<ControlsProps> = ({
                                         disabled={isProcessing}
                                         onMouseEnter={() => window.matchMedia('(hover: hover)').matches && !isProcessing && onHoverTarget('OPPONENT')}
                                         onMouseLeave={() => window.matchMedia('(hover: hover)').matches && !isProcessing && onHoverTarget('CHOOSING')}
-                                        className={isPotato
-                                            ? "bg-neutral-900 border border-red-800 px-5 py-3 lg:px-8 lg:py-5 min-h-[48px] text-red-400 font-black text-xs lg:text-xl hover:bg-neutral-850 hover:text-white tracking-wide flex items-center gap-2 disabled:opacity-50 touch-manipulation"
-                                            : `bg-black/90 border border-red-800 px-5 py-3 lg:px-8 lg:py-5 min-h-[48px] text-red-400 font-black text-xs lg:text-xl hover:bg-red-900 hover:text-white transition-all active:scale-95 tracking-wide flex items-center gap-2 disabled:opacity-50 touch-manipulation ${isBalanced ? '' : 'shadow-lg'}`
+                                        className={isCompact
+                                            ? (isPotato
+                                                ? `bg-neutral-900 border ${isOppAimed ? 'border-red-400 ring-2 ring-red-500/70 text-white' : 'border-red-800 text-red-400'} px-3.5 py-2 min-h-[44px] rounded-xl font-black text-[11px] tracking-wide flex items-center gap-1.5 disabled:opacity-50 touch-manipulation whitespace-nowrap`
+                                                : `${isOppAimed ? 'bg-red-900/85 border-red-400 ring-2 ring-red-500/70 text-white' : 'bg-black/75 border-red-700/80 text-red-300 hover:bg-red-900 hover:text-white'} backdrop-blur-md border px-3.5 py-2 min-h-[44px] rounded-xl font-black text-[11px] transition-all active:scale-95 tracking-wide flex items-center gap-1.5 disabled:opacity-50 touch-manipulation whitespace-nowrap`)
+                                            : (isPotato
+                                                ? "bg-neutral-900 border border-red-800 px-5 py-3 lg:px-8 lg:py-5 min-h-[48px] text-red-400 font-black text-xs lg:text-xl hover:bg-neutral-850 hover:text-white tracking-wide flex items-center gap-2 disabled:opacity-50 touch-manipulation"
+                                                : `bg-black/90 border border-red-800 px-5 py-3 lg:px-8 lg:py-5 min-h-[48px] text-red-400 font-black text-xs lg:text-xl hover:bg-red-900 hover:text-white transition-all active:scale-95 tracking-wide flex items-center gap-2 disabled:opacity-50 touch-manipulation ${isBalanced ? '' : 'shadow-lg'}`)
                                         }
                                     >
-                                        <Target size={18} className="lg:w-6 lg:h-6" />
-                                        {isMultiplayer ? 'SHOOT OPPONENT' : 'SHOOT DEALER'}
+                                        <Target size={isCompact ? 15 : 18} className="lg:w-6 lg:h-6 shrink-0" />
+                                        {isOppAimed ? 'CONFIRM FIRE' : (isMultiplayer ? 'SHOOT OPPONENT' : 'SHOOT DEALER')}
                                     </button>
                                 )}
 
@@ -265,13 +286,17 @@ const ControlsComponent: React.FC<ControlsProps> = ({
                                     disabled={isProcessing}
                                     onMouseEnter={() => window.matchMedia('(hover: hover)').matches && !isProcessing && onHoverTarget('SELF', mpMyPlayerId || undefined)}
                                     onMouseLeave={() => window.matchMedia('(hover: hover)').matches && !isProcessing && onHoverTarget('CHOOSING')}
-                                    className={isPotato
-                                        ? "bg-neutral-900 border border-stone-850 px-5 py-3 lg:px-8 lg:py-5 min-h-[48px] text-stone-300 font-black text-xs lg:text-xl hover:bg-neutral-850 hover:text-white tracking-wide flex items-center gap-2 disabled:opacity-50 touch-manipulation"
-                                        : `bg-black/90 border border-stone-700 px-5 py-3 lg:px-8 lg:py-5 min-h-[48px] text-stone-300 font-black text-xs lg:text-xl hover:bg-stone-800 hover:text-white transition-all active:scale-95 tracking-wide flex items-center gap-2 disabled:opacity-50 touch-manipulation ${isBalanced ? '' : 'shadow-lg'}`
+                                    className={isCompact
+                                        ? (isPotato
+                                            ? `bg-neutral-900 border ${isSelfAimed ? 'border-cyan-400 ring-2 ring-cyan-500/60 text-white' : 'border-stone-700 text-stone-200'} px-3.5 py-2 min-h-[44px] rounded-xl font-black text-[11px] tracking-wide flex items-center gap-1.5 disabled:opacity-50 touch-manipulation whitespace-nowrap`
+                                            : `${isSelfAimed ? 'bg-stone-800/90 border-cyan-400 ring-2 ring-cyan-500/60 text-white' : 'bg-black/75 border-stone-500/70 text-stone-200 hover:bg-stone-800 hover:text-white'} backdrop-blur-md border px-3.5 py-2 min-h-[44px] rounded-xl font-black text-[11px] transition-all active:scale-95 tracking-wide flex items-center gap-1.5 disabled:opacity-50 touch-manipulation whitespace-nowrap`)
+                                        : (isPotato
+                                            ? "bg-neutral-900 border border-stone-850 px-5 py-3 lg:px-8 lg:py-5 min-h-[48px] text-stone-300 font-black text-xs lg:text-xl hover:bg-neutral-850 hover:text-white tracking-wide flex items-center gap-2 disabled:opacity-50 touch-manipulation"
+                                            : `bg-black/90 border border-stone-700 px-5 py-3 lg:px-8 lg:py-5 min-h-[48px] text-stone-300 font-black text-xs lg:text-xl hover:bg-stone-800 hover:text-white transition-all active:scale-95 tracking-wide flex items-center gap-2 disabled:opacity-50 touch-manipulation ${isBalanced ? '' : 'shadow-lg'}`)
                                     }
                                 >
-                                    <User size={18} className="lg:w-6 lg:h-6" />
-                                    SHOOT SELF
+                                    <User size={isCompact ? 15 : 18} className="lg:w-6 lg:h-6 shrink-0" />
+                                    {isSelfAimed ? 'CONFIRM SELF' : 'SHOOT SELF'}
                                 </button>
                             </>
                         )}

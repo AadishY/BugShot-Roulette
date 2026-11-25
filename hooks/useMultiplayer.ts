@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { MultiplayerGameState, RoomSettings, ChatMessage, MultiplayerPlayer } from '../types';
+import { RoomSettings, ChatMessage } from '../types';
 import { SocketBatcher } from '../utils/socketOptimizer';
 
 const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
@@ -24,19 +24,30 @@ const getSocketConfig = (forceCloudFallback = false) => {
     };
 };
 
-const loadSavedSettings = (): RoomSettings => {
-    let savedSettings: RoomSettings = { rounds: 3, hp: 9, itemsPerShipment: 9, isPrivate: false, isAdvanced: false };
+type ExtendedRoomSettings = RoomSettings & {
+    name?: string;
+    roomName?: string;
+    maxPlayers?: number;
+};
+
+const loadSavedSettings = (): ExtendedRoomSettings => {
+    let savedSettings: ExtendedRoomSettings = { rounds: 3, hp: 9, itemsPerShipment: 9, isPrivate: false, isAdvanced: false, maxPlayers: 4 };
     try {
         const saved = localStorage.getItem('aadish_roulette_last_lobby_settings');
         if (saved) {
             const parsed = JSON.parse(saved);
             if (parsed && typeof parsed === 'object') {
+                const roomName = typeof parsed.roomName === 'string' && parsed.roomName.trim()
+                    ? parsed.roomName.trim().slice(0, 32)
+                    : (typeof parsed.name === 'string' && parsed.name.trim() ? parsed.name.trim().slice(0, 32) : undefined);
                 savedSettings = {
-                    rounds: typeof parsed.rounds === 'number' && !isNaN(parsed.rounds) ? Math.min(Math.max(1, parsed.rounds), 10) : 3,
-                    hp: typeof parsed.hp === 'number' && !isNaN(parsed.hp) ? Math.min(Math.max(1, parsed.hp), 12) : 9,
-                    itemsPerShipment: typeof parsed.itemsPerShipment === 'number' && !isNaN(parsed.itemsPerShipment) ? Math.min(Math.max(1, parsed.itemsPerShipment), 12) : 9,
+                    rounds: typeof parsed.rounds === 'number' && !isNaN(parsed.rounds) ? Math.min(Math.max(1, Math.round(parsed.rounds)), 7) : 3,
+                    hp: typeof parsed.hp === 'number' && !isNaN(parsed.hp) ? Math.min(Math.max(2, Math.round(parsed.hp)), 9) : 9,
+                    itemsPerShipment: typeof parsed.itemsPerShipment === 'number' && !isNaN(parsed.itemsPerShipment) ? Math.min(Math.max(0, Math.round(parsed.itemsPerShipment)), 9) : 9,
                     isPrivate: Boolean(parsed.isPrivate),
-                    isAdvanced: false
+                    isAdvanced: false,
+                    maxPlayers: typeof parsed.maxPlayers === 'number' && !isNaN(parsed.maxPlayers) ? Math.min(Math.max(2, Math.round(parsed.maxPlayers)), 4) : 4,
+                    ...(roomName ? { name: roomName, roomName } : {})
                 };
             }
         }
@@ -57,12 +68,29 @@ const getAuthId = (): string | null => {
     return null;
 };
 
+const getStoredAvatarData = () => {
+    try {
+        const raw = localStorage.getItem('aadish_roulette_logged_in_user');
+        if (raw) {
+            const u = JSON.parse(raw);
+            if (u && typeof u === 'object') {
+                return {
+                    avatarUrl: typeof u.avatarUrl === 'string' ? u.avatarUrl : undefined,
+                    avatarStyle: typeof u.avatarStyle === 'string' ? u.avatarStyle : undefined,
+                    avatarSeed: typeof u.avatarSeed === 'string' ? u.avatarSeed : undefined
+                };
+            }
+        }
+    } catch (e) {}
+    return {};
+};
+
 const IMMEDIATE_ACTION_TYPES = new Set([
     'SHOOT', 'USE_ITEM', 'SELECT_CARD', 'PICKUP_GUN', 'STEAL_ITEM', 'CANCEL_STEAL',
     'SYNC_STATE', 'SYNC_THREE_PLAYER_STATE', 'SYNC_ROUND', 'SYNC_THREE_PLAYER_ROUND',
     'SYNC_MP_GAME_OVER',
     'DEBUG_SYNC_PLAYER', 'DEBUG_SYNC_DEALER', 'DEBUG_SYNC_GAMESTATE',
-    'DEBUG_SYNC_THREE_PLAYER', 'DEBUG_SYNC_PLAYER_MODEL'
+    'DEBUG_SYNC_THREE_PLAYER', 'DEBUG_SYNC_PLAYER_MODEL', 'DEBUG_SET_PLAYER_MODEL'
 ]);
 
 export function useMultiplayer() {
@@ -80,12 +108,54 @@ export function useMultiplayer() {
     const hasFallenBackRef = useRef(false);
     const socketRef = useRef<Socket | null>(null);
     const socketBatcherRef = useRef<SocketBatcher | null>(null);
+    const managerCleanupRef = useRef<(() => void) | null>(null);
     const lastJoinRef = useRef<{ roomId: string; playerName: string } | null>(null);
     const playerNameRef = useRef<string>('');
     const actionQueueRef = useRef<{ roomId: string; action: any; isImmediate?: boolean }[]>([]);
-    const fallbackConnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-    const reconnectStatusTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-    const connectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const fallbackConnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const reconnectStatusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const connectionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const clearTimers = useCallback(() => {
+        if (connectionTimeoutRef.current) {
+            clearTimeout(connectionTimeoutRef.current);
+            connectionTimeoutRef.current = null;
+        }
+        if (fallbackConnectTimeoutRef.current) {
+            clearTimeout(fallbackConnectTimeoutRef.current);
+            fallbackConnectTimeoutRef.current = null;
+        }
+        if (reconnectStatusTimeoutRef.current) {
+            clearTimeout(reconnectStatusTimeoutRef.current);
+            reconnectStatusTimeoutRef.current = null;
+        }
+    }, []);
+
+    const teardownActiveSocket = useCallback((emitLeave = false) => {
+        const activeSocket = socketRef.current;
+        if (managerCleanupRef.current) {
+            try {
+                managerCleanupRef.current();
+            } catch (e) {}
+            managerCleanupRef.current = null;
+        }
+        if (socketBatcherRef.current) {
+            try {
+                socketBatcherRef.current.clear();
+            } catch (e) {}
+            socketBatcherRef.current = null;
+        }
+        if (activeSocket) {
+            try {
+                if (emitLeave && activeSocket.connected && lastJoinRef.current?.roomId) {
+                    activeSocket.emit('leaveRoom', { roomId: lastJoinRef.current.roomId });
+                }
+                activeSocket.removeAllListeners();
+                activeSocket.disconnect();
+            } catch (e) {}
+            socketRef.current = null;
+        }
+    }, []);
 
     const flushActionQueue = useCallback(() => {
         const s = socketRef.current;
@@ -114,34 +184,21 @@ export function useMultiplayer() {
     const connect = useCallback((playerName?: string) => {
         if (playerName) playerNameRef.current = playerName;
 
-        // Prevent socket leaks if connect is called while already connected
-        if (socketRef.current) {
-            try {
-                socketBatcherRef.current?.flush();
-                socketRef.current.removeAllListeners();
-                socketRef.current.disconnect();
-            } catch (e) {}
-            socketRef.current = null;
-        }
+        // Prevent socket leaks if connect is called while already connected or connecting
+        teardownActiveSocket(false);
+        clearTimers();
         setIsConnecting(true);
         setError(null);
         setConnectionStatus('ESTABLISHING LINK...');
         connectionAttemptsRef.current = 0;
 
-        // Clear any previous connection watchdog timer
-        if (connectionTimeoutRef.current) {
-            clearTimeout(connectionTimeoutRef.current);
-            connectionTimeoutRef.current = null;
-        }
-
         // Hard watchdog timeout (12s): Prevents hanging on dormant cloud spaces or silent socket stalls
         connectionTimeoutRef.current = setTimeout(() => {
             if (!socketRef.current?.connected) {
                 console.warn("[Socket] Connection timed out after 12s.");
-                try {
-                    socketRef.current?.removeAllListeners();
-                    socketRef.current?.disconnect();
-                } catch (e) {}
+                teardownActiveSocket(false);
+                setSocket(null);
+                setIsConnected(false);
                 setIsConnecting(false);
                 setConnectionStatus('');
                 setError('SERVER OFFLINE: Connection timed out. The multiplayer server is unreachable or asleep. Please click Retry to wake it up or return to the main menu.');
@@ -162,8 +219,11 @@ export function useMultiplayer() {
             upgrade: true,
             rememberUpgrade: true
         });
+        // Assign immediately so cancel/timeout/double-connect always tears down this socket
+        socketRef.current = newSocket;
 
         newSocket.on('connect', () => {
+            if (socketRef.current !== newSocket) return;
             if (connectionTimeoutRef.current) {
                 clearTimeout(connectionTimeoutRef.current);
                 connectionTimeoutRef.current = null;
@@ -171,77 +231,99 @@ export function useMultiplayer() {
             setIsConnected(true);
             setIsConnecting(false);
             setSocket(newSocket);
-            socketRef.current = newSocket;
             setError(null);
             setConnectionStatus('');
             connectionAttemptsRef.current = 0;
 
-            // Auto-rejoin room after reconnect (lobby or mid-game grace window)
-            const pending = lastJoinRef.current;
-            if (pending && playerNameRef.current) {
-                let avatarData: any = {};
-                try {
-                    const raw = localStorage.getItem('aadish_roulette_logged_in_user');
-                    if (raw) {
-                        const u = JSON.parse(raw);
-                        avatarData = { avatarUrl: u.avatarUrl, avatarStyle: u.avatarStyle, avatarSeed: u.avatarSeed };
-                    }
-                } catch (e) {}
-                newSocket.emit('joinRoom', {
-                    roomId: pending.roomId,
-                    playerName: playerNameRef.current,
-                    authId: getAuthId(),
-                    ...avatarData
-                });
+            // Clear any prior batcher before initializing a fresh one on reconnect
+            if (socketBatcherRef.current) {
+                socketBatcherRef.current.clear();
             }
-
-            // Flush any pending queued actions upon link recovery
-            flushActionQueue();
-
-            // Initialize socket batcher for non-critical game actions (2 actions or 50ms)
             socketBatcherRef.current = new SocketBatcher(2, 50, (actions) => {
+                if (!newSocket.connected) {
+                    for (const act of actions) {
+                        if (actionQueueRef.current.length < 30 && act?.data?.roomId && act?.data?.action) {
+                            actionQueueRef.current.push({ roomId: act.data.roomId, action: act.data.action, isImmediate: false });
+                        }
+                    }
+                    return;
+                }
                 if (actions.length === 1) {
-                    const action = actions[0];
-                    newSocket.emit('gameAction', action.data);
+                    newSocket.emit('gameAction', actions[0].data);
                 } else {
                     newSocket.emit('gameActionBatch', { actions });
                 }
             });
+
+            // Auto-rejoin room after reconnect (lobby or mid-game grace window)
+            const pending = lastJoinRef.current;
+            if (pending && playerNameRef.current) {
+                newSocket.emit('joinRoom', {
+                    roomId: pending.roomId,
+                    playerName: playerNameRef.current,
+                    authId: getAuthId(),
+                    ...getStoredAvatarData()
+                });
+            } else {
+                // Flush any pending queued actions only if no rejoin is pending
+                flushActionQueue();
+            }
         });
 
-        (newSocket.io as any).on('ping', () => {
+        const ioManager = newSocket.io as any;
+        const onPing = () => {
             (newSocket as any)._pingSentAt = Date.now();
-        });
-        (newSocket.io as any).on('pong', () => {
+        };
+        const onPong = () => {
             const sent = (newSocket as any)._pingSentAt;
             if (sent) setLatencyMs(Date.now() - sent);
-        });
-
-        (newSocket.io as any).on('reconnect_attempt', (attempt: number) => {
+        };
+        const onReconnectAttempt = (attempt: number) => {
+            if (socketRef.current !== newSocket) return;
             setConnectionStatus(`RECONNECTING TO MAINFRAME (${attempt}/50)...`);
-        });
-
-        (newSocket.io as any).on('reconnect', () => {
+        };
+        const onReconnect = () => {
+            if (socketRef.current !== newSocket) return;
             setIsConnected(true);
             setIsConnecting(false);
             setError(null);
             setConnectionStatus('');
-            flushActionQueue();
-        });
-
-        (newSocket.io as any).on('reconnect_failed', () => {
+            if (!lastJoinRef.current) {
+                flushActionQueue();
+            }
+        };
+        const onReconnectFailed = () => {
+            if (socketRef.current !== newSocket) return;
             console.warn("Socket reconnection failed after 50 attempts.");
             setError('Connection lost: Server unreachable after multiple reconnection attempts.');
             setIsConnecting(false);
             setIsConnected(false);
             setConnectionStatus('');
-        });
-
-        (newSocket.io as any).on('reconnect_error', (err: any) => {
+        };
+        const onReconnectError = (err: any) => {
+            if (socketRef.current !== newSocket) return;
             console.warn("Socket reconnect error:", err);
-        });
+        };
+
+        if (ioManager && typeof ioManager.on === 'function') {
+            ioManager.on('ping', onPing);
+            ioManager.on('pong', onPong);
+            ioManager.on('reconnect_attempt', onReconnectAttempt);
+            ioManager.on('reconnect', onReconnect);
+            ioManager.on('reconnect_failed', onReconnectFailed);
+            ioManager.on('reconnect_error', onReconnectError);
+            managerCleanupRef.current = () => {
+                ioManager.off?.('ping', onPing);
+                ioManager.off?.('pong', onPong);
+                ioManager.off?.('reconnect_attempt', onReconnectAttempt);
+                ioManager.off?.('reconnect', onReconnect);
+                ioManager.off?.('reconnect_failed', onReconnectFailed);
+                ioManager.off?.('reconnect_error', onReconnectError);
+            };
+        }
 
         newSocket.on('connect_error', (err) => {
+            if (socketRef.current !== newSocket) return;
             connectionAttemptsRef.current += 1;
             console.warn(`[Socket] Connection error attempt ${connectionAttemptsRef.current}:`, (err as any)?.message || err);
 
@@ -249,14 +331,11 @@ export function useMultiplayer() {
             if (isLocal && !hasFallenBackRef.current && connectionAttemptsRef.current >= 2) {
                 hasFallenBackRef.current = true;
                 setConnectionStatus('ROUTING TO CLOUD BUNKER...');
-                try {
-                    newSocket.removeAllListeners();
-                    newSocket.disconnect();
-                } catch (e) {}
+                teardownActiveSocket(false);
                 if (fallbackConnectTimeoutRef.current) clearTimeout(fallbackConnectTimeoutRef.current);
                 fallbackConnectTimeoutRef.current = setTimeout(() => {
-                    connect(playerNameRef.current);
                     fallbackConnectTimeoutRef.current = null;
+                    connect(playerNameRef.current);
                 }, 200);
                 return;
             }
@@ -268,23 +347,22 @@ export function useMultiplayer() {
                     clearTimeout(connectionTimeoutRef.current);
                     connectionTimeoutRef.current = null;
                 }
+                teardownActiveSocket(false);
+                setSocket(null);
                 setError('SERVER OFFLINE: Multiplayer server is unreachable or asleep. Please click Retry to wake it up or return to the main menu.');
                 setIsConnecting(false);
                 setConnectionStatus('');
-                try {
-                    newSocket.removeAllListeners();
-                    newSocket.disconnect();
-                } catch (e) {}
             } else {
                 setConnectionStatus(`CONNECTING TO SERVER (ATTEMPT ${connectionAttemptsRef.current}/${maxAttempts})...`);
             }
         });
 
         newSocket.on('disconnect', (reason) => {
+            if (socketRef.current !== newSocket) return;
             console.log('Socket disconnected:', reason);
             setIsConnected(false);
             try {
-                socketBatcherRef.current?.flush();
+                socketBatcherRef.current?.clear();
             } catch (e) {}
             if (reason === 'io server disconnect') {
                 try {
@@ -297,19 +375,19 @@ export function useMultiplayer() {
             }
         });
 
-        newSocket.on('joinedRoom', ({ room, playerId, reconnected }) => {
-            if (!room) return;
-            if (room.debugPlayerModels) {
-                room.multiplayerState = {
-                    ...(room.multiplayerState || {}),
-                    debugPlayerModels: room.debugPlayerModels
+        newSocket.on('joinedRoom', ({ room: joinedRoom, playerId: joinedPlayerId, reconnected }) => {
+            if (!joinedRoom) return;
+            if (joinedRoom.debugPlayerModels) {
+                joinedRoom.multiplayerState = {
+                    ...(joinedRoom.multiplayerState || {}),
+                    debugPlayerModels: joinedRoom.debugPlayerModels
                 };
             }
-            setRoom(room);
-            setPlayerId(playerId || null);
-            setMessages(Array.isArray(room.messages) ? room.messages : []);
-            if (room.id) {
-                lastJoinRef.current = { roomId: room.id, playerName: playerNameRef.current };
+            setRoom(joinedRoom);
+            setPlayerId(joinedPlayerId || null);
+            setMessages(Array.isArray(joinedRoom.messages) ? joinedRoom.messages : []);
+            if (joinedRoom.id) {
+                lastJoinRef.current = { roomId: joinedRoom.id, playerName: playerNameRef.current };
             }
             flushActionQueue();
             if (reconnected) {
@@ -371,6 +449,7 @@ export function useMultiplayer() {
             setRoom(null);
             setPlayerId(null);
             lastJoinRef.current = null;
+            actionQueueRef.current = [];
             try {
                 newSocket.disconnect();
             } catch (e) {}
@@ -381,34 +460,12 @@ export function useMultiplayer() {
         });
 
         return newSocket;
-    }, []);
+    }, [clearTimers, flushActionQueue, teardownActiveSocket]);
 
     const disconnect = useCallback(() => {
-        if (connectionTimeoutRef.current) {
-            clearTimeout(connectionTimeoutRef.current);
-            connectionTimeoutRef.current = null;
-        }
-        if (fallbackConnectTimeoutRef.current) {
-            clearTimeout(fallbackConnectTimeoutRef.current);
-            fallbackConnectTimeoutRef.current = null;
-        }
-        if (reconnectStatusTimeoutRef.current) {
-            clearTimeout(reconnectStatusTimeoutRef.current);
-            reconnectStatusTimeoutRef.current = null;
-        }
-        const activeSocket = socketRef.current || socket;
-        if (activeSocket) {
-            try {
-                socketBatcherRef.current?.clear();
-                activeSocket.removeAllListeners();
-                activeSocket.disconnect();
-            } catch (e) {
-                console.warn("Error disconnecting socket:", e);
-            }
-        }
+        clearTimers();
+        teardownActiveSocket(true);
         actionQueueRef.current = [];
-        socketRef.current = null;
-        socketBatcherRef.current = null;
         setSocket(null);
         setIsConnected(false);
         setIsConnecting(false);
@@ -416,77 +473,51 @@ export function useMultiplayer() {
         connectionAttemptsRef.current = 0;
         setRoom(null);
         setPlayerId(null);
+        setMessages([]);
+        setLatencyMs(null);
         setError(null);
         lastJoinRef.current = null;
-    }, [socket]);
+    }, [clearTimers, teardownActiveSocket]);
 
     useEffect(() => {
         return () => {
-            if (connectionTimeoutRef.current) {
-                clearTimeout(connectionTimeoutRef.current);
-                connectionTimeoutRef.current = null;
-            }
-            if (fallbackConnectTimeoutRef.current) {
-                clearTimeout(fallbackConnectTimeoutRef.current);
-                fallbackConnectTimeoutRef.current = null;
-            }
-            if (reconnectStatusTimeoutRef.current) {
-                clearTimeout(reconnectStatusTimeoutRef.current);
-                reconnectStatusTimeoutRef.current = null;
-            }
+            clearTimers();
             actionQueueRef.current = [];
-            if (socketRef.current) {
-                try {
-                    socketBatcherRef.current?.clear();
-                    socketRef.current.removeAllListeners();
-                    socketRef.current.disconnect();
-                } catch (e) {}
-                socketRef.current = null;
-                socketBatcherRef.current = null;
-            }
+            teardownActiveSocket(true);
         };
-    }, []);
+    }, [clearTimers, teardownActiveSocket]);
 
-    const getStoredAvatarData = () => {
-        try {
-            const raw = localStorage.getItem('aadish_roulette_logged_in_user');
-            if (raw) {
-                const u = JSON.parse(raw);
-                if (u && typeof u === 'object') {
-                    return {
-                        avatarUrl: typeof u.avatarUrl === 'string' ? u.avatarUrl : undefined,
-                        avatarStyle: typeof u.avatarStyle === 'string' ? u.avatarStyle : undefined,
-                        avatarSeed: typeof u.avatarSeed === 'string' ? u.avatarSeed : undefined
-                    };
-                }
-            }
-        } catch (e) {}
-        return {};
-    };
-
-    const joinRoom = (roomId: string, playerName: string) => {
+    const joinRoom = useCallback((roomId: string, playerName: string) => {
         if (!roomId || !playerName) return;
         playerNameRef.current = playerName;
         lastJoinRef.current = { roomId, playerName };
-        const activeSocket = socketRef.current || socket;
-        activeSocket?.emit('joinRoom', { roomId, playerName, authId: getAuthId(), ...getStoredAvatarData() });
-    };
+        socketRef.current?.emit('joinRoom', { roomId, playerName, authId: getAuthId(), ...getStoredAvatarData() });
+    }, []);
 
-    const createRoom = (playerName: string) => {
+    const createRoom = useCallback((playerName: string) => {
         if (!playerName) return;
         playerNameRef.current = playerName;
         const savedSettings = loadSavedSettings();
-        const activeSocket = socketRef.current || socket;
-        activeSocket?.emit('createRoom', { playerName, settings: savedSettings, authId: getAuthId(), ...getStoredAvatarData() });
-    };
+        socketRef.current?.emit('createRoom', { playerName, settings: savedSettings, authId: getAuthId(), ...getStoredAvatarData() });
+    }, []);
 
-    const quickJoin = (playerName: string) => {
+    const quickJoin = useCallback((playerName: string) => {
         if (!playerName) return;
         playerNameRef.current = playerName;
         const savedSettings = loadSavedSettings();
-        const activeSocket = socketRef.current || socket;
-        activeSocket?.emit('quickJoin', { playerName, settings: savedSettings, authId: getAuthId(), ...getStoredAvatarData() });
-    };
+        socketRef.current?.emit('quickJoin', { playerName, settings: savedSettings, authId: getAuthId(), ...getStoredAvatarData() });
+    }, []);
+
+    const leaveRoom = useCallback((roomId: string) => {
+        if (!roomId) return;
+        socketRef.current?.emit('leaveRoom', { roomId });
+        if (lastJoinRef.current?.roomId === roomId) {
+            lastJoinRef.current = null;
+        }
+        actionQueueRef.current = [];
+        setRoom(null);
+        setMessages([]);
+    }, []);
 
     const clearError = useCallback(() => {
         setError(null);
@@ -496,7 +527,7 @@ export function useMultiplayer() {
         }
     }, []);
 
-    const updateSettings = (roomId: string, settings: RoomSettings) => {
+    const updateSettings = useCallback((roomId: string, settings: RoomSettings) => {
         if (!roomId || !settings) return;
         try {
             const settingsToSave = { ...settings, isAdvanced: false };
@@ -504,41 +535,42 @@ export function useMultiplayer() {
         } catch (e) {
             console.error("Failed to save settings:", e);
         }
-        const activeSocket = socketRef.current || socket;
-        activeSocket?.emit('updateSettings', { roomId, settings });
-    };
+        socketRef.current?.emit('updateSettings', { roomId, settings });
+    }, []);
 
-    const readyUp = (roomId: string, ready: boolean) => {
+    const readyUp = useCallback((roomId: string, ready: boolean) => {
         if (!roomId) return;
-        const activeSocket = socketRef.current || socket;
-        activeSocket?.emit('readyUp', { roomId, ready });
-    };
+        socketRef.current?.emit('readyUp', { roomId, ready });
+    }, []);
 
-    const startGame = (roomId: string, gameData: any) => {
+    const startGame = useCallback((roomId: string, gameData: any) => {
         if (!roomId) return;
-        const activeSocket = socketRef.current || socket;
-        activeSocket?.emit('startGame', { roomId, gameData });
-    };
+        socketRef.current?.emit('startGame', { roomId, gameData });
+    }, []);
 
-    const sendMessage = (roomId: string, message: string) => {
+    const sendMessage = useCallback((roomId: string, message: string) => {
         if (!roomId || !message?.trim()) return;
-        const activeSocket = socketRef.current || socket;
-        activeSocket?.emit('chatMessage', { roomId, message: message.trim() });
-    };
+        const senderUsername = getAuthId();
+        const avatarData = getStoredAvatarData();
+        socketRef.current?.emit('chatMessage', {
+            roomId,
+            message: message.trim(),
+            ...(senderUsername ? { senderUsername, isDeveloper: senderUsername === 'aadish' } : {}),
+            ...avatarData
+        });
+    }, []);
 
-    const sendAction = (roomId: string, action: any) => {
+    const sendAction = useCallback((roomId: string, action: any) => {
         if (!roomId || !action) return;
-        const activeSocket = socketRef.current || socket;
+        const activeSocket = socketRef.current;
         if (IMMEDIATE_ACTION_TYPES.has(action?.type)) {
             try {
                 socketBatcherRef.current?.flush();
             } catch (e) {}
             if (activeSocket?.connected) {
                 activeSocket.emit('gameAction', { roomId, action });
-            } else {
-                if (actionQueueRef.current.length < 30) {
-                    actionQueueRef.current.push({ roomId, action, isImmediate: true });
-                }
+            } else if (actionQueueRef.current.length < 30) {
+                actionQueueRef.current.push({ roomId, action, isImmediate: true });
             }
             return;
         }
@@ -547,46 +579,40 @@ export function useMultiplayer() {
             socketBatcherRef.current.queue('gameAction', { roomId, action });
         } else if (activeSocket?.connected) {
             activeSocket.emit('gameAction', { roomId, action });
-        } else {
-            if (actionQueueRef.current.length < 30) {
-                actionQueueRef.current.push({ roomId, action, isImmediate: false });
-            }
+        } else if (actionQueueRef.current.length < 30) {
+            actionQueueRef.current.push({ roomId, action, isImmediate: false });
         }
-    };
+    }, []);
 
     // Bypass batcher for latency-sensitive events (aim, shoot, state sync)
-    const sendImmediateAction = (roomId: string, action: any) => {
+    const sendImmediateAction = useCallback((roomId: string, action: any) => {
         if (!roomId || !action) return;
-        const activeSocket = socketRef.current || socket;
+        const activeSocket = socketRef.current;
         try {
             socketBatcherRef.current?.flush();
         } catch (e) {}
         if (activeSocket?.connected) {
             activeSocket.emit('gameAction', { roomId, action });
-        } else {
-            if (actionQueueRef.current.length < 30) {
-                actionQueueRef.current.push({ roomId, action, isImmediate: true });
-            }
+        } else if (actionQueueRef.current.length < 30) {
+            actionQueueRef.current.push({ roomId, action, isImmediate: true });
         }
-    };
+    }, []);
 
-    const kickPlayer = (roomId: string, targetPlayerId: string) => {
+    const kickPlayer = useCallback((roomId: string, targetPlayerId: string) => {
         if (!roomId || !targetPlayerId) return;
-        const activeSocket = socketRef.current || socket;
-        activeSocket?.emit('kickPlayer', { roomId, targetPlayerId });
-    };
+        socketRef.current?.emit('kickPlayer', { roomId, targetPlayerId });
+    }, []);
 
-    const updatePlayerAvatar = (roomId: string, avatarData: { avatarUrl?: string; avatarStyle?: string; avatarSeed?: string }) => {
-        if (!roomId) return;
-        const activeSocket = socketRef.current || socket;
-        activeSocket?.emit('updatePlayerAvatar', { roomId, ...avatarData });
-    };
+    const updatePlayerAvatar = useCallback((roomId: string, avatarData: { avatarUrl?: string; avatarStyle?: string; avatarSeed?: string; displayName?: string }) => {
+        const activeSocket = socketRef.current;
+        if (!activeSocket?.connected) return;
+        activeSocket.emit('updatePlayerAvatar', { roomId: roomId || undefined, ...avatarData });
+    }, []);
 
-    const resetRoomState = (roomId: string) => {
+    const resetRoomState = useCallback((roomId: string) => {
         if (!roomId) return;
-        const activeSocket = socketRef.current || socket;
-        activeSocket?.emit('resetRoomState', { roomId });
-    };
+        socketRef.current?.emit('resetRoomState', { roomId });
+    }, []);
 
     const getActiveRooms = useCallback(async () => {
         if (!REST_SERVER_URL) return [];
@@ -607,7 +633,7 @@ export function useMultiplayer() {
         }
     }, []);
 
-    return {
+    return useMemo(() => ({
         socket,
         room,
         playerId,
@@ -622,6 +648,7 @@ export function useMultiplayer() {
         joinRoom,
         createRoom,
         quickJoin,
+        leaveRoom,
         clearError,
         kickPlayer,
         updatePlayerAvatar,
@@ -635,5 +662,34 @@ export function useMultiplayer() {
         sendImmediateAction,
         setOnAction,
         setOnFullSyncRequest
-    };
+    }), [
+        socket,
+        room,
+        playerId,
+        error,
+        isConnected,
+        isConnecting,
+        connectionStatus,
+        messages,
+        latencyMs,
+        connect,
+        disconnect,
+        joinRoom,
+        createRoom,
+        quickJoin,
+        leaveRoom,
+        clearError,
+        kickPlayer,
+        updatePlayerAvatar,
+        resetRoomState,
+        getActiveRooms,
+        updateSettings,
+        readyUp,
+        startGame,
+        sendMessage,
+        sendAction,
+        sendImmediateAction,
+        setOnAction,
+        setOnFullSyncRequest
+    ]);
 }

@@ -7,14 +7,15 @@ const _v1 = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
 const _vBullet = new THREE.Vector3();
 
-export function updateParticles(p: THREE.Points, limit: number) {
+export function updateParticles(p: THREE.Points, limit: number, dt?: number) {
     const pos = p.geometry.attributes.position.array as Float32Array;
     const vel = p.geometry.attributes.velocity.array as Float32Array;
+    const scale = dt ? dt / 0.0166 : 1;
     for (let i = 0; i < pos.length / 3; i++) {
         const idx = i * 3;
-        pos[idx] += vel[idx]; pos[idx + 1] += vel[idx + 1]; pos[idx + 2] += vel[idx + 2];
+        pos[idx] += vel[idx] * scale; pos[idx + 1] += vel[idx + 1] * scale; pos[idx + 2] += vel[idx + 2] * scale;
         if (Math.abs(pos[idx]) > limit) pos[idx] *= -0.9;
-        if (Math.abs(pos[idx + 1]) > 15) pos[idx + 1] *= -0.9;
+        if (pos[idx + 1] > 16 || pos[idx + 1] < 1) vel[idx + 1] *= -1;
         if (Math.abs(pos[idx + 2]) > 20) pos[idx + 2] *= -0.9;
     }
     p.geometry.attributes.position.needsUpdate = true;
@@ -399,15 +400,16 @@ export function updateItemAnimations(context: SceneContext, props: SceneProps, t
                         items.itemCigs.position.set(0.5, 1.5 + Math.sin(time) * 0.05, 4);
                         items.itemCigs.rotation.set(0.3 + Math.sin(time * 5) * 0.05, -0.2, 0.1);
 
-                        const tip = items.itemCigs.getObjectByName("CIG_TIP") as THREE.Mesh;
+                        const tip = (items.itemCigs.userData._tipMesh || (items.itemCigs.userData._tipMesh = items.itemCigs.getObjectByName("CIG_TIP"))) as THREE.Mesh | undefined;
                         if (tip) {
                             const intensity = (Math.sin(time * 20) + 1) * 0.5;
                             (tip.material as THREE.MeshBasicMaterial).color.setHSL(0.04, 1.0, 0.3 + intensity * 0.7);
                         }
-                        const smokePool = items.itemCigs.getObjectByName("SMOKE_POOL");
+                        const smokePool = (items.itemCigs.userData._smokePool || (items.itemCigs.userData._smokePool = items.itemCigs.getObjectByName("SMOKE_POOL"))) as THREE.Object3D | undefined;
                         if (smokePool) {
-                            smokePool.children.forEach((p, i) => {
-                                const mesh = p as THREE.Mesh;
+                            const children = smokePool.children;
+                            for (let i = 0; i < children.length; i++) {
+                                const mesh = children[i] as THREE.Mesh;
                                 const offset = (time * 2 + i) % 5;
                                 if (offset < 2.0) {
                                     mesh.visible = true;
@@ -417,7 +419,7 @@ export function updateItemAnimations(context: SceneContext, props: SceneProps, t
                                 } else {
                                     mesh.visible = false;
                                 }
-                            });
+                            }
                         }
                         camera.rotation.z = Math.sin(time) * 0.005;
                     } else {
@@ -435,16 +437,17 @@ export function updateItemAnimations(context: SceneContext, props: SceneProps, t
                         items.itemCigs.position.set(0, 2.6 + Math.sin(healTime * 2) * 0.1, -4.0);
                         items.itemCigs.rotation.set(0, 0.2 + Math.sin(time * 2) * 0.1, 0.3);
 
-                        const tip = items.itemCigs.getObjectByName("CIG_TIP") as THREE.Mesh;
+                        const tip = (items.itemCigs.userData._tipMesh || (items.itemCigs.userData._tipMesh = items.itemCigs.getObjectByName("CIG_TIP"))) as THREE.Mesh | undefined;
                         if (tip) {
                             const intensity = (Math.sin(time * 15) + 1) * 0.5;
                             (tip.material as THREE.MeshBasicMaterial).color.setHSL(0.05, 1.0, 0.3 + intensity * 0.7);
                         }
 
-                        const smokePool = items.itemCigs.getObjectByName("SMOKE_POOL");
+                        const smokePool = (items.itemCigs.userData._smokePool || (items.itemCigs.userData._smokePool = items.itemCigs.getObjectByName("SMOKE_POOL"))) as THREE.Object3D | undefined;
                         if (smokePool) {
-                            smokePool.children.forEach((p, i) => {
-                                const mesh = p as THREE.Mesh;
+                            const children = smokePool.children;
+                            for (let i = 0; i < children.length; i++) {
+                                const mesh = children[i] as THREE.Mesh;
                                 const offset = (time * 2 + i) % 5;
                                 if (offset < 2.0) {
                                     mesh.visible = true;
@@ -454,7 +457,7 @@ export function updateItemAnimations(context: SceneContext, props: SceneProps, t
                                 } else {
                                     mesh.visible = false;
                                 }
-                            });
+                            }
                         }
                     } else {
                         const p = (healTime - 3.0) / 0.5;
@@ -541,7 +544,7 @@ export function updateItemAnimations(context: SceneContext, props: SceneProps, t
         if (phoneTime < 3.5) {
             items.itemPhone.visible = true;
             items.itemPhone.scale.setScalar(1.8);
-            const screen = items.itemPhone.getObjectByName('PHONE_SCREEN') as THREE.Mesh;
+            const screen = (items.itemPhone.userData._screenMesh || (items.itemPhone.userData._screenMesh = items.itemPhone.getObjectByName('PHONE_SCREEN'))) as THREE.Mesh | undefined;
 
             if (isPlayerTurn) {
                 if (phoneTime < 0.6) {
@@ -1391,41 +1394,40 @@ export function updateItemAnimations(context: SceneContext, props: SceneProps, t
                         // Face down: flat on table (rot X = Math.PI / 2 showing the gold-maroon back)
                         cardGroup.rotation.set(Math.PI / 2, 0, 0);
 
-                        // Reset materials back to back texture
-                        const mesh = cardGroup.getObjectByName('CARD_MESH') as THREE.Mesh;
+                        // Reuse materials in-place and never dispose cached _cardTextureCache textures
+                        const mesh = (cardGroup.userData._cardMesh || (cardGroup.userData._cardMesh = cardGroup.getObjectByName('CARD_MESH'))) as THREE.Mesh | undefined;
                         if (mesh && Array.isArray(mesh.material) && deckCards && deckCards[idx]) {
+                            if (!cardGroup.userData._frontMat && mesh.material[4]) {
+                                cardGroup.userData._frontMat = mesh.material[4];
+                            }
+                            if (!cardGroup.userData._backMat && mesh.material[5]) {
+                                cardGroup.userData._backMat = mesh.material[5];
+                            }
+                            const frontMat = cardGroup.userData._frontMat as (THREE.MeshStandardMaterial | THREE.MeshLambertMaterial | THREE.MeshBasicMaterial) | undefined;
+                            const backMat = cardGroup.userData._backMat as (THREE.MeshStandardMaterial | THREE.MeshLambertMaterial | THREE.MeshBasicMaterial) | undefined;
+                            if (frontMat) mesh.material[4] = frontMat;
+                            if (backMat) mesh.material[5] = backMat;
+
                             const name = deckCards[idx].name;
                             const frontTex = createCardTexture(name, false);
                             const backTex = createCardTexture(name, true);
 
-                            // Proper cleanup of old materials and textures to prevent memory leaks
-                            if (mesh.material[4]) {
-                                const oldMat = mesh.material[4] as THREE.MeshStandardMaterial;
-                                if (oldMat.map) oldMat.map.dispose();
-                                oldMat.dispose();
+                            if (frontMat) {
+                                frontMat.map = frontTex;
+                                if ('emissive' in frontMat && frontMat.emissive) {
+                                    frontMat.emissive.setHex(0xffffff);
+                                    frontMat.emissiveIntensity = 0.2;
+                                }
+                                frontMat.needsUpdate = true;
                             }
-                            if (mesh.material[5]) {
-                                const oldMat = mesh.material[5] as THREE.MeshStandardMaterial;
-                                if (oldMat.map) oldMat.map.dispose();
-                                oldMat.dispose();
+                            if (backMat) {
+                                backMat.map = backTex;
+                                if ('emissive' in backMat && backMat.emissive) {
+                                    backMat.emissive.setHex(0x000000);
+                                    backMat.emissiveIntensity = 0.0;
+                                }
+                                backMat.needsUpdate = true;
                             }
-                            
-                            mesh.material[4] = new THREE.MeshStandardMaterial({
-                                map: frontTex,
-                                roughness: 0.8,
-                                metalness: 0.0,
-                                emissive: new THREE.Color(0xffffff),
-                                emissiveIntensity: 0.2,
-                                side: THREE.DoubleSide
-                            });
-                            mesh.material[5] = new THREE.MeshStandardMaterial({
-                                map: backTex,
-                                roughness: 0.95,
-                                metalness: 0.0,
-                                emissive: new THREE.Color(0x000000),
-                                emissiveIntensity: 0.0,
-                                side: THREE.DoubleSide
-                            });
                         }
                     });
                 } else {
@@ -1450,10 +1452,11 @@ export function updateItemAnimations(context: SceneContext, props: SceneProps, t
                     ? time - scene.userData.cardSelectChosenStart
                     : -1;
 
-                context.itemDeckCards.forEach((cardGroup, idx) => {
+                for (let idx = 0; idx < context.itemDeckCards.length; idx++) {
+                    const cardGroup = context.itemDeckCards[idx];
                     if (idx >= deckCards.length) {
                         cardGroup.visible = false;
-                        return;
+                        continue;
                     }
                     cardGroup.visible = true;
 
@@ -1463,7 +1466,7 @@ export function updateItemAnimations(context: SceneContext, props: SceneProps, t
                     const startX = (c - 1) * 1.35;
                     const startZ = (isPlayer ? 2.2 : -2.2) + (r - 0.5) * 1.8 * (isPlayer ? 1 : -1);
 
-                    const mesh = cardGroup.getObjectByName('CARD_MESH') as THREE.Mesh;
+                    const mesh = (cardGroup.userData._cardMesh || (cardGroup.userData._cardMesh = cardGroup.getObjectByName('CARD_MESH'))) as THREE.Mesh | undefined;
                     const backMat = mesh && Array.isArray(mesh.material) ? (mesh.material[5] as THREE.MeshStandardMaterial) : null;
                     const frontMat = mesh && Array.isArray(mesh.material) ? (mesh.material[4] as THREE.MeshStandardMaterial) : null;
 
@@ -1477,7 +1480,7 @@ export function updateItemAnimations(context: SceneContext, props: SceneProps, t
                         if (isHovered) {
                             targetScale = 1.42;
                             targetEmissive = 0.8;
-                            if (backMat) {
+                            if (backMat && 'emissive' in backMat && backMat.emissive) {
                                 backMat.emissive.setHex(0xa855f7); // Purple glow
                             }
                         }
@@ -1488,7 +1491,7 @@ export function updateItemAnimations(context: SceneContext, props: SceneProps, t
                         cardGroup.userData.currentScale = THREE.MathUtils.lerp(cardGroup.userData.currentScale, targetScale, 0.15);
                         cardGroup.userData.currentEmissive = THREE.MathUtils.lerp(cardGroup.userData.currentEmissive, targetEmissive, 0.15);
 
-                        if (backMat) {
+                        if (backMat && 'emissiveIntensity' in backMat) {
                             backMat.emissiveIntensity = cardGroup.userData.currentEmissive;
                         }
 
@@ -1515,7 +1518,7 @@ export function updateItemAnimations(context: SceneContext, props: SceneProps, t
                             const startPos = scene.userData._startPosTemp.set(startX, 0.2, startZ);
 
                             // Make sure revealed card is lit up from within
-                            if (frontMat) {
+                            if (frontMat && 'emissive' in frontMat && frontMat.emissive) {
                                 frontMat.emissive.setHex(0x111111);
                                 frontMat.emissiveIntensity = 0.1;
                             }
@@ -1557,7 +1560,7 @@ export function updateItemAnimations(context: SceneContext, props: SceneProps, t
                             }
                         }
                     }
-                });
+                }
             }
         }
 

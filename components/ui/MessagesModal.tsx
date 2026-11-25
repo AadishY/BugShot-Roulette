@@ -31,7 +31,13 @@ import {
     AlertTriangle,
     Loader2
 } from 'lucide-react';
-import { UserProfile, findUserByUsernameOrEmail, getLocalUsersCache, getPlayerId } from '../../utils/firebaseService';
+import {
+    UserProfile,
+    getUsersByUsernames,
+    getCachedUserSync,
+    getPlayerId
+} from '../../utils/firebaseService';
+import { DEFAULT_FALLBACK_AVATAR } from '../../utils/dicebear';
 import {
     ChatMessage,
     FriendRequest,
@@ -103,10 +109,10 @@ export const AvatarImage: React.FC<{
     const handleError = () => {
         if (!hasError) {
             setHasError(true);
-            const seed = encodeURIComponent(fallbackSeed || alt || 'operative');
-            setImgSrc(`https://api.dicebear.com/10.x/thumbs/svg?seed=${seed}`);
+            const fallbackResolved = resolvePlayerAvatar({ username: fallbackSeed || alt });
+            setImgSrc(fallbackResolved !== imgSrc ? fallbackResolved : DEFAULT_FALLBACK_AVATAR);
         } else {
-            setImgSrc('/image/favicon/android-chrome-192x192.png');
+            setImgSrc(DEFAULT_FALLBACK_AVATAR);
         }
     };
 
@@ -359,7 +365,30 @@ export const MessagesModal: React.FC<MessagesModalProps> = ({
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const messagesContainerRef = useRef<HTMLDivElement>(null);
     const messageInputRef = useRef<HTMLInputElement>(null);
+    const [resolvedProfiles, setResolvedProfiles] = useState<Record<string, UserProfile>>({});
+    const [profileVersion, setProfileVersion] = useState(0);
     const isDeveloper = Boolean(currentUser?.isDeveloper || currentUser?.role === 'developer' || currentUser?.username?.toLowerCase() === 'aadish');
+
+    // Sync avatar & presence updates immediately while MessagesModal is open
+    useEffect(() => {
+        if (!isOpen) return;
+        const handleProfileUpdated = (e: any) => {
+            const prof = e?.detail?.profile;
+            if (prof?.username) {
+                setResolvedProfiles(prev => ({
+                    ...prev,
+                    [prof.username.toLowerCase()]: prof
+                }));
+            }
+            setProfileVersion(v => v + 1);
+        };
+        window.addEventListener('bugshot_profile_updated', handleProfileUpdated);
+        const unsubPresence = presenceClient.subscribe(() => setProfileVersion(v => v + 1));
+        return () => {
+            window.removeEventListener('bugshot_profile_updated', handleProfileUpdated);
+            unsubPresence();
+        };
+    }, [isOpen]);
 
     // Keyboard shortcuts: Escape to dismiss drawer / go back / close modal
     useEffect(() => {
@@ -510,58 +539,98 @@ export const MessagesModal: React.FC<MessagesModalProps> = ({
             return {
                 username: 'bugshot',
                 displayName: 'BUGSHOT // SYSTEM',
-                avatarUrl: '/image/favicon/android-chrome-192x192.png',
+                avatarUrl: DEFAULT_FALLBACK_AVATAR,
                 playerId: 'OFFICIAL SYSTEM DISPATCH',
                 isDeveloper: false
             };
         }
-        const found = friends.find(f => f.username.toLowerCase() === selectedChatId.toLowerCase());
-        if (found) return found;
+        const cleanSelected = selectedChatId.toLowerCase();
+        const liveProfile = resolvedProfiles[cleanSelected] || getCachedUserSync(cleanSelected);
+        const found = friends.find(f => f.username.toLowerCase() === cleanSelected);
 
-        try {
-            const cache = getLocalUsersCache();
-            const cached = cache[selectedChatId.toLowerCase()];
-            if (cached) {
-                return {
-                    username: cached.username,
-                    displayName: cached.displayName || cached.username,
-                    avatarUrl: cached.avatarUrl || resolvePlayerAvatar(cached),
-                    playerId: cached.playerId || getPlayerId(cached),
-                    isDeveloper: Boolean(cached.isDeveloper || cached.role === 'developer')
-                };
-            }
-        } catch (e) {}
+        if (liveProfile) {
+            return {
+                username: liveProfile.username,
+                displayName: liveProfile.displayName || found?.displayName || liveProfile.username,
+                avatarUrl: resolvePlayerAvatar(liveProfile),
+                avatarStyle: liveProfile.avatarStyle,
+                avatarSeed: liveProfile.avatarSeed,
+                playerId: liveProfile.playerId || found?.playerId || getPlayerId(liveProfile),
+                isDeveloper: Boolean(liveProfile.isDeveloper || liveProfile.role === 'developer')
+            };
+        }
+        if (found) {
+            return {
+                ...found,
+                avatarUrl: resolvePlayerAvatar(found)
+            };
+        }
 
         return {
             username: selectedChatId,
             displayName: selectedChatId,
             avatarUrl: resolvePlayerAvatar({ username: selectedChatId }),
-            playerId: `@${selectedChatId}#1000`
+            playerId: getPlayerId({ username: selectedChatId })
         };
-    }, [friends, selectedChatId]);
+    }, [friends, selectedChatId, resolvedProfiles, profileVersion]);
 
-    // Asynchronously resolve profile if chatting with a non-friend contact
+    // Batch-resolve live Firestore profiles for all visible contacts, requests, feedback senders, and active chat
     useEffect(() => {
-        if (!selectedChatId || selectedChatId === 'global_broadcast' || selectedChatId === 'admin_feedbacks' || selectedChatId === 'bugshot' || selectedChatId === 'system') return;
-        const inFriends = friends.some(f => f.username.toLowerCase() === selectedChatId.toLowerCase());
-        if (inFriends) return;
+        if (!isOpen) return;
+        const candidates = new Set<string>();
+        friends.forEach(f => f.username && candidates.add(f.username.toLowerCase()));
+        friendRequests.forEach(r => r.from && candidates.add(r.from.toLowerCase()));
+        Object.keys(notificationCounts.unreadBySender || {}).forEach(s => candidates.add(s.toLowerCase()));
+        if (selectedChatId && !['global_broadcast', 'admin_feedbacks', 'bugshot', 'system'].includes(selectedChatId.toLowerCase())) {
+            candidates.add(selectedChatId.toLowerCase());
+        }
+        directMessages.forEach(m => m.sender && candidates.add(m.sender.toLowerCase()));
+        feedbacks.forEach(fb => fb.sender && candidates.add(fb.sender.toLowerCase()));
 
-        findUserByUsernameOrEmail(selectedChatId).then(u => {
-            if (u && u.avatarUrl) {
-                const cache = getLocalUsersCache();
-                cache[u.username.toLowerCase()] = u;
-                try {
-                    localStorage.setItem('aadish_roulette_users_cache', JSON.stringify(cache));
-                } catch (e) {}
-            }
+        const toFetch = Array.from(candidates).filter(
+            u => u && u !== 'bugshot' && u !== 'system' && u !== 'anonymous' && !resolvedProfiles[u]
+        );
+        if (toFetch.length === 0) return;
+
+        let cancelled = false;
+        getUsersByUsernames(toFetch, { forceRemote: true }).then((fetched) => {
+            if (cancelled || !fetched || Object.keys(fetched).length === 0) return;
+            setResolvedProfiles(prev => ({ ...prev, ...fetched }));
         }).catch(() => {});
-    }, [selectedChatId, friends]);
 
-    // Mark messages as read when opening a conversation
+        return () => {
+            cancelled = true;
+        };
+    }, [isOpen, friends, friendRequests, notificationCounts.unreadBySender, selectedChatId, directMessages.length, feedbacks.length]);
+
+    const getResolvedAvatar = (username?: string, fallbackObj?: any) => {
+        const clean = (username || '').trim().toLowerCase();
+        if (!clean) return resolvePlayerAvatar(fallbackObj);
+        if (currentUser?.username?.toLowerCase() === clean) {
+            return resolvePlayerAvatar(currentUser);
+        }
+        const liveProfile = resolvedProfiles[clean];
+        if (liveProfile) {
+            return resolvePlayerAvatar(liveProfile);
+        }
+        const friendMatch = friends.find(f => f.username.toLowerCase() === clean);
+        if (friendMatch) {
+            return resolvePlayerAvatar(friendMatch);
+        }
+        return resolvePlayerAvatar(fallbackObj || { username: clean });
+    };
+
+    // Mark messages as read only when unread incoming messages exist
     useEffect(() => {
         if (!isOpen || !currentUser || !selectedChatId || selectedChatId === 'global_broadcast' || selectedChatId === 'admin_feedbacks') return;
-        markConversationAsRead(currentUser.username, selectedChatId);
-    }, [isOpen, currentUser?.username, selectedChatId, directMessages.length]);
+        const cleanMe = currentUser.username.toLowerCase();
+        const hasUnreadIncoming = directMessages.some(
+            m => m.recipient?.toLowerCase() === cleanMe && !m.read
+        );
+        if (hasUnreadIncoming) {
+            markConversationAsRead(currentUser.username, selectedChatId);
+        }
+    }, [isOpen, currentUser?.username, selectedChatId, directMessages]);
 
     // Friend presence helper
     const getFriendPresence = (username: string) => {
@@ -590,8 +659,43 @@ export const MessagesModal: React.FC<MessagesModalProps> = ({
 
     // Unified list of contacts: Mutual friends + Any active conversations/senders
     const allContacts = useMemo(() => {
-        const list: FriendUser[] = [...friends];
-        const knownUsernames = new Set(friends.map(f => f.username.toLowerCase()));
+        const list: FriendUser[] = friends.map(f => {
+            const live = resolvedProfiles[f.username.toLowerCase()];
+            if (!live) {
+                return { ...f, avatarUrl: resolvePlayerAvatar(f) };
+            }
+            return {
+                ...f,
+                displayName: live.displayName || f.displayName,
+                avatarUrl: resolvePlayerAvatar(live),
+                avatarStyle: live.avatarStyle,
+                avatarSeed: live.avatarSeed,
+                playerId: live.playerId || f.playerId,
+                isDeveloper: Boolean(live.isDeveloper || live.role === 'developer' || f.isDeveloper)
+            };
+        });
+        const knownUsernames = new Set(list.map(f => f.username.toLowerCase()));
+
+        const buildContactFromKey = (uname: string): FriendUser => {
+            const prof = resolvedProfiles[uname] || getCachedUserSync(uname);
+            if (prof) {
+                return {
+                    username: prof.username,
+                    displayName: prof.displayName || prof.username,
+                    avatarUrl: resolvePlayerAvatar(prof),
+                    avatarStyle: prof.avatarStyle,
+                    avatarSeed: prof.avatarSeed,
+                    playerId: prof.playerId || getPlayerId(prof),
+                    isDeveloper: Boolean(prof.isDeveloper || prof.role === 'developer')
+                };
+            }
+            return {
+                username: uname,
+                displayName: uname,
+                avatarUrl: resolvePlayerAvatar({ username: uname }),
+                playerId: getPlayerId({ username: uname })
+            };
+        };
 
         // Add anyone who has sent unread messages to us
         if (notificationCounts.unreadBySender) {
@@ -599,12 +703,7 @@ export const MessagesModal: React.FC<MessagesModalProps> = ({
                 const cleanSender = sender.toLowerCase().trim();
                 if (cleanSender && cleanSender !== 'bugshot' && cleanSender !== 'system' && !knownUsernames.has(cleanSender)) {
                     knownUsernames.add(cleanSender);
-                    list.push({
-                        username: cleanSender,
-                        displayName: cleanSender,
-                        avatarUrl: resolvePlayerAvatar({ username: cleanSender }),
-                        playerId: `@${cleanSender}#1000`
-                    });
+                    list.push(buildContactFromKey(cleanSender));
                 }
             });
         }
@@ -621,17 +720,12 @@ export const MessagesModal: React.FC<MessagesModalProps> = ({
                 !knownUsernames.has(cleanSelected)
             ) {
                 knownUsernames.add(cleanSelected);
-                list.push({
-                    username: cleanSelected,
-                    displayName: cleanSelected,
-                    avatarUrl: resolvePlayerAvatar({ username: cleanSelected }),
-                    playerId: `@${cleanSelected}#1000`
-                });
+                list.push(buildContactFromKey(cleanSelected));
             }
         }
 
         return list;
-    }, [friends, notificationCounts.unreadBySender, selectedChatId]);
+    }, [friends, notificationCounts.unreadBySender, selectedChatId, resolvedProfiles, profileVersion]);
 
     // Filter contacts based on search and online status
     const filteredFriends = useMemo(() => {
@@ -1077,7 +1171,7 @@ export const MessagesModal: React.FC<MessagesModalProps> = ({
                                         >
                                             <div className="flex items-center gap-3">
                                                 <AvatarImage
-                                                    src={resolvePlayerAvatar({ username: req.from, avatarUrl: req.fromAvatarUrl })}
+                                                    src={getResolvedAvatar(req.from, { username: req.from, avatarUrl: req.fromAvatarUrl })}
                                                     alt={req.from}
                                                     fallbackSeed={req.from}
                                                     sizeClass="w-10 h-10 border border-stone-750 shrink-0"
@@ -1489,9 +1583,9 @@ export const MessagesModal: React.FC<MessagesModalProps> = ({
                                                 <div className="flex items-center gap-2.5 min-w-0">
                                                     <div className="relative shrink-0">
                                                         <AvatarImage
-                                                            src={resolvePlayerAvatar(friend)}
+                                                            src={getResolvedAvatar(friend.username, friend)}
                                                             alt={friend.username}
-                                                            fallbackSeed={friend.username}
+                                                            fallbackSeed={friend.avatarSeed || friend.username}
                                                             sizeClass="w-9 h-9 border border-stone-750"
                                                         />
                                                         <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-stone-950 ${statusBg}`} />
@@ -1662,9 +1756,9 @@ export const MessagesModal: React.FC<MessagesModalProps> = ({
                                                 <div className="flex items-center gap-2.5">
                                                     <div className="relative shrink-0">
                                                         <AvatarImage
-                                                            src={selectedFriend?.avatarUrl || resolvePlayerAvatar(selectedFriend)}
+                                                            src={getResolvedAvatar(selectedFriend?.username, selectedFriend)}
                                                             alt={selectedFriend?.username || 'contact'}
-                                                            fallbackSeed={selectedFriend?.username}
+                                                            fallbackSeed={(selectedFriend as any)?.avatarSeed || selectedFriend?.username}
                                                             sizeClass="w-8 h-8 border border-stone-750"
                                                         />
                                                         <span className={`absolute bottom-0 right-0 w-2 h-2 rounded-full border border-stone-950 ${
@@ -1828,7 +1922,7 @@ export const MessagesModal: React.FC<MessagesModalProps> = ({
                                                         <div className="flex items-center justify-between border-b border-stone-855 pb-2">
                                                             <div className="flex items-center gap-2">
                                                                 <AvatarImage
-                                                                    src={resolvePlayerAvatar({ username: fb.sender, avatarUrl: fb.senderAvatarUrl })}
+                                                                    src={getResolvedAvatar(fb.sender, { username: fb.sender, avatarUrl: fb.senderAvatarUrl })}
                                                                     alt={fb.sender}
                                                                     fallbackSeed={fb.sender}
                                                                     sizeClass="w-7 h-7 border border-stone-750"
@@ -1900,7 +1994,7 @@ export const MessagesModal: React.FC<MessagesModalProps> = ({
                                                         <div className="flex items-center justify-between border-b border-stone-855 pb-2">
                                                             <div className="flex items-center gap-2">
                                                                 <AvatarImage
-                                                                    src={resolvePlayerAvatar({ username: msg.sender, avatarUrl: msg.senderAvatarUrl, isDeveloper: true })}
+                                                                    src={getResolvedAvatar(msg.sender, { username: msg.sender, avatarUrl: msg.senderAvatarUrl, isDeveloper: true })}
                                                                     alt={msg.sender}
                                                                     fallbackSeed={msg.sender}
                                                                     sizeClass="w-6 h-6 border border-stone-750"
@@ -2024,9 +2118,9 @@ export const MessagesModal: React.FC<MessagesModalProps> = ({
                                                     <div className={`flex items-end gap-1.5 sm:gap-2 max-w-[88%] sm:max-w-[75%] ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
                                                         {!isMe && !isSystem && (
                                                             <AvatarImage
-                                                                src={selectedFriend?.avatarUrl || resolvePlayerAvatar(selectedFriend)}
+                                                                src={getResolvedAvatar(msg.sender, selectedFriend || { username: msg.sender, avatarUrl: msg.senderAvatarUrl })}
                                                                 alt={msg.sender}
-                                                                fallbackSeed={msg.sender}
+                                                                fallbackSeed={(selectedFriend as any)?.avatarSeed || msg.sender}
                                                                 sizeClass="w-6 h-6 sm:w-7 sm:h-7 mb-1 shrink-0 ring-1 ring-stone-800 border border-stone-750"
                                                             />
                                                         )}

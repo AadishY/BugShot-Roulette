@@ -39,6 +39,9 @@ export async function resumeAudioContext(): Promise<boolean> {
             const source = ctx.createBufferSource();
             source.buffer = buffer;
             source.connect(ctx.destination);
+            source.onended = () => {
+                try { source.disconnect(); } catch {}
+            };
             source.start(0);
         }
         return ctx.state === 'running';
@@ -48,99 +51,193 @@ export async function resumeAudioContext(): Promise<boolean> {
     }
 }
 
+const SOUND_FILES: Record<string, string> = {
+    grab: '/sound/grab1.ogg',
+    click: '/sound/grab1.ogg',
+    blankshell: '/sound/blankshellshoot.wav',
+    liveshell: '/sound/liveshellshoot.mp3',
+    // Animation Sounds
+    standing: '/sound/AnimationSounds/Standing.mp3',
+    dropping: '/sound/AnimationSounds/droping.mp3',
+    checkhandcuffs: '/sound/AnimationSounds/checkhandcuffs.mp3',
+    handcuffed: '/sound/AnimationSounds/handcuffed.mp3',
+    adrenaline: '/sound/AnimationSounds/adrenaline.mp3',
+    beer: '/sound/AnimationSounds/beer.mp3',
+    cig: '/sound/AnimationSounds/cig.mp3',
+    glass: '/sound/AnimationSounds/glass.mp3',
+    inverter: '/sound/AnimationSounds/inverter.mp3',
+    big_inverter: '/sound/AnimationSounds/BigInverter.mp3',
+    phone: '/sound/AnimationSounds/phone.mp3',
+    saw: '/sound/AnimationSounds/saw.mp3',
+    choke: '/sound/AnimationSounds/Choke.mp3',
+    remote: '/sound/AnimationSounds/remote.mp3',
+    contract: '/sound/AnimationSounds/BloodContract.mp3',
+    luckycharm: '/sound/AnimationSounds/luckcharm.mp3',
+    flashbang: '/sound/AnimationSounds/flashbang.mp3',
+    crusher: '/sound/crusher.mp3',
+    totem: '/sound/AnimationSounds/Totem.mp3',
+    mirror: '/sound/AnimationSounds/mirror.mp3',
+    cards: '/sound/AnimationSounds/cards.mp3',
+    slotmachine: '/sound/AnimationSounds/slotmachine.mp3',
+    jackpot: '/sound/AnimationSounds/jackpot.mp3',
+    jackpotloop: '/sound/AnimationSounds/jackpotloop.mp3'
+};
+
+const MUSIC_FILES: Record<string, string> = {
+    menu: '/sound/menu.mp3',
+    gameplay: '/sound/gameplay.mp3',
+    endscreen: '/sound/endscreen.mp3'
+};
+
+// Tiny core sounds warmed up on user unlock; item/rare sounds decode lazily on demand
+const CRITICAL_SFX_URLS = Array.from(
+    new Set([SOUND_FILES.grab, SOUND_FILES.blankshell, SOUND_FILES.liveshell])
+);
+
+const DIMMING_SFX_KEYS = new Set([
+    'dropping', 'checkhandcuffs', 'handcuffed', 'adrenaline',
+    'beer', 'cig', 'glass', 'inverter', 'big_inverter',
+    'phone', 'saw', 'choke', 'remote', 'contract', 'luckycharm',
+    'flashbang', 'crusher', 'totem', 'mirror', 'slotmachine'
+]);
+
+const BOOST_MAP: Record<string, number> = {
+    liveshell: 1.5,
+    blankshell: 1.5,
+    grab: 1.5,
+    click: 0.8
+};
+
+interface ActiveSFXNode {
+    source: AudioBufferSourceNode;
+    gain: GainNode;
+    dimMusic: boolean;
+    cleanup: () => void;
+}
+
+const isMobileBrowser = () =>
+    typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+
 export class AudioManager {
-    private sounds: { [key: string]: HTMLAudioElement } = {};
-    private music: { [key: string]: HTMLAudioElement } = {};
+    private music: Record<string, HTMLAudioElement> = {};
     private currentMusic: string | null = null;
     public musicVolume: number = 0.5;
     public sfxVolume: number = 0.7;
     private initialized: boolean = false;
     private initializationPromise: Promise<void> | null = null;
     private activeDimmingCount: number = 0;
-    private loadPromises: Promise<void>[] = [];
     private pendingMusic: string | null = null;
     public isInitialized: boolean = false;
-    private activeClonedSounds: Set<HTMLAudioElement> = new Set();
-    private musicCrossfadeTimer: any = null;
 
-    constructor() {
-        this.loadAssets();
+    // Web Audio decoded AudioBuffer LRU cache (keyed by URL so aliases like grab/click share 1 buffer)
+    private audioBuffers: Map<string, AudioBuffer> = new Map();
+    private decodePromises: Map<string, Promise<AudioBuffer | null>> = new Map();
+    private activeSfxNodes: Set<ActiveSFXNode> = new Set();
+    private activeFallbackSounds: Set<HTMLAudioElement> = new Set();
+    private criticalReadyUrls: Set<string> = new Set();
+    private sfxEpoch: number = 0;
+
+    private musicCrossfadeTimer: ReturnType<typeof setInterval> | null = null;
+
+    // Jackpot state (prefers Web Audio buffer nodes for gapless loop, falls back to HTMLAudio)
+    private jackpotNode: { source: AudioBufferSourceNode; gain: GainNode } | null = null;
+    private jackpotIntroAudio: HTMLAudioElement | null = null;
+    private jackpotLoopAudio: HTMLAudioElement | null = null;
+    private isJackpotActive: boolean = false;
+
+    private getMaxCachedBuffers(): number {
+        return isMobileBrowser() ? 14 : 28;
     }
 
-    private loadAssets() {
-        if (typeof window === 'undefined') return;
+    private getMaxConcurrentSFX(): number {
+        return isMobileBrowser() ? 8 : 14;
+    }
 
-        const soundFiles = {
-            grab: '/sound/grab1.ogg',
-            click: '/sound/grab1.ogg',
-            blankshell: '/sound/blankshellshoot.wav',
-            liveshell: '/sound/liveshellshoot.mp3',
-            // New Animation Sounds
-            standing: '/sound/AnimationSounds/Standing.mp3',
-            dropping: '/sound/AnimationSounds/droping.mp3',
-            checkhandcuffs: '/sound/AnimationSounds/checkhandcuffs.mp3',
-            handcuffed: '/sound/AnimationSounds/handcuffed.mp3',
-            adrenaline: '/sound/AnimationSounds/adrenaline.mp3',
-            beer: '/sound/AnimationSounds/beer.mp3',
-            cig: '/sound/AnimationSounds/cig.mp3',
-            glass: '/sound/AnimationSounds/glass.mp3',
-            inverter: '/sound/AnimationSounds/inverter.mp3',
-            big_inverter: '/sound/AnimationSounds/BigInverter.mp3',
-            phone: '/sound/AnimationSounds/phone.mp3',
-            saw: '/sound/AnimationSounds/saw.mp3',
-            choke: '/sound/AnimationSounds/Choke.mp3',
-            remote: '/sound/AnimationSounds/remote.mp3',
-            contract: '/sound/AnimationSounds/BloodContract.mp3',
-            luckycharm: '/sound/AnimationSounds/luckcharm.mp3',
-            flashbang: '/sound/AnimationSounds/flashbang.mp3',
-            crusher: '/sound/crusher.mp3',
-            totem: '/sound/AnimationSounds/Totem.mp3',
-            mirror: '/sound/AnimationSounds/mirror.mp3',
-            cards: '/sound/AnimationSounds/cards.mp3',
-            slotmachine: '/sound/AnimationSounds/slotmachine.mp3',
-            jackpot: '/sound/AnimationSounds/jackpot.mp3',
-            jackpotloop: '/sound/AnimationSounds/jackpotloop.mp3',
-        };
-        const musicFiles = {
-            menu: '/sound/menu.mp3',
-            gameplay: '/sound/gameplay.mp3',
-            endscreen: '/sound/endscreen.mp3'
-        };
+    private touchBufferLRU(url: string, buffer: AudioBuffer) {
+        if (this.audioBuffers.has(url)) {
+            this.audioBuffers.delete(url);
+        }
+        this.audioBuffers.set(url, buffer);
 
-        const loadAudio = (audio: HTMLAudioElement) => new Promise<void>((resolve) => {
-            const onDone = () => {
-                audio.removeEventListener('canplaythrough', onDone);
-                audio.removeEventListener('error', onDone);
-                resolve();
-            };
-            audio.addEventListener('canplaythrough', onDone, { once: true });
-            audio.addEventListener('error', onDone, { once: true });
-            audio.preload = 'auto';
-            try {
-                audio.load();
-            } catch (e) {
-                resolve();
+        const limit = this.getMaxCachedBuffers();
+        while (this.audioBuffers.size > limit) {
+            const oldestKey = this.audioBuffers.keys().next().value as string | undefined;
+            if (!oldestKey) break;
+            // Never evict core UI/shotgun buffers while trimming
+            if (CRITICAL_SFX_URLS.includes(oldestKey) && this.audioBuffers.size > CRITICAL_SFX_URLS.length) {
+                const kept = this.audioBuffers.get(oldestKey)!;
+                this.audioBuffers.delete(oldestKey);
+                this.audioBuffers.set(oldestKey, kept);
+                continue;
             }
-        });
+            this.audioBuffers.delete(oldestKey);
+        }
+    }
 
-        for (const [key, path] of Object.entries(soundFiles)) {
-            const audio = new Audio(path);
-            audio.preload = 'auto'; // Important for mobile
-            this.sounds[key] = audio;
-            this.loadPromises.push(loadAudio(audio));
+    private async getOrDecodeBuffer(url: string): Promise<AudioBuffer | null> {
+        const cached = this.audioBuffers.get(url);
+        if (cached) {
+            this.touchBufferLRU(url, cached);
+            return cached;
         }
 
-        for (const [key, path] of Object.entries(musicFiles)) {
-            const audio = new Audio(path);
-            audio.preload = 'auto';
-            audio.loop = (key !== 'endscreen');
-            this.music[key] = audio;
-            this.loadPromises.push(loadAudio(audio));
+        const existingPromise = this.decodePromises.get(url);
+        if (existingPromise) {
+            return existingPromise;
         }
+
+        const ctx = getAudioContext();
+        if (!ctx) return null;
+
+        const promise = (async (): Promise<AudioBuffer | null> => {
+            try {
+                const response = await fetch(url);
+                if (!response.ok) return null;
+                let arrayBuffer: ArrayBuffer | null = await response.arrayBuffer();
+                const decoded = await ctx.decodeAudioData(arrayBuffer);
+                arrayBuffer = null; // Help GC release raw compressed bytes immediately
+                this.touchBufferLRU(url, decoded);
+                this.criticalReadyUrls.add(url);
+                return decoded;
+            } catch {
+                return null;
+            } finally {
+                this.decodePromises.delete(url);
+            }
+        })();
+
+        this.decodePromises.set(url, promise);
+        return promise;
+    }
+
+    private getOrCreateMusicTrack(key: string): HTMLAudioElement | null {
+        if (typeof window === 'undefined') return null;
+        if (this.music[key]) return this.music[key];
+
+        const path = MUSIC_FILES[key];
+        if (!path) return null;
+
+        const audio = new Audio(path);
+        audio.preload = 'auto';
+        audio.loop = key !== 'endscreen';
+        this.music[key] = audio;
+        return audio;
+    }
+
+    private releaseMusicTrack(key: string) {
+        const track = this.music[key];
+        if (!track) return;
+        try {
+            track.pause();
+            track.currentTime = 0;
+            track.src = '';
+            track.load();
+        } catch {}
+        delete this.music[key];
     }
 
     private clearMusicFadeTimer() {
-        if (this.musicCrossfadeTimer) {
+        if (this.musicCrossfadeTimer !== null) {
             clearInterval(this.musicCrossfadeTimer);
             this.musicCrossfadeTimer = null;
         }
@@ -149,9 +246,9 @@ export class AudioManager {
     private getTargetMusicVolume(): number {
         let scale = 1.0;
         if (this.isJackpotActive) {
-            scale = 0.05; // Lower it even more, almost mute (5%)
+            scale = 0.05;
         } else if (this.activeDimmingCount > 0) {
-            scale = 0.35; // Dim music to 35% of its set volume
+            scale = 0.35;
         }
         return Math.max(0, Math.min(1.0, this.musicVolume * scale));
     }
@@ -166,7 +263,6 @@ export class AudioManager {
             return;
         }
 
-        // Smooth volume adjustment when dimming / un-dimming
         this.clearMusicFadeTimer();
         const startVol = track.volume;
         const diff = targetVol - startVol;
@@ -189,18 +285,33 @@ export class AudioManager {
 
     public getAudioLoadingProgress(): number {
         if (typeof window === 'undefined') return 100;
-        const allAudio = [
-            ...Object.values(this.sounds),
-            ...Object.values(this.music)
-        ];
-        if (allAudio.length === 0) return 100;
-        let loadedCount = 0;
-        allAudio.forEach(audio => {
-            if (audio.readyState >= 2 || audio.error) {
-                loadedCount++;
+        if (this.isInitialized) return 100;
+        if (CRITICAL_SFX_URLS.length === 0) return 100;
+
+        let ready = 0;
+        for (const url of CRITICAL_SFX_URLS) {
+            if (this.audioBuffers.has(url) || this.criticalReadyUrls.has(url)) {
+                ready++;
             }
-        });
-        return Math.round((loadedCount / allAudio.length) * 100);
+        }
+        // Always report at least 35% once manager is live so boot/loading progress stays responsive
+        const pct = Math.round((ready / CRITICAL_SFX_URLS.length) * 100);
+        return Math.max(35, pct);
+    }
+
+    /**
+     * Optional targeted preload for specific SFX keys (e.g. entering gameplay).
+     * Deduplicates by URL and runs lazily without holding raw ArrayBuffers.
+     */
+    public async preloadSFX(keys?: string[]): Promise<void> {
+        const ctx = getAudioContext();
+        if (!ctx) return;
+
+        const targetUrls = keys && keys.length > 0
+            ? Array.from(new Set(keys.map(k => SOUND_FILES[k]).filter(Boolean)))
+            : CRITICAL_SFX_URLS;
+
+        await Promise.allSettled(targetUrls.map((url) => this.getOrDecodeBuffer(url)));
     }
 
     // Call this on the first user interaction (e.g., clicking "ENTER" or anywhere on splash screen)
@@ -215,39 +326,44 @@ export class AudioManager {
 
         this.initializationPromise = (async () => {
             try {
-                // Safely resume Web Audio AudioContext upon user gesture
-                await resumeAudioContext().catch(() => {});
+                const resumed = await resumeAudioContext().catch(() => false);
+                const ctx = getAudioContext();
 
-                await Promise.allSettled(this.loadPromises);
-
-                const allAudio = [
-                    ...Object.values(this.sounds),
-                    ...Object.values(this.music)
-                ];
-
-                const results = await Promise.allSettled(allAudio.map(async (s) => {
-                    s.volume = 0;
-                    s.muted = true;
+                // Warm up menu music track lazily only when initializing
+                const menuTrack = this.getOrCreateMusicTrack('menu');
+                if (menuTrack) {
+                    menuTrack.volume = 0;
+                    menuTrack.muted = true;
                     try {
-                        await s.play();
+                        await menuTrack.play();
                     } catch {
-                        // Ignore autoplay prevention errors, we only want playback unlocking if possible.
+                        // Ignore autoplay prevention
                     }
-                    s.pause();
-                    s.currentTime = 0;
-                    s.muted = false;
-                }));
+                    menuTrack.pause();
+                    menuTrack.currentTime = 0;
+                    menuTrack.muted = false;
+                }
 
-                const anySuccess = results.some(r => r.status === 'fulfilled');
-                if (anySuccess || allAudio.length === 0) {
+                // Decode only tiny core SFX buffers on unlock; item SFX decode lazily when used
+                if (ctx) {
+                    await Promise.allSettled(
+                        CRITICAL_SFX_URLS.map((url) => this.getOrDecodeBuffer(url))
+                    );
+                }
+
+                if (resumed || (ctx && ctx.state === 'running') || (menuTrack && menuTrack.readyState >= 1)) {
+                    this.isInitialized = true;
+                    this.initialized = true;
+                } else {
+                    // Mark initialized after user gesture attempt so subsequent plays aren't permanently gated
                     this.isInitialized = true;
                     this.initialized = true;
                 }
 
                 if (this.currentMusic && this.music[this.currentMusic]) {
                     const music = this.music[this.currentMusic];
-                    this.applyMusicVolume();
-                    music.play().catch(() => { });
+                    this.applyMusicVolume(true);
+                    music.play().catch(() => {});
                 } else if (this.pendingMusic) {
                     const queued = this.pendingMusic;
                     this.pendingMusic = null;
@@ -263,69 +379,104 @@ export class AudioManager {
         return this.initializationPromise;
     }
 
-    public playSound(key: string, options?: { volume?: number, playbackRate?: number, dimMusic?: boolean }) {
-        // If not initialized, we shouldn't crash, but we might not hear it yet depending on browser.
-        // Better: Try to play.
-        const original = this.sounds[key];
-        if (!original) return;
-
-        // Clone for polyphony (multiple overlapping sounds)
-        // Optimization: For mobile, limit concurrent sounds if needed, but modern devices handle 5-10 fine.
-        const sound = original.cloneNode() as HTMLAudioElement;
-        sound.preload = 'auto';
-        sound.muted = false;
-        if (sound.readyState < 2) {
-            try {
-                sound.load();
-            } catch (e) {
-                // Some browsers may reject load on cloned objects.
-            }
+    private playWithBuffer(
+        ctx: AudioContext,
+        buffer: AudioBuffer,
+        volume: number,
+        playbackRate: number | undefined,
+        shouldDimMusic: boolean
+    ) {
+        // Enforce concurrency cap by evicting oldest active node to avoid audio distortion/node bloat
+        const maxNodes = this.getMaxConcurrentSFX();
+        if (this.activeSfxNodes.size >= maxNodes) {
+            const oldest = this.activeSfxNodes.values().next().value as ActiveSFXNode | undefined;
+            if (oldest) oldest.cleanup();
         }
-        sound.currentTime = 0;
 
-        // BOOST specific sounds
-        const boostMap: { [key: string]: number } = {
-            'liveshell': 1.5,
-            'blankshell': 1.5,
-            'grab': 1.5,
-            'click': 0.8 // Slightly quieter
-        };
-        const boost = boostMap[key] || 1.0;
+        const source = ctx.createBufferSource();
+        const gain = ctx.createGain();
 
-        // Check if this sound should dim the background music
-        const shouldDimByKey = [
-            'dropping', 'checkhandcuffs', 'handcuffed', 'adrenaline', 
-            'beer', 'cig', 'glass', 'inverter', 'big_inverter', 
-            'phone', 'saw', 'choke', 'remote', 'contract', 'luckycharm', 'flashbang', 'crusher', 'totem', 'mirror',
-            'slotmachine'
-        ].includes(key);
+        source.buffer = buffer;
+        if (playbackRate && playbackRate > 0) {
+            source.playbackRate.value = playbackRate;
+        }
+        gain.gain.value = Math.max(0, Math.min(1.5, volume));
 
-        const shouldDimMusic = options?.dimMusic ?? shouldDimByKey;
+        source.connect(gain);
+        gain.connect(ctx.destination);
 
         if (shouldDimMusic) {
             this.activeDimmingCount++;
             this.applyMusicVolume();
         }
 
-        let finalVolume = this.sfxVolume * boost;
-        if (options?.volume) finalVolume *= options.volume;
-        sound.volume = Math.min(1.0, finalVolume);
+        let cleaned = false;
+        const cleanup = () => {
+            if (cleaned) return;
+            cleaned = true;
+            this.activeSfxNodes.delete(entry);
+            try { source.onended = null; } catch {}
+            try { source.stop(); } catch {}
+            try { source.disconnect(); } catch {}
+            try { gain.disconnect(); } catch {}
 
-        if (options?.playbackRate) {
-            sound.preservesPitch = false;
-            sound.playbackRate = options.playbackRate;
+            if (shouldDimMusic) {
+                this.activeDimmingCount = Math.max(0, this.activeDimmingCount - 1);
+                this.applyMusicVolume();
+            }
+        };
+
+        const entry: ActiveSFXNode = { source, gain, dimMusic: shouldDimMusic, cleanup };
+        this.activeSfxNodes.add(entry);
+        source.onended = cleanup;
+
+        try {
+            source.start(0);
+        } catch {
+            cleanup();
+        }
+    }
+
+    private playFallbackHTMLAudio(url: string, volume: number, playbackRate: number | undefined, shouldDimMusic: boolean) {
+        // Cap HTMLAudio fallback pool
+        if (this.activeFallbackSounds.size >= 4) {
+            const oldest = this.activeFallbackSounds.values().next().value as HTMLAudioElement | undefined;
+            if (oldest) {
+                this.activeFallbackSounds.delete(oldest);
+                try {
+                    oldest.onended = null;
+                    oldest.onerror = null;
+                    oldest.pause();
+                    oldest.src = '';
+                    oldest.load();
+                } catch {}
+            }
         }
 
-        this.activeClonedSounds.add(sound);
+        const sound = new Audio(url);
+        sound.preload = 'auto';
+        sound.volume = Math.max(0, Math.min(1.0, volume));
+        if (playbackRate && playbackRate > 0) {
+            sound.preservesPitch = false;
+            sound.playbackRate = playbackRate;
+        }
+
+        if (shouldDimMusic) {
+            this.activeDimmingCount++;
+            this.applyMusicVolume();
+        }
+
+        this.activeFallbackSounds.add(sound);
 
         const cleanupSound = () => {
-            if (!this.activeClonedSounds.has(sound)) return;
-            this.activeClonedSounds.delete(sound);
+            if (!this.activeFallbackSounds.has(sound)) return;
+            this.activeFallbackSounds.delete(sound);
             try {
                 sound.onended = null;
                 sound.onerror = null;
                 sound.pause();
                 sound.src = '';
+                sound.load();
             } catch {}
             if (shouldDimMusic) {
                 this.activeDimmingCount = Math.max(0, this.activeDimmingCount - 1);
@@ -338,52 +489,112 @@ export class AudioManager {
 
         const playPromise = sound.play();
         if (playPromise !== undefined) {
-            playPromise.catch(error => {
+            playPromise.catch((error) => {
                 cleanupSound();
-                // Auto-play was prevented. This happens if playSound is called before any user interaction or in restricted iframes.
-                // We silently ignore NotAllowedError and AbortError to prevent console spam.
                 if (error && error.name !== 'NotAllowedError' && error.name !== 'AbortError') {
-                    console.warn(`SFX '${key}' error:`, error);
+                    console.warn(`SFX error (${url}):`, error);
                 }
             });
         }
     }
 
+    public playSound(key: string, options?: { volume?: number; playbackRate?: number; dimMusic?: boolean }) {
+        const url = SOUND_FILES[key];
+        if (!url) return;
+
+        const boost = BOOST_MAP[key] ?? 1.0;
+        const shouldDimMusic = options?.dimMusic ?? DIMMING_SFX_KEYS.has(key);
+
+        let finalVolume = this.sfxVolume * boost;
+        if (options?.volume !== undefined) finalVolume *= options.volume;
+        finalVolume = Math.max(0, Math.min(1.0, finalVolume));
+
+        const ctx = getAudioContext();
+        if (ctx) {
+            if (ctx.state === 'suspended') {
+                ctx.resume().catch(() => {});
+            }
+
+            const cached = this.audioBuffers.get(url);
+            if (cached) {
+                this.touchBufferLRU(url, cached);
+                this.playWithBuffer(ctx, cached, finalVolume, options?.playbackRate, shouldDimMusic);
+                return;
+            }
+
+            const epochAtStart = this.sfxEpoch;
+            this.getOrDecodeBuffer(url).then((decoded) => {
+                if (epochAtStart !== this.sfxEpoch) return; // Teardown occurred while decoding
+                if (decoded && getAudioContext()) {
+                    this.playWithBuffer(getAudioContext()!, decoded, finalVolume, options?.playbackRate, shouldDimMusic);
+                } else {
+                    this.playFallbackHTMLAudio(url, finalVolume, options?.playbackRate, shouldDimMusic);
+                }
+            });
+            return;
+        }
+
+        this.playFallbackHTMLAudio(url, finalVolume, options?.playbackRate, shouldDimMusic);
+    }
+
     public stopAllSFX() {
+        this.sfxEpoch++;
         this.clearMusicFadeTimer();
-        this.activeClonedSounds.forEach((sound) => {
+
+        Array.from(this.activeSfxNodes).forEach((entry) => {
+            entry.cleanup();
+        });
+        this.activeSfxNodes.clear();
+
+        Array.from(this.activeFallbackSounds).forEach((sound) => {
             try {
                 sound.onended = null;
                 sound.onerror = null;
                 sound.pause();
                 sound.currentTime = 0;
                 sound.src = '';
-            } catch (e) {
-                // Ignore cleanup errors
-            }
+                sound.load();
+            } catch {}
         });
-        this.activeClonedSounds.clear();
+        this.activeFallbackSounds.clear();
+
         this.activeDimmingCount = 0;
         this.stopJackpotMusic();
         this.applyMusicVolume(false);
     }
 
+    /**
+     * Release non-critical decoded SFX AudioBuffers from RAM (e.g. on game exit / mode switch).
+     */
+    public releaseUnusedSFX(keepKeys: string[] = []) {
+        const keepUrls = new Set([
+            ...CRITICAL_SFX_URLS,
+            ...keepKeys.map((k) => SOUND_FILES[k]).filter(Boolean)
+        ]);
+        for (const url of Array.from(this.audioBuffers.keys())) {
+            if (!keepUrls.has(url)) {
+                this.audioBuffers.delete(url);
+            }
+        }
+    }
+
     public playMusic(key: string, transitionDurationMs: number = 350) {
         if (this.currentMusic === key) {
-            const track = this.music[key];
+            const track = this.getOrCreateMusicTrack(key);
             if (track && this.isInitialized) {
                 if (track.paused) {
                     track.currentTime = 0;
-                    track.play().catch(() => { });
+                    track.play().catch(() => {});
                 }
                 this.applyMusicVolume(false);
             }
             return;
         }
 
-        const oldTrack = this.currentMusic ? this.music[this.currentMusic] : null;
+        const oldKey = this.currentMusic;
+        const oldTrack = oldKey ? this.music[oldKey] : null;
         this.currentMusic = key;
-        const newTrack = this.music[key];
+        const newTrack = this.getOrCreateMusicTrack(key);
 
         if (!this.isInitialized) {
             this.pendingMusic = key;
@@ -397,12 +608,11 @@ export class AudioManager {
             newTrack.currentTime = 0;
 
             if (oldTrack && !oldTrack.paused && transitionDurationMs > 50) {
-                // Smooth crossfade between old and new music tracks
                 const oldStartVol = oldTrack.volume;
                 newTrack.volume = 0;
                 const playPromise = newTrack.play();
                 if (playPromise !== undefined) {
-                    playPromise.catch(error => {
+                    playPromise.catch((error) => {
                         if (error && (error.name === 'NotAllowedError' || error.name === 'AbortError')) {
                             this.pendingMusic = key;
                         } else {
@@ -428,6 +638,9 @@ export class AudioManager {
                             oldTrack.pause();
                             oldTrack.currentTime = 0;
                             oldTrack.volume = targetVol;
+                            if (oldKey === 'endscreen') {
+                                this.releaseMusicTrack(oldKey);
+                            }
                         }
                         if (newTrack) {
                             newTrack.volume = targetVol;
@@ -438,11 +651,14 @@ export class AudioManager {
                 if (oldTrack) {
                     oldTrack.pause();
                     oldTrack.currentTime = 0;
+                    if (oldKey === 'endscreen') {
+                        this.releaseMusicTrack(oldKey);
+                    }
                 }
                 newTrack.volume = targetVol;
                 const playPromise = newTrack.play();
                 if (playPromise !== undefined) {
-                    playPromise.catch(error => {
+                    playPromise.catch((error) => {
                         if (error && (error.name === 'NotAllowedError' || error.name === 'AbortError')) {
                             this.pendingMusic = key;
                         } else {
@@ -458,6 +674,10 @@ export class AudioManager {
         this.musicVolume = settings.musicVolume ?? 0.5;
         this.sfxVolume = settings.sfxVolume ?? 0.7;
         this.applyMusicVolume();
+
+        if (this.jackpotNode) {
+            this.jackpotNode.gain.gain.value = Math.max(0, Math.min(1.0, this.sfxVolume));
+        }
         if (this.jackpotIntroAudio) {
             this.jackpotIntroAudio.volume = this.sfxVolume;
         }
@@ -468,7 +688,8 @@ export class AudioManager {
 
     public stopMusic(fadeDurationMs: number = 250) {
         if (!this.currentMusic || !this.music[this.currentMusic]) return;
-        const track = this.music[this.currentMusic];
+        const stoppingKey = this.currentMusic;
+        const track = this.music[stoppingKey];
         this.currentMusic = null;
         this.clearMusicFadeTimer();
 
@@ -492,15 +713,38 @@ export class AudioManager {
         }
     }
 
-    private jackpotIntroAudio: HTMLAudioElement | null = null;
-    private jackpotLoopAudio: HTMLAudioElement | null = null;
-    private isJackpotActive: boolean = false;
+    private clearJackpotNodes() {
+        if (this.jackpotNode) {
+            try { this.jackpotNode.source.onended = null; } catch {}
+            try { this.jackpotNode.source.stop(); } catch {}
+            try { this.jackpotNode.source.disconnect(); } catch {}
+            try { this.jackpotNode.gain.disconnect(); } catch {}
+            this.jackpotNode = null;
+        }
+        if (this.jackpotIntroAudio) {
+            try {
+                this.jackpotIntroAudio.onended = null;
+                this.jackpotIntroAudio.pause();
+                this.jackpotIntroAudio.src = '';
+                this.jackpotIntroAudio.load();
+            } catch {}
+            this.jackpotIntroAudio = null;
+        }
+        if (this.jackpotLoopAudio) {
+            try {
+                this.jackpotLoopAudio.pause();
+                this.jackpotLoopAudio.src = '';
+                this.jackpotLoopAudio.load();
+            } catch {}
+            this.jackpotLoopAudio = null;
+        }
+    }
 
     public playJackpotIntro(options?: { dimMusic?: boolean }) {
         this.stopJackpotMusic();
 
-        const intro = this.sounds['jackpot'];
-        if (!intro) return;
+        const url = SOUND_FILES['jackpot'];
+        if (!url) return;
 
         const shouldDimMusic = options?.dimMusic ?? true;
         if (shouldDimMusic) {
@@ -508,82 +752,126 @@ export class AudioManager {
             this.applyMusicVolume();
         }
 
-        this.jackpotIntroAudio = intro.cloneNode() as HTMLAudioElement;
-        this.jackpotIntroAudio.volume = this.sfxVolume;
-        this.jackpotIntroAudio.onended = () => {
+        const ctx = getAudioContext();
+        const epochAtStart = this.sfxEpoch;
+        if (ctx) {
+            this.getOrDecodeBuffer(url).then((buffer) => {
+                if (epochAtStart !== this.sfxEpoch || !this.isJackpotActive) return;
+                if (buffer && getAudioContext()) {
+                    const c = getAudioContext()!;
+                    const source = c.createBufferSource();
+                    const gain = c.createGain();
+                    source.buffer = buffer;
+                    gain.gain.value = Math.max(0, Math.min(1.0, this.sfxVolume));
+                    source.connect(gain);
+                    gain.connect(c.destination);
+                    this.jackpotNode = { source, gain };
+                    source.onended = () => {
+                        if (this.jackpotNode?.source === source) {
+                            this.clearJackpotNodes();
+                            this.playJackpotLoop({ dimMusic: shouldDimMusic });
+                        }
+                    };
+                    source.start(0);
+                    return;
+                }
+                this.playJackpotIntroHTMLFallback(url, shouldDimMusic);
+            });
+            return;
+        }
+
+        this.playJackpotIntroHTMLFallback(url, shouldDimMusic);
+    }
+
+    private playJackpotIntroHTMLFallback(url: string, shouldDimMusic: boolean) {
+        const audio = new Audio(url);
+        audio.volume = this.sfxVolume;
+        audio.onended = () => {
             this.playJackpotLoop({ dimMusic: shouldDimMusic });
         };
-        this.jackpotIntroAudio.play().catch(e => {
+        this.jackpotIntroAudio = audio;
+        audio.play().catch((e) => {
             if (e && e.name !== 'NotAllowedError' && e.name !== 'AbortError') {
-                console.warn("Jackpot intro blocked", e);
+                console.warn('Jackpot intro blocked', e);
             }
         });
     }
 
     public playJackpotLoop(options?: { dimMusic?: boolean }) {
-        if (this.jackpotIntroAudio) {
-            this.jackpotIntroAudio.onended = null;
-            this.jackpotIntroAudio.pause();
-            this.jackpotIntroAudio.src = '';
-            this.jackpotIntroAudio = null;
-        }
+        this.clearJackpotNodes();
 
-        if (this.jackpotLoopAudio) {
-            this.jackpotLoopAudio.pause();
-            this.jackpotLoopAudio.src = '';
-            this.jackpotLoopAudio = null;
-        }
-
-        const loop = this.sounds['jackpotloop'];
-        if (!loop) {
+        const url = SOUND_FILES['jackpotloop'];
+        if (!url) {
             this.isJackpotActive = false;
             this.applyMusicVolume();
             return;
         }
 
         const shouldDimMusic = options?.dimMusic ?? true;
-        if (shouldDimMusic) {
-            this.isJackpotActive = true;
-            this.applyMusicVolume();
-        } else {
-            this.isJackpotActive = false;
-            this.applyMusicVolume();
+        this.isJackpotActive = shouldDimMusic;
+        this.applyMusicVolume();
+
+        const ctx = getAudioContext();
+        const epochAtStart = this.sfxEpoch;
+        if (ctx) {
+            this.getOrDecodeBuffer(url).then((buffer) => {
+                if (epochAtStart !== this.sfxEpoch) return;
+                if (buffer && getAudioContext()) {
+                    const c = getAudioContext()!;
+                    const source = c.createBufferSource();
+                    const gain = c.createGain();
+                    source.buffer = buffer;
+                    source.loop = true;
+                    gain.gain.value = Math.max(0, Math.min(1.0, this.sfxVolume));
+                    source.connect(gain);
+                    gain.connect(c.destination);
+                    this.jackpotNode = { source, gain };
+                    source.start(0);
+                    return;
+                }
+                this.playJackpotLoopHTMLFallback(url);
+            });
+            return;
         }
 
-        this.jackpotLoopAudio = loop.cloneNode() as HTMLAudioElement;
-        this.jackpotLoopAudio.loop = true;
-        this.jackpotLoopAudio.volume = this.sfxVolume;
-        this.jackpotLoopAudio.play().catch(e => {
+        this.playJackpotLoopHTMLFallback(url);
+    }
+
+    private playJackpotLoopHTMLFallback(url: string) {
+        const audio = new Audio(url);
+        audio.loop = true;
+        audio.volume = this.sfxVolume;
+        this.jackpotLoopAudio = audio;
+        audio.play().catch((e) => {
             if (e && e.name !== 'NotAllowedError' && e.name !== 'AbortError') {
-                console.warn("Jackpot loop blocked", e);
+                console.warn('Jackpot loop blocked', e);
             }
         });
     }
 
     public stopJackpotMusic() {
-        if (this.jackpotIntroAudio) {
-            this.jackpotIntroAudio.onended = null;
-            this.jackpotIntroAudio.pause();
-            this.jackpotIntroAudio.src = '';
-            this.jackpotIntroAudio = null;
-        }
-        if (this.jackpotLoopAudio) {
-            this.jackpotLoopAudio.pause();
-            this.jackpotLoopAudio.src = '';
-            this.jackpotLoopAudio = null;
-        }
+        this.clearJackpotNodes();
         this.isJackpotActive = false;
         this.applyMusicVolume();
+    }
+
+    public dispose() {
+        this.stopAllSFX();
+        this.stopMusic(0);
+        Object.keys(this.music).forEach((k) => this.releaseMusicTrack(k));
+        this.audioBuffers.clear();
+        this.decodePromises.clear();
     }
 }
 
 export const audioManager = new AudioManager();
 
 let isAudioUnlockSetup = false;
+let hasCompletedAudioUnlock = false;
 
 // Global unlock listener for pointers, touch, and keys to automatically unlock Web Audio & HTMLAudio on user gesture
 export function setupMobileAudioUnlock() {
-    if (typeof window === 'undefined' || isAudioUnlockSetup) return;
+    if (typeof window === 'undefined' || isAudioUnlockSetup || hasCompletedAudioUnlock) return;
     isAudioUnlockSetup = true;
     const unlockEvents = ['pointerdown', 'touchstart', 'touchend', 'mousedown', 'mouseup', 'click', 'keydown'] as const;
     const onUserInteraction = async () => {
@@ -593,8 +881,9 @@ export function setupMobileAudioUnlock() {
         } catch {
             // Safe silent fallback
         } finally {
-            if (audioManager.isInitialized || (globalAudioCtx && globalAudioCtx.state === 'running')) {
-                unlockEvents.forEach(evt => {
+            if (audioManager.isInitialized && (!globalAudioCtx || globalAudioCtx.state === 'running')) {
+                hasCompletedAudioUnlock = true;
+                unlockEvents.forEach((evt) => {
                     window.removeEventListener(evt, onUserInteraction, true);
                     document.removeEventListener(evt, onUserInteraction, true);
                 });
@@ -602,7 +891,7 @@ export function setupMobileAudioUnlock() {
             }
         }
     };
-    unlockEvents.forEach(evt => {
+    unlockEvents.forEach((evt) => {
         window.addEventListener(evt, onUserInteraction, { capture: true, passive: true });
         document.addEventListener(evt, onUserInteraction, { capture: true, passive: true });
     });

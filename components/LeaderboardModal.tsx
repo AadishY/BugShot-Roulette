@@ -1,7 +1,9 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Trophy, Crown, Award, Skull, Swords, Search, X, RotateCw, ChevronLeft, ChevronRight, User, Shield, Flame, Target } from 'lucide-react';
 import { LeaderboardEntry, UserProfile, getPlayerId } from '../utils/firebaseService';
-import { getDicebearUrl } from '../utils/dicebear';
+import { DEFAULT_FALLBACK_AVATAR } from '../utils/dicebear';
+import { resolvePlayerAvatar } from '../utils/messagingService';
+import { presenceClient } from '../utils/presenceService';
 import { audioManager } from '../utils/audioManager';
 
 interface LeaderboardModalProps {
@@ -40,6 +42,19 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
     const [currentTab, setCurrentTab] = useState<LeaderboardTab>('wins');
     const [searchQuery, setSearchQuery] = useState('');
     const [page, setPage] = useState(1);
+    const [profileVersion, setProfileVersion] = useState(0);
+
+    // Re-resolve leaderboard avatars immediately when user updates their avatar or presence syncs
+    useEffect(() => {
+        if (!isOpen) return;
+        const handleProfileUpdated = () => setProfileVersion(v => v + 1);
+        window.addEventListener('bugshot_profile_updated', handleProfileUpdated);
+        const unsubPresence = presenceClient.subscribe(() => setProfileVersion(v => v + 1));
+        return () => {
+            window.removeEventListener('bugshot_profile_updated', handleProfileUpdated);
+            unsubPresence();
+        };
+    }, [isOpen]);
 
     // Filter, Sort, and Pre-enrich Entries (Cached in useMemo for 60fps render performance)
     // Displays up to 50 names per scrollable view, followed by Next button
@@ -91,17 +106,26 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
 
         // Pre-compute all expensive operations once to optimize 50-item list scrolling
         return entries.map((entry) => {
-            const isDev = entry.username?.toLowerCase() === 'aadish' || Boolean(entry.isDeveloper);
-            const avatarSrc = isDev
-                ? 'https://avatars.githubusercontent.com/u/101470733'
-                : (entry.avatarUrl || getDicebearUrl(entry.avatarStyle || 'thumbs', entry.username));
-            const totalMatches = (entry.wins || 0) + (entry.losses || 0);
-            const winRatePercent = totalMatches > 0 ? Math.round((entry.wins / totalMatches) * 100) : 0;
-            const multiplayerMatchCount = (entry.stats?.matchHistory || []).filter((m: any) => m?.isMultiplayer).length;
-            const pId = entry.playerId || getPlayerId(entry);
+            const isMe = currentUser?.username?.toLowerCase() === entry.username?.toLowerCase();
+            const effectiveEntry: LeaderboardEntry = isMe && currentUser
+                ? {
+                    ...entry,
+                    displayName: currentUser.displayName || entry.displayName,
+                    avatarUrl: currentUser.avatarUrl,
+                    avatarStyle: currentUser.avatarStyle,
+                    avatarSeed: currentUser.avatarSeed,
+                    isDeveloper: Boolean(currentUser.isDeveloper || entry.isDeveloper)
+                }
+                : entry;
+            const isDev = effectiveEntry.username?.toLowerCase() === 'aadish' || Boolean(effectiveEntry.isDeveloper);
+            const avatarSrc = resolvePlayerAvatar(effectiveEntry);
+            const totalMatches = (effectiveEntry.wins || 0) + (effectiveEntry.losses || 0);
+            const winRatePercent = totalMatches > 0 ? Math.round((effectiveEntry.wins / totalMatches) * 100) : 0;
+            const multiplayerMatchCount = (effectiveEntry.stats?.matchHistory || []).filter((m: any) => m?.isMultiplayer).length;
+            const pId = effectiveEntry.playerId || getPlayerId(effectiveEntry);
 
             return {
-                ...entry,
+                ...effectiveEntry,
                 isDev,
                 avatarSrc,
                 winRatePercent,
@@ -109,7 +133,7 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
                 pId
             };
         });
-    }, [isOpen, leaderboard, searchQuery, currentTab]);
+    }, [isOpen, leaderboard, searchQuery, currentTab, currentUser, profileVersion]);
 
     const totalPages = Math.max(1, Math.ceil(processedLeaderboard.length / ITEMS_PER_PAGE));
     const safePage = Math.min(page, totalPages);
@@ -373,6 +397,13 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
                                                     decoding="async"
                                                     width={32}
                                                     height={32}
+                                                    onError={(e) => {
+                                                        const img = e.currentTarget;
+                                                        if (img.src !== DEFAULT_FALLBACK_AVATAR && !img.dataset.fallbackApplied) {
+                                                            img.dataset.fallbackApplied = '1';
+                                                            img.src = DEFAULT_FALLBACK_AVATAR;
+                                                        }
+                                                    }}
                                                 />
                                             </div>
                                             {(() => {

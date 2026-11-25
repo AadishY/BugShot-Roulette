@@ -1,72 +1,73 @@
 import * as THREE from 'three';
 import { getGraphicsPreset } from '../../types';
+import { getGlowTexture } from './environment';
 
 export const createGunModel = (scene: THREE.Scene) => {
     const gunGroup = new THREE.Group();
     const isMobile = scene.userData.isMobile || false;
+    const isAndroid = scene.userData.isAndroid || false;
     const settings = scene.userData.settings || {};
     const preset = getGraphicsPreset(settings);
     const isPotato = preset === 'potato';
     const isLow = preset === 'low';
     const isBalanced = preset === 'balanced';
     const isHigh = preset === 'high';
-    const isUltra = false;
 
-    const isLambert = isBalanced || isLow;
-    const shouldCastShadow = isHigh && !isMobile;
+    const shouldCastShadow = isHigh || isBalanced || (isLow && !isAndroid);
 
-    const metalMat = isPotato 
-        ? new THREE.MeshBasicMaterial({ color: 0x999999 })
-        : (isLambert
-            ? new THREE.MeshLambertMaterial({ color: 0x999999 }) 
+    const metalMat = isPotato
+        ? new THREE.MeshBasicMaterial({ color: 0xa4a4a4 })
+        : (isLow
+            ? new THREE.MeshPhongMaterial({ color: 0x9c9c9c, specular: 0x555555, shininess: 36 })
             : new THREE.MeshStandardMaterial({
                 color: 0x999999,
                 metalness: 0.9,
-                roughness: 0.15,
-                envMapIntensity: isUltra ? 1.25 : 1.0
+                roughness: isHigh ? 0.15 : 0.22,
+                envMapIntensity: isHigh ? 1.25 : 0.85
             }));
-            
-    const woodMat = isPotato 
-        ? new THREE.MeshBasicMaterial({ color: 0x4a3228 })
-        : (isLambert
-            ? new THREE.MeshLambertMaterial({ color: 0x4a3228 }) 
+
+    const woodMat = isPotato
+        ? new THREE.MeshBasicMaterial({ color: 0x5c3c2e })
+        : (isLow
+            ? new THREE.MeshLambertMaterial({ color: 0x4e352a })
             : new THREE.MeshStandardMaterial({
-                color: 0x4a3228,
-                roughness: 0.8,
-                envMapIntensity: isUltra ? 0.6 : 0.4
+                color: 0x4e3429,
+                metalness: 0.06,
+                roughness: isHigh ? 0.45 : 0.52,
+                envMapIntensity: isHigh ? 0.65 : 0.45
             }));
-            
-    const darkMetalMat = isPotato 
-        ? new THREE.MeshBasicMaterial({ color: 0x1a1a1a })
-        : (isLambert 
-            ? new THREE.MeshLambertMaterial({ color: 0x1a1a1a }) 
+
+    const darkMetalMat = isPotato
+        ? new THREE.MeshBasicMaterial({ color: 0x262626 })
+        : (isLow
+            ? new THREE.MeshLambertMaterial({ color: 0x1d1d1d })
             : new THREE.MeshStandardMaterial({
                 color: 0x1a1a1a,
-                metalness: 0.8,
-                roughness: 0.4,
-                envMapIntensity: isUltra ? 1.0 : 0.8
+                metalness: 0.82,
+                roughness: isHigh ? 0.32 : 0.4,
+                envMapIntensity: isHigh ? 1.0 : 0.7
             }));
-            
-    const chokeMat = isPotato 
-        ? new THREE.MeshBasicMaterial({ color: 0x111111 })
-        : (isLambert 
-            ? new THREE.MeshLambertMaterial({ color: 0x111111 }) 
+
+    const chokeMat = isPotato
+        ? new THREE.MeshBasicMaterial({ color: 0x1c1c1c })
+        : (isLow
+            ? new THREE.MeshLambertMaterial({ color: 0x141414 })
             : new THREE.MeshStandardMaterial({
                 color: 0x111111,
-                metalness: 0.7,
-                roughness: 0.7,
-                envMapIntensity: isUltra ? 1.0 : 0.7
+                metalness: 0.72,
+                roughness: 0.65,
+                envMapIntensity: isHigh ? 0.9 : 0.65
             }));
-            
-    const sawCutMat = isPotato 
-        ? new THREE.MeshBasicMaterial({ color: 0xcccccc })
-        : (isLambert 
-            ? new THREE.MeshLambertMaterial({ color: 0xcccccc }) 
+
+    const sawCutMat = isPotato
+        ? new THREE.MeshBasicMaterial({ color: 0xd8d8d8 })
+        : (isLow
+            ? new THREE.MeshPhongMaterial({ color: 0xcccccc, specular: 0x888888, shininess: 50 })
             : new THREE.MeshStandardMaterial({
                 color: 0xcccccc,
                 metalness: 1.0,
-                roughness: 0.1,
-                envMapIntensity: isUltra ? 1.4 : 1.0
+                roughness: 0.12,
+                envMapIntensity: isHigh ? 1.35 : 1.0
             }));
 
     const receiver = new THREE.Mesh(new THREE.BoxGeometry(0.85, 1.2, 3.2), metalMat);
@@ -138,7 +139,7 @@ export const createGunModel = (scene: THREE.Scene) => {
         const ribMesh = new THREE.Mesh(ribGeo, woodMat);
         ribMesh.rotation.x = Math.PI / 2;
         ribMesh.position.z = -1.4 + i * 0.35;
-        ribMesh.castShadow = shouldCastShadow;
+        ribMesh.castShadow = isHigh && !isMobile;
         pumpGroup.add(ribMesh);
     }
     // Inner tube for pump
@@ -172,10 +173,10 @@ export const createGunModel = (scene: THREE.Scene) => {
     guard.rotation.z = Math.PI; guard.position.set(0, -0.6, 0.5);
 
     const sightMat = isPotato
-        ? new THREE.MeshBasicMaterial({ color: 0xff2200 })
-        : (isLambert
+        ? new THREE.MeshBasicMaterial({ color: 0xff3300 })
+        : (isLow
             ? new THREE.MeshLambertMaterial({ color: 0xff4400, emissive: 0xff2200 })
-            : new THREE.MeshStandardMaterial({ color: 0xff4400, emissive: 0xff2200, emissiveIntensity: isUltra ? 1.0 : 0.8 }));
+            : new THREE.MeshStandardMaterial({ color: 0xff4400, emissive: 0xff2200, emissiveIntensity: isHigh ? 0.9 : 0.75 }));
     const sight = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.2, 0.12), sightMat);
     sight.position.set(0, 0.65, 10.5);
     sight.name = "SIGHT";
@@ -240,6 +241,20 @@ export const createGunModel = (scene: THREE.Scene) => {
     const f3 = new THREE.Mesh(flashGeo, flashMat); f3.rotation.z = -Math.PI / 4;
     const muzzleFlash = new THREE.Group();
     muzzleFlash.add(f1, f2, f3);
+    if (isHigh) {
+        const glowSpriteMat = new THREE.SpriteMaterial({
+            map: getGlowTexture(),
+            color: 0xff9933,
+            transparent: true,
+            opacity: 0,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        });
+        const muzzleGlowSprite = new THREE.Sprite(glowSpriteMat);
+        muzzleGlowSprite.scale.set(7.5, 7.5, 1);
+        muzzleGlowSprite.userData.isMuzzleGlow = true;
+        muzzleFlash.add(muzzleGlowSprite);
+    }
     muzzleFlash.position.set(0, 0.4, 10.5);
     muzzleFlash.visible = false;
     gunGroup.add(muzzleFlash);
@@ -261,14 +276,11 @@ export const createProjectiles = (scene: THREE.Scene) => {
     const preset = getGraphicsPreset(settings);
     const isPotato = preset === 'potato';
     const isLow = preset === 'low';
-    const isBalanced = preset === 'balanced';
-    const isHigh = preset === 'high';
-    const isUltra = false;
 
     // Shared materials — compiled once at scene init, reused by all shells
     const shellBodyMat = isPotato
         ? new THREE.MeshBasicMaterial({ color: 0xef4444 })
-        : (isBalanced || isLow
+        : (isLow
             ? new THREE.MeshLambertMaterial({ color: 0xef4444, emissive: 0x991b1b })
             : new THREE.MeshStandardMaterial({
                 color: 0xef4444,
@@ -279,7 +291,7 @@ export const createProjectiles = (scene: THREE.Scene) => {
 
     const shellBaseMat = isPotato
         ? new THREE.MeshBasicMaterial({ color: 0xd4af37 })
-        : (isBalanced || isLow
+        : (isLow
             ? new THREE.MeshLambertMaterial({ color: 0xd4af37 })
             : new THREE.MeshStandardMaterial({
                 color: 0xd4af37,

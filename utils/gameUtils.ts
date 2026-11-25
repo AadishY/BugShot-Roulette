@@ -1,5 +1,40 @@
+import { ItemType } from '../types';
+
 export const randomInt = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
 export const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+export const shuffleArray = <T>(items: T[]): T[] => {
+    const arr = [...items];
+    for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+};
+
+const FRIENDLY_ITEM_NAMES: Record<ItemType, string> = {
+    BEER: 'Beer',
+    CIGS: 'Cigarettes',
+    GLASS: 'Magnifying Glass',
+    CUFFS: 'Handcuffs',
+    SAW: 'Hand Saw',
+    PHONE: 'Burner Phone',
+    INVERTER: 'Polarity Inverter',
+    ADRENALINE: 'Adrenaline',
+    CHOKE: 'Choke Mod',
+    REMOTE: 'Remote Control',
+    BIG_INVERTER: 'Big Inverter',
+    CONTRACT: 'Blood Contract',
+    LUCKYCHARM: 'Lucky Charm',
+    FLASHBANG: 'Flashbang',
+    CRUSHER: 'Item Crusher',
+    TOTEM: 'Totem of Undying',
+    MIRROR: 'Mirror',
+    DECK_CARD: 'Tarot Card',
+    JACKPOT: 'Jackpot Slot Machine'
+};
+
+export const getFriendlyItemName = (item: ItemType): string => FRIENDLY_ITEM_NAMES[item] || item;
 
 export type DeviceType = 'mobile' | 'tablet' | 'pc';
 

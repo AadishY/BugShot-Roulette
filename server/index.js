@@ -210,6 +210,7 @@ const formatPresenceForClient = (presence, viewerUsername, viewerIsFriend = fals
         displayName: presence.displayName,
         avatarUrl: presence.avatarUrl,
         avatarStyle: presence.avatarStyle,
+        avatarSeed: presence.avatarSeed,
         status: presence.status,
         roomId: presence.roomId,
         matchInfo: presence.matchInfo,
@@ -456,6 +457,47 @@ const sanitizeRoomId = (roomId) => {
     return ROOM_ID_PATTERN.test(trimmed) ? trimmed : null;
 };
 
+const sanitizeShortString = (val, maxLen = 64) => {
+    if (typeof val !== 'string') return undefined;
+    const trimmed = val.trim().slice(0, maxLen);
+    return trimmed.length > 0 ? trimmed : undefined;
+};
+
+const sanitizeAvatarUrl = (val) => {
+    if (typeof val !== 'string') return undefined;
+    const trimmed = val.trim();
+    if (!trimmed || trimmed.length > 512) return undefined;
+    if (trimmed.startsWith('/') && !trimmed.startsWith('//')) return trimmed;
+    try {
+        const parsed = new URL(trimmed);
+        if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+            return parsed.toString();
+        }
+    } catch (e) {}
+    return undefined;
+};
+
+const isBlockedPreviewHost = (hostname) => {
+    if (!hostname) return true;
+    const h = hostname.toLowerCase().replace(/^\[|\]$/g, '');
+    if (
+        h === 'localhost' ||
+        h === '0.0.0.0' ||
+        h === '::1' ||
+        h.endsWith('.local') ||
+        h.endsWith('.internal') ||
+        h.endsWith('.localhost')
+    ) return true;
+    if (/^127\./.test(h) || /^10\./.test(h) || /^192\.168\./.test(h) || /^169\.254\./.test(h)) return true;
+    if (/^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(h)) return true;
+    if (/^(fc|fd|fe80)/i.test(h)) return true;
+    return false;
+};
+
+const LINK_PREVIEW_CACHE_MAX = 100;
+const LINK_PREVIEW_TTL_MS = 10 * 60 * 1000;
+const linkPreviewCache = new Map();
+
 // Room status inspection endpoint for invite previews
 app.get(['/api/room/:roomId', '/room-status/:roomId'], (req, res) => {
     const safeRoomId = sanitizeRoomId(req.params.roomId);
@@ -463,21 +505,22 @@ app.get(['/api/room/:roomId', '/room-status/:roomId'], (req, res) => {
     const room = rooms.get(safeRoomId);
     if (!room) return res.json({ exists: false, status: 'closed' });
     const activePlayers = room.players.filter(p => !p.disconnected);
+    const maxPlayers = room.settings?.maxPlayers || 4;
     if (room.gameState) {
         return res.json({
             exists: true,
             status: 'in_match',
             playerCount: activePlayers.length,
-            maxPlayers: 4,
+            maxPlayers,
             hostName: room.hostName || 'Host'
         });
     }
-    if (activePlayers.length >= 4) {
+    if (activePlayers.length >= maxPlayers) {
         return res.json({
             exists: true,
             status: 'full',
             playerCount: activePlayers.length,
-            maxPlayers: 4,
+            maxPlayers,
             hostName: room.hostName || 'Host'
         });
     }
@@ -485,7 +528,7 @@ app.get(['/api/room/:roomId', '/room-status/:roomId'], (req, res) => {
         exists: true,
         status: 'open',
         playerCount: activePlayers.length,
-        maxPlayers: 4,
+        maxPlayers,
         hostName: room.hostName || 'Host'
     });
 });
@@ -664,25 +707,27 @@ app.head(['/health', '/healthz'], (req, res) => {
 app.get('/active-rooms', (req, res) => {
     const activeRooms = [];
     rooms.forEach((room) => {
-        if (!room.settings?.isPrivate) {
-            activeRooms.push({
-                id: room.id,
-                name: room.name || `${room.players[0]?.name || 'Unknown'}'s Bunker`,
-                playerCount: room.players.length,
-                maxPlayers: 4,
-                settings: room.settings,
-                isPlaying: !!room.gameState
-            });
-        }
+        if (room.settings?.isPrivate) return;
+        const activePlayers = room.players.filter(p => !p.disconnected);
+        if (activePlayers.length === 0) return;
+        activeRooms.push({
+            id: room.id,
+            name: room.name || `${activePlayers[0]?.name || 'Unknown'}'s Bunker`,
+            hostName: room.hostName || activePlayers[0]?.name || 'Host',
+            playerCount: activePlayers.length,
+            maxPlayers: room.settings?.maxPlayers || 4,
+            settings: room.settings,
+            isPlaying: !!room.gameState
+        });
     });
     res.status(200).json(activeRooms);
 });
 
 // Link preview parser vector for chat rich embeds
 app.get('/api/link-preview', async (req, res) => {
-    const urlStr = req.query.url;
-    if (!urlStr) {
-        return res.status(400).json({ error: 'URL parameter required' });
+    const urlStr = typeof req.query.url === 'string' ? req.query.url.trim() : '';
+    if (!urlStr || urlStr.length > 2048) {
+        return res.status(400).json({ error: 'Valid URL parameter required' });
     }
 
     // Static override for mockup matching and offline developer test integrity
@@ -695,24 +740,75 @@ app.get('/api/link-preview', async (req, res) => {
         });
     }
 
+    let parsedUrl;
     try {
-        const url = new URL(urlStr);
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000);
+        parsedUrl = new URL(urlStr);
+    } catch (e) {
+        return res.status(400).json({ error: 'Invalid destination URL format' });
+    }
 
-        const response = await fetch(url.toString(), {
+    if ((parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') || isBlockedPreviewHost(parsedUrl.hostname)) {
+        return res.status(400).json({ error: 'Blocked or unsupported URL destination' });
+    }
+
+    const cacheKey = parsedUrl.toString();
+    const cached = linkPreviewCache.get(cacheKey);
+    if (cached && Date.now() - cached.ts < LINK_PREVIEW_TTL_MS) {
+        return res.json(cached.data);
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
+    try {
+        const response = await fetch(cacheKey, {
             signal: controller.signal,
+            redirect: 'follow',
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
             }
         });
-        clearTimeout(timeoutId);
 
         if (!response.ok) {
             throw new Error(`HTTP Error: ${response.status}`);
         }
 
-        const html = await response.text();
+        // Guard against redirected SSRF
+        if (response.url) {
+            const finalUrl = new URL(response.url);
+            if ((finalUrl.protocol !== 'http:' && finalUrl.protocol !== 'https:') || isBlockedPreviewHost(finalUrl.hostname)) {
+                throw new Error('Blocked redirect destination');
+            }
+        }
+
+        const contentType = (response.headers.get('content-type') || '').toLowerCase();
+        if (contentType && !contentType.includes('text/html') && !contentType.includes('application/xhtml')) {
+            const fallbackData = {
+                title: parsedUrl.hostname,
+                description: 'External media or file link',
+                image: '',
+                siteName: parsedUrl.hostname
+            };
+            return res.json(fallbackData);
+        }
+
+        // Cap body read to 256KB to prevent memory bloat on huge pages
+        let html = '';
+        const MAX_PREVIEW_BYTES = 262144;
+        if (response.body && typeof response.body.getReader === 'function') {
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder('utf-8', { fatal: false });
+            let bytesRead = 0;
+            while (bytesRead < MAX_PREVIEW_BYTES) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                bytesRead += value.byteLength;
+                html += decoder.decode(value, { stream: true });
+                if (html.includes('</head>')) break;
+            }
+            reader.cancel().catch(() => {});
+        } else {
+            html = (await response.text()).slice(0, MAX_PREVIEW_BYTES);
+        }
 
         const getMetaTag = (text, propertyOrName) => {
             const regex = new RegExp(`<meta[^>]*(?:property|name)=["']${propertyOrName}["'][^>]*content=["']([^"']+)["']`, 'i');
@@ -725,33 +821,50 @@ app.get('/api/link-preview', async (req, res) => {
         };
 
         const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
-        const title = getMetaTag(html, 'og:title') || (titleMatch ? titleMatch[1] : url.hostname);
-        const description = getMetaTag(html, 'og:description') || getMetaTag(html, 'description') || '';
-        let image = getMetaTag(html, 'og:image') || '';
+        const title = (getMetaTag(html, 'og:title') || (titleMatch ? titleMatch[1] : parsedUrl.hostname) || '').trim().slice(0, 200);
+        const description = (getMetaTag(html, 'og:description') || getMetaTag(html, 'description') || '').trim().slice(0, 400);
+        let image = (getMetaTag(html, 'og:image') || '').trim();
 
         if (image && !image.startsWith('http')) {
-            image = new URL(image, url.origin).toString();
+            try {
+                image = new URL(image, parsedUrl.origin).toString();
+            } catch (e) {
+                image = '';
+            }
+        }
+        if (image) {
+            try {
+                const imgUrl = new URL(image);
+                if (imgUrl.protocol !== 'https:' && imgUrl.protocol !== 'http:') image = '';
+            } catch (e) {
+                image = '';
+            }
         }
 
-        res.json({
-            title: (title || '').trim(),
-            description: (description || '').trim(),
-            image: image,
-            siteName: url.hostname
-        });
+        const result = {
+            title: title || parsedUrl.hostname,
+            description,
+            image: image.slice(0, 512),
+            siteName: parsedUrl.hostname
+        };
+
+        linkPreviewCache.set(cacheKey, { ts: Date.now(), data: result });
+        if (linkPreviewCache.size > LINK_PREVIEW_CACHE_MAX) {
+            const oldestKey = linkPreviewCache.keys().next().value;
+            if (oldestKey) linkPreviewCache.delete(oldestKey);
+        }
+
+        res.json(result);
     } catch (err) {
         console.error("Link preview extraction failure:", err.message);
-        try {
-            const url = new URL(urlStr);
-            res.json({
-                title: url.hostname,
-                description: 'External link target',
-                image: '',
-                siteName: url.hostname
-            });
-        } catch (e) {
-            res.status(400).json({ error: 'Invalid destination URL format' });
-        }
+        res.json({
+            title: parsedUrl.hostname,
+            description: 'External link target',
+            image: '',
+            siteName: parsedUrl.hostname
+        });
+    } finally {
+        clearTimeout(timeoutId);
     }
 });
 
@@ -809,20 +922,48 @@ const parseItemsSetting = (val) => {
     return Math.min(Math.max(parsed, 0), 9); // Allow 0 to 9
 };
 
-const createRoomObject = (roomId, hostId, hostName, settings) => {
-    const defaultSettings = { rounds: 3, hp: 9, itemsPerShipment: 9, isPrivate: false, isAdvanced: false, itemWeights: null };
-    const finalSettings = settings ? {
+const parseMaxPlayersSetting = (val) => {
+    const parsed = parseInt(val);
+    if (isNaN(parsed)) return 4;
+    return Math.min(Math.max(parsed, 2), 4);
+};
+
+const sanitizeItemWeights = (weights) => {
+    if (!weights || typeof weights !== 'object' || Array.isArray(weights)) return null;
+    const cleaned = {};
+    const keys = Object.keys(weights).slice(0, 32);
+    for (const key of keys) {
+        if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
+        const safeKey = key.trim().slice(0, 32);
+        const num = Number(weights[key]);
+        if (safeKey && Number.isFinite(num)) {
+            cleaned[safeKey] = Math.min(Math.max(0, Math.round(num)), 100);
+        }
+    }
+    return Object.keys(cleaned).length > 0 ? cleaned : null;
+};
+
+const buildRoomSettings = (settings, forceDisableAdvanced = false) => {
+    const defaultSettings = { rounds: 3, hp: 9, itemsPerShipment: 9, isPrivate: false, isAdvanced: false, maxPlayers: 4, itemWeights: null };
+    if (!settings || typeof settings !== 'object') return defaultSettings;
+    return {
         rounds: Math.min(Math.max(parseInt(settings.rounds) || 3, 1), 7),
         hp: parseHpSetting(settings.hp),
         itemsPerShipment: parseItemsSetting(settings.itemsPerShipment),
         isPrivate: !!settings.isPrivate,
-        isAdvanced: false, // Always force false when initially entering a new room
-        itemWeights: settings.itemWeights || null
-    } : defaultSettings;
+        isAdvanced: forceDisableAdvanced ? false : !!settings.isAdvanced,
+        maxPlayers: parseMaxPlayersSetting(settings.maxPlayers),
+        itemWeights: sanitizeItemWeights(settings.itemWeights)
+    };
+};
+
+const createRoomObject = (roomId, hostId, hostName, settings) => {
+    const finalSettings = buildRoomSettings(settings, true);
+    const customName = sanitizeShortString(settings?.roomName || settings?.name, 32);
 
     return {
         id: roomId,
-        name: `${hostName}'s Bunker`,
+        name: customName || `${hostName}'s Bunker`,
         hostId,
         hostName,
         players: [],
@@ -859,7 +1000,8 @@ const serializeRoomForClient = (room) => {
             model: player.model,
             avatarUrl: player.avatarUrl,
             avatarStyle: player.avatarStyle,
-            avatarSeed: player.avatarSeed
+            avatarSeed: player.avatarSeed,
+            isDeveloper: !!player.isDeveloper
         })) : [],
         settings: room.settings,
         gameState: safeGameState,
@@ -1014,14 +1156,55 @@ const normalizeGameAction = (action, room) => {
     return normalized;
 };
 
+const leaveOtherRoomsForSocket = (socket, exceptRoomId = null) => {
+    for (const [otherRoomId, otherRoom] of rooms.entries()) {
+        if (otherRoomId === exceptRoomId) continue;
+        const pIdx = otherRoom.players.findIndex(p => p.id === socket.id);
+        if (pIdx === -1) continue;
+
+        const leavingPlayer = otherRoom.players[pIdx];
+        cleanupPlayerTimers(leavingPlayer);
+        otherRoom.players.splice(pIdx, 1);
+        socket.leave(otherRoomId);
+
+        const leaveMsg = {
+            sender: 'SYSTEM',
+            color: '#737373',
+            text: `${leavingPlayer.name} has left the bunker.`,
+            timestamp: Date.now()
+        };
+        otherRoom.messages.push(leaveMsg);
+        if (otherRoom.messages.length > 50) otherRoom.messages.shift();
+        io.to(otherRoomId).emit('chatMessageReceived', leaveMsg);
+
+        if (otherRoom.players.length === 0) {
+            deleteRoomSafely(otherRoomId);
+        } else if (otherRoom.gameState) {
+            finalizeMidGameAbort(otherRoom, otherRoomId, leavingPlayer.name);
+        } else {
+            if (otherRoom.hostId === socket.id) {
+                const nextHost = otherRoom.players.find(p => !p.disconnected);
+                if (nextHost) {
+                    otherRoom.hostId = nextHost.id;
+                    otherRoom.hostName = nextHost.name;
+                }
+            }
+            emitRoomUpdated(otherRoomId, otherRoom);
+        }
+    }
+};
+
 const joinSocketToRoom = (socket, room, playerName, authId, avatarUrl, avatarStyle, avatarSeed) => {
-    const newPlayerName = playerName ? playerName.trim().substring(0, 14) : `Player ${room.players.length + 1}`;
-    const cleanAuthId = authId ? authId.trim().toLowerCase() : null;
+    leaveOtherRoomsForSocket(socket, room.id);
+
+    const safeInputName = typeof playerName === 'string' ? playerName.trim().substring(0, 14) : '';
+    const newPlayerName = safeInputName.length > 0 ? safeInputName : `Player ${room.players.length + 1}`;
+    const cleanAuthId = typeof authId === 'string' && authId.trim() ? authId.trim().toLowerCase().slice(0, 64) : null;
 
     const presence = presenceMap.get(socket.id);
-    const effAvatarUrl = avatarUrl || presence?.avatarUrl || null;
-    const effAvatarStyle = avatarStyle || presence?.avatarStyle || null;
-    const effAvatarSeed = avatarSeed || (presence && presence.avatarSeed) || null;
+    const effAvatarUrl = sanitizeAvatarUrl(avatarUrl) || sanitizeAvatarUrl(presence?.avatarUrl) || null;
+    const effAvatarStyle = sanitizeShortString(avatarStyle, 40) || sanitizeShortString(presence?.avatarStyle, 40) || null;
+    const effAvatarSeed = sanitizeShortString(avatarSeed, 64) || sanitizeShortString(presence?.avatarSeed, 64) || null;
 
     // Check if player is reconnecting or switching networks (both logged-in and guest players)
     const existingPlayerIndex = room.players.findIndex(p => {
@@ -1042,23 +1225,29 @@ const joinSocketToRoom = (socket, room, playerName, authId, avatarUrl, avatarSty
             delete room.deletionTimer;
         }
 
-        // Drop previous ghost socket if connection switch occurred (e.g. mobile 4G <-> Wi-Fi handover)
-        if (oldSocketId !== socket.id) {
-            const oldSocket = io.sockets.sockets.get(oldSocketId);
-            if (oldSocket) {
-                oldSocket.leave(room.id);
-                try {
-                    oldSocket.disconnect(true);
-                } catch (e) {}
-            }
-        }
-
+        // Update player's socket ID BEFORE disconnecting the replaced socket to prevent disconnect race
         returning.id = socket.id;
         returning.disconnected = false;
         returning.name = newPlayerName;
         if (effAvatarUrl) returning.avatarUrl = effAvatarUrl;
         if (effAvatarStyle) returning.avatarStyle = effAvatarStyle;
         if (effAvatarSeed) returning.avatarSeed = effAvatarSeed;
+        returning.isDeveloper = Boolean(returning.isDeveloper || socket.isDeveloper || presence?.isDeveloper || cleanAuthId === 'aadish');
+
+        if (oldSocketId !== socket.id) {
+            if (room.debugPlayerModels && room.debugPlayerModels[oldSocketId]) {
+                room.debugPlayerModels[socket.id] = room.debugPlayerModels[oldSocketId];
+                delete room.debugPlayerModels[oldSocketId];
+            }
+            const oldSocket = io.sockets.sockets.get(oldSocketId);
+            if (oldSocket) {
+                oldSocket._replacedByReconnect = true;
+                oldSocket.leave(room.id);
+                try {
+                    oldSocket.disconnect(true);
+                } catch (e) {}
+            }
+        }
         
         if (wasHost || !room.players.some(p => p.id === room.hostId && !p.disconnected)) {
             room.hostId = socket.id;
@@ -1092,8 +1281,9 @@ const joinSocketToRoom = (socket, room, playerName, authId, avatarUrl, avatarSty
         return;
     }
 
-    if (room.players.filter(p => !p.disconnected).length >= 4) {
-        socket.emit('error', 'Lobby is full (Max 4 players allowed).');
+    const maxPlayers = room.settings?.maxPlayers || 4;
+    if (room.players.filter(p => !p.disconnected).length >= maxPlayers) {
+        socket.emit('error', `Lobby is full (Max ${maxPlayers} players allowed).`);
         return;
     }
 
@@ -1159,7 +1349,8 @@ const joinSocketToRoom = (socket, room, playerName, authId, avatarUrl, avatarSty
         model: assignedModel,
         avatarUrl: effAvatarUrl,
         avatarStyle: effAvatarStyle,
-        avatarSeed: effAvatarSeed
+        avatarSeed: effAvatarSeed,
+        isDeveloper: Boolean(socket.isDeveloper || presence?.isDeveloper || cleanAuthId === 'aadish')
     };
 
     room.players.push(newPlayer);
@@ -1267,9 +1458,10 @@ io.on('connection', (socket) => {
     };
 
     socket.on('createRoom', (data = {}) => {
-        const { playerName, settings, authId, avatarUrl, avatarStyle, avatarSeed } = data || {};
+        if (!data || typeof data !== 'object') return;
+        const { playerName, settings, authId, avatarUrl, avatarStyle, avatarSeed } = data;
         if (shouldThrottle({ type: 'LOBBY' })) return;
-        if (!authId) {
+        if (typeof authId !== 'string' || !authId.trim()) {
             socket.emit('error', 'Authentication required. Please sign in to access multiplayer.');
             return;
         }
@@ -1297,9 +1489,10 @@ io.on('connection', (socket) => {
     });
 
     socket.on('joinRoom', (data = {}) => {
-        const { roomId, playerName, authId, avatarUrl, avatarStyle, avatarSeed } = data || {};
+        if (!data || typeof data !== 'object') return;
+        const { roomId, playerName, authId, avatarUrl, avatarStyle, avatarSeed } = data;
         if (shouldThrottle({ type: 'LOBBY' })) return;
-        if (!authId) {
+        if (typeof authId !== 'string' || !authId.trim()) {
             socket.emit('error', 'Authentication required. Please sign in to access multiplayer.');
             return;
         }
@@ -1319,16 +1512,18 @@ io.on('connection', (socket) => {
     });
 
     socket.on('quickJoin', (data = {}) => {
-        const { playerName, settings, authId, avatarUrl, avatarStyle, avatarSeed } = data || {};
+        if (!data || typeof data !== 'object') return;
+        const { playerName, settings, authId, avatarUrl, avatarStyle, avatarSeed } = data;
         if (shouldThrottle({ type: 'LOBBY' })) return;
-        if (!authId) {
+        if (typeof authId !== 'string' || !authId.trim()) {
             socket.emit('error', 'Authentication required. Please sign in to access multiplayer.');
             return;
         }
         
         let availableRoom = null;
         for (const room of rooms.values()) {
-            if (room.players.filter(p => !p.disconnected).length < 4 && !room.gameState && !room.settings?.isPrivate) {
+            const maxPlayers = room.settings?.maxPlayers || 4;
+            if (room.players.filter(p => !p.disconnected).length < maxPlayers && !room.gameState && !room.settings?.isPrivate) {
                 availableRoom = room;
                 break;
             }
@@ -1344,8 +1539,13 @@ io.on('connection', (socket) => {
                 attempts++;
             } while (rooms.has(roomId) && attempts < MAX_ROOM_ID_ATTEMPTS);
 
+            if (rooms.has(roomId)) {
+                socket.emit('error', 'Failed to generate a unique room code. Try again.');
+                return;
+            }
+
             const hostName = sanitizePlayerName(playerName);
-            const room = createRoomObject(roomId, socket.id, hostName, { ...settings, isPrivate: false });
+            const room = createRoomObject(roomId, socket.id, hostName, { ...(settings && typeof settings === 'object' ? settings : {}), isPrivate: false });
             rooms.set(roomId, room);
 
             joinSocketToRoom(socket, room, playerName, authId, avatarUrl, avatarStyle, avatarSeed);
@@ -1356,27 +1556,26 @@ io.on('connection', (socket) => {
     });
 
     socket.on('updateSettings', (data = {}) => {
-        const { roomId, settings } = data || {};
+        if (!data || typeof data !== 'object') return;
+        const { roomId, settings } = data;
         if (shouldThrottle({ type: 'LOBBY' })) return;
         const safeRoomId = sanitizeRoomId(roomId);
-        if (!safeRoomId || !settings) return;
+        if (!safeRoomId || !settings || typeof settings !== 'object') return;
         const room = rooms.get(safeRoomId);
         if (room && room.hostId === socket.id && !room.gameState) {
-            room.settings = {
-                rounds: Math.min(Math.max(parseInt(settings.rounds) || 3, 1), 7),
-                hp: parseHpSetting(settings.hp),
-                itemsPerShipment: parseItemsSetting(settings.itemsPerShipment),
-                isPrivate: !!settings.isPrivate,
-                isAdvanced: !!settings.isAdvanced,
-                itemWeights: settings.itemWeights || null
-            };
+            const nextSettings = buildRoomSettings(settings, false);
+            if (room.settings?.maxPlayers && settings.maxPlayers === undefined) {
+                nextSettings.maxPlayers = room.settings.maxPlayers;
+            }
+            room.settings = nextSettings;
             room.lastActivity = Date.now();
             emitRoomUpdated(safeRoomId, room);
         }
     });
 
     socket.on('readyUp', (data = {}) => {
-        const { roomId, ready } = data || {};
+        if (!data || typeof data !== 'object') return;
+        const { roomId, ready } = data;
         if (shouldThrottle({ type: 'LOBBY' })) return;
         const safeRoomId = sanitizeRoomId(roomId);
         if (!safeRoomId) return;
@@ -1392,34 +1591,69 @@ io.on('connection', (socket) => {
     });
 
     socket.on('updatePlayerAvatar', (data = {}) => {
-        const { roomId, avatarUrl, avatarStyle, avatarSeed } = data || {};
+        if (!data || typeof data !== 'object') return;
         if (shouldThrottle({ type: 'LOBBY' })) return;
-        const safeRoomId = sanitizeRoomId(roomId);
-        if (safeRoomId) {
-            const room = rooms.get(safeRoomId);
-            if (room) {
-                const player = room.players.find(p => p.id === socket.id);
-                if (player) {
-                    if (avatarUrl !== undefined) player.avatarUrl = avatarUrl;
-                    if (avatarStyle !== undefined) player.avatarStyle = avatarStyle;
-                    if (avatarSeed !== undefined) player.avatarSeed = avatarSeed;
-                    room.lastActivity = Date.now();
-                    emitRoomUpdated(safeRoomId, room);
+
+        const cleanUrl = sanitizeAvatarUrl(data.avatarUrl);
+        const cleanStyle = sanitizeShortString(data.avatarStyle, 40);
+        const cleanSeed = sanitizeShortString(data.avatarSeed, 64);
+        const cleanDisplayName = sanitizeShortString(data.displayName, 24);
+
+        const safeRoomId = sanitizeRoomId(data.roomId);
+        const targetRooms = [];
+        if (safeRoomId && rooms.has(safeRoomId)) {
+            targetRooms.push([safeRoomId, rooms.get(safeRoomId)]);
+        } else {
+            for (const [rId, r] of rooms.entries()) {
+                if (r.players.some(p => p.id === socket.id)) {
+                    targetRooms.push([rId, r]);
                 }
             }
         }
-        updateSocketPresence(socket.id, {
-            avatarUrl,
-            avatarStyle,
-            avatarSeed
-        });
+
+        for (const [rId, room] of targetRooms) {
+            const player = room.players.find(p => p.id === socket.id);
+            if (!player) continue;
+            if (cleanUrl !== undefined) player.avatarUrl = cleanUrl;
+            if (cleanStyle !== undefined) player.avatarStyle = cleanStyle;
+            if (cleanSeed !== undefined) player.avatarSeed = cleanSeed;
+
+            // Propagate updated avatar metadata onto recent room chat messages from this player
+            if (Array.isArray(room.messages)) {
+                for (const msg of room.messages) {
+                    if (!msg || msg.sender === 'SYSTEM') continue;
+                    const matchesSender =
+                        msg.senderId === player.id ||
+                        (player.authId && msg.authId === player.authId) ||
+                        msg.sender === player.name;
+                    if (matchesSender) {
+                        if (cleanUrl !== undefined) msg.avatarUrl = cleanUrl;
+                        if (cleanStyle !== undefined) msg.avatarStyle = cleanStyle;
+                        if (cleanSeed !== undefined) msg.avatarSeed = cleanSeed;
+                    }
+                }
+            }
+
+            room.lastActivity = Date.now();
+            emitRoomUpdated(rId, room);
+        }
+
+        const presenceUpdates = {};
+        if (cleanUrl !== undefined) presenceUpdates.avatarUrl = cleanUrl;
+        if (cleanStyle !== undefined) presenceUpdates.avatarStyle = cleanStyle;
+        if (cleanSeed !== undefined) presenceUpdates.avatarSeed = cleanSeed;
+        if (cleanDisplayName !== undefined) presenceUpdates.displayName = cleanDisplayName;
+        if (Object.keys(presenceUpdates).length > 0) {
+            updateSocketPresence(socket.id, presenceUpdates);
+        }
     });
 
     socket.on('startGame', (data = {}) => {
-        const { roomId, gameData } = data || {};
+        if (!data || typeof data !== 'object') return;
+        const { roomId, gameData } = data;
         if (shouldThrottle({ type: 'LOBBY' })) return;
         const safeRoomId = sanitizeRoomId(roomId);
-        if (!safeRoomId || !gameData || typeof gameData !== 'object') return;
+        if (!safeRoomId || !gameData || typeof gameData !== 'object' || Array.isArray(gameData)) return;
         if (getActionSize(gameData) > MAX_ACTION_BYTES) {
             socket.emit('error', 'Payload exceeds maximum size.');
             return;
@@ -1427,11 +1661,13 @@ io.on('connection', (socket) => {
         sanitizeObjectKeys(gameData);
         const room = rooms.get(safeRoomId);
         if (room && room.hostId === socket.id) {
-            if (room.players.filter(p => !p.disconnected).length < 2) {
+            if (room.gameState) return;
+            const activePlayers = room.players.filter(p => !p.disconnected);
+            if (activePlayers.length < 2) {
                 socket.emit('error', 'Need at least 2 players to start.');
                 return;
             }
-            if (!room.players.filter(p => !p.disconnected).every(p => p.ready)) {
+            if (!activePlayers.every(p => p.ready)) {
                 socket.emit('error', 'All players must be ready.');
                 return;
             }
@@ -1446,7 +1682,8 @@ io.on('connection', (socket) => {
     });
 
     socket.on('gameAction', (data = {}) => {
-        const { roomId, action } = data || {};
+        if (!data || typeof data !== 'object') return;
+        const { roomId, action } = data;
         if (!action || shouldThrottle(action)) return;
         const safeRoomId = sanitizeRoomId(roomId);
         if (!safeRoomId) return;
@@ -1461,7 +1698,8 @@ io.on('connection', (socket) => {
     });
 
     socket.on('gameActionBatch', (data = {}) => {
-        const { actions } = data || {};
+        if (!data || typeof data !== 'object') return;
+        const { actions } = data;
         if (!Array.isArray(actions) || actions.length === 0) return;
         if (actions.length > 24) {
             socket.emit('error', 'Action batch too large.');
@@ -1478,14 +1716,16 @@ io.on('connection', (socket) => {
         room.lastActivity = Date.now();
         for (const entry of actions) {
             const payload = entry?.data || entry;
-            if (payload?.roomId !== safeRoomId) continue;
+            if (sanitizeRoomId(payload?.roomId) !== safeRoomId) continue;
             const action = payload?.action;
             if (!action || shouldThrottle(action)) continue;
             relayGameAction(safeRoomId, action, player);
         }
     });
 
-    socket.on('chatMessage', ({ roomId, message }) => {
+    socket.on('chatMessage', (data = {}) => {
+        if (!data || typeof data !== 'object') return;
+        const { roomId, message } = data;
         if (shouldThrottle({ type: 'CHAT' })) return;
         const safeRoomId = sanitizeRoomId(roomId);
         if (!safeRoomId) return;
@@ -1503,8 +1743,21 @@ io.on('connection', (socket) => {
             }
             const safeText = typeof message === 'string' ? message.trim().substring(0, 140) : '';
             if (player && safeText.length > 0) {
+                const presence = presenceMap.get(socket.id);
+                const msgAvatarUrl = player.avatarUrl || presence?.avatarUrl || sanitizeAvatarUrl(data.avatarUrl) || undefined;
+                const msgAvatarStyle = player.avatarStyle || presence?.avatarStyle || sanitizeShortString(data.avatarStyle, 40) || undefined;
+                const msgAvatarSeed = player.avatarSeed || presence?.avatarSeed || sanitizeShortString(data.avatarSeed, 64) || undefined;
+                const msgUsername = player.authId || presence?.username || sanitizeShortString(data.senderUsername, 64)?.toLowerCase() || undefined;
+                const msgIsDev = Boolean(player.isDeveloper || socket.isDeveloper || presence?.isDeveloper || msgUsername === 'aadish');
                 const chatEntry = {
                     sender: player.name,
+                    senderId: player.id,
+                    senderUsername: msgUsername,
+                    authId: player.authId || undefined,
+                    avatarUrl: msgAvatarUrl,
+                    avatarStyle: msgAvatarStyle,
+                    avatarSeed: msgAvatarSeed,
+                    isDeveloper: msgIsDev,
                     color: player.color,
                     text: safeText,
                     timestamp: Date.now()
@@ -1517,10 +1770,12 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('kickPlayer', ({ roomId, targetPlayerId }) => {
+    socket.on('kickPlayer', (data = {}) => {
+        if (!data || typeof data !== 'object') return;
+        const { roomId, targetPlayerId } = data;
         if (shouldThrottle({ type: 'LOBBY' })) return;
         const safeRoomId = sanitizeRoomId(roomId);
-        if (!safeRoomId) return;
+        if (!safeRoomId || typeof targetPlayerId !== 'string') return;
         const room = rooms.get(safeRoomId);
         if (room && room.hostId === socket.id && !room.gameState && targetPlayerId !== socket.id) {
             const playerIndex = room.players.findIndex(p => p.id === targetPlayerId);
@@ -1551,7 +1806,9 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('resetRoomState', ({ roomId }) => {
+    socket.on('resetRoomState', (data = {}) => {
+        if (!data || typeof data !== 'object') return;
+        const { roomId } = data;
         if (shouldThrottle({ type: 'LOBBY' })) return;
         const safeRoomId = sanitizeRoomId(roomId);
         if (!safeRoomId) return;
@@ -1572,29 +1829,31 @@ io.on('connection', (socket) => {
     });
 
     // --- PRESENCE & ADMIN SOCKET HANDLERS ---
-    socket.on('presence:identify', (data) => {
-        const cleanUsername = (data?.username || '').trim().toLowerCase();
+    socket.on('presence:identify', (data = {}) => {
+        if (!data || typeof data !== 'object' || shouldThrottle({ type: 'PRESENCE' })) return;
+        const cleanUsername = typeof data.username === 'string' ? data.username.trim().toLowerCase().slice(0, 64) : '';
         if (!cleanUsername) return;
 
         socket.username = cleanUsername;
         const isRootDev = cleanUsername === 'aadish';
-        const hasValidAdminSecret = Boolean(process.env.ADMIN_SECRET && data?.adminSecret === process.env.ADMIN_SECRET);
+        const hasValidAdminSecret = Boolean(process.env.ADMIN_SECRET && data.adminSecret === process.env.ADMIN_SECRET);
         socket.isDeveloper = isRootDev || hasValidAdminSecret;
         if (socket.isDeveloper) {
             developerUsernames.add(cleanUsername);
         }
-        socket.playerId = data.playerId || `@${cleanUsername}#0000`;
+        socket.playerId = typeof data.playerId === 'string' ? data.playerId.slice(0, 64) : `@${cleanUsername}#0000`;
 
         const pObj = {
             socketId: socket.id,
             username: cleanUsername,
             playerId: socket.playerId,
-            displayName: data.displayName || data.username,
-            avatarUrl: data.avatarUrl || '',
-            avatarStyle: data.avatarStyle || 'thumbs',
-            status: data.status || 'online',
-            roomId: data.roomId || null,
-            matchInfo: data.matchInfo || null,
+            displayName: sanitizeShortString(data.displayName, 24) || data.username.trim().slice(0, 24),
+            avatarUrl: sanitizeAvatarUrl(data.avatarUrl) || '',
+            avatarStyle: sanitizeShortString(data.avatarStyle, 40) || 'thumbs',
+            avatarSeed: sanitizeShortString(data.avatarSeed, 64) || cleanUsername,
+            status: typeof data.status === 'string' ? data.status.slice(0, 24) : 'online',
+            roomId: sanitizeRoomId(data.roomId) || null,
+            matchInfo: data.matchInfo && typeof data.matchInfo === 'object' ? data.matchInfo : null,
             connectedAt: Date.now(),
             lastSeen: Date.now(),
             isDeveloper: socket.isDeveloper
@@ -1610,12 +1869,19 @@ io.on('connection', (socket) => {
         broadcastPresence(pObj);
     });
 
-    socket.on('presence:status', (data) => {
+    socket.on('presence:status', (data = {}) => {
+        if (!data || typeof data !== 'object' || shouldThrottle({ type: 'PRESENCE' })) return;
         const p = presenceMap.get(socket.id);
-        if (p && data) {
-            if (data.status) p.status = data.status;
-            if (data.matchInfo !== undefined) p.matchInfo = data.matchInfo;
-            if (data.roomId !== undefined) p.roomId = data.roomId;
+        if (p) {
+            if (typeof data.status === 'string' && data.status.trim()) p.status = data.status.trim().slice(0, 24);
+            if (data.matchInfo !== undefined) p.matchInfo = data.matchInfo && typeof data.matchInfo === 'object' ? data.matchInfo : null;
+            if (data.roomId !== undefined) p.roomId = sanitizeRoomId(data.roomId) || null;
+            const cleanUrl = sanitizeAvatarUrl(data.avatarUrl);
+            const cleanStyle = sanitizeShortString(data.avatarStyle, 40);
+            const cleanSeed = sanitizeShortString(data.avatarSeed, 64);
+            if (cleanUrl !== undefined) p.avatarUrl = cleanUrl;
+            if (cleanStyle !== undefined) p.avatarStyle = cleanStyle;
+            if (cleanSeed !== undefined) p.avatarSeed = cleanSeed;
             p.lastSeen = Date.now();
             setTrackedLastSeen(p.username.toLowerCase(), p.lastSeen);
             broadcastPresence(p);
@@ -1623,6 +1889,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('presence:request_all', () => {
+        if (shouldThrottle({ type: 'PRESENCE' })) return;
         const viewerUsername = socket.username;
         const list = [];
         const userPresenceAgg = new Map();
@@ -1649,28 +1916,30 @@ io.on('connection', (socket) => {
         socket.emit('presence:sync', list);
     });
 
-    socket.on('checkRoomStatus', ({ roomId }, ack) => {
+    socket.on('checkRoomStatus', (data = {}, ack) => {
         if (!ack || typeof ack !== 'function') return;
-        const safeRoomId = sanitizeRoomId(roomId);
+        if (shouldThrottle({ type: 'LOBBY' })) return ack({ exists: false, status: 'rate_limited' });
+        const safeRoomId = sanitizeRoomId(data?.roomId);
         if (!safeRoomId) return ack({ exists: false, status: 'closed' });
         const room = rooms.get(safeRoomId);
         if (!room) return ack({ exists: false, status: 'closed' });
         const activePlayers = room.players.filter(p => !p.disconnected);
+        const maxPlayers = room.settings?.maxPlayers || 4;
         if (room.gameState) {
             return ack({
                 exists: true,
                 status: 'in_match',
                 playerCount: activePlayers.length,
-                maxPlayers: 4,
+                maxPlayers,
                 hostName: room.hostName || 'Host'
             });
         }
-        if (activePlayers.length >= 4) {
+        if (activePlayers.length >= maxPlayers) {
             return ack({
                 exists: true,
                 status: 'full',
                 playerCount: activePlayers.length,
-                maxPlayers: 4,
+                maxPlayers,
                 hostName: room.hostName || 'Host'
             });
         }
@@ -1678,13 +1947,14 @@ io.on('connection', (socket) => {
             exists: true,
             status: 'open',
             playerCount: activePlayers.length,
-            maxPlayers: 4,
+            maxPlayers,
             hostName: room.hostName || 'Host'
         });
     });
 
-    socket.on('leaveRoom', ({ roomId }) => {
-        const safeRoomId = sanitizeRoomId(roomId);
+    socket.on('leaveRoom', (data = {}) => {
+        if (!data || typeof data !== 'object' || shouldThrottle({ type: 'LOBBY' })) return;
+        const safeRoomId = sanitizeRoomId(data.roomId);
         if (!safeRoomId) return;
         const room = rooms.get(safeRoomId);
         if (room) {
@@ -1707,10 +1977,15 @@ io.on('connection', (socket) => {
                 
                 if (room.players.length === 0) {
                     deleteRoomSafely(safeRoomId);
+                } else if (room.gameState) {
+                    finalizeMidGameAbort(room, safeRoomId, leavingPlayer.name);
                 } else {
                     if (room.hostId === socket.id) {
                         const nextHost = room.players.find(p => !p.disconnected);
-                        if (nextHost) room.hostId = nextHost.id;
+                        if (nextHost) {
+                            room.hostId = nextHost.id;
+                            room.hostName = nextHost.name;
+                        }
                     }
                     emitRoomUpdated(safeRoomId, room);
                 }
@@ -1927,7 +2202,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('disconnect', () => {
-        activeConnectionsCount--;
+        activeConnectionsCount = Math.max(0, activeConnectionsCount - 1);
         mutedSockets.delete(socket.id);
         
         // Clean up from Presence Repository
@@ -1949,6 +2224,10 @@ io.on('connection', (socket) => {
                     });
                 }
             }
+        }
+
+        if (socket._replacedByReconnect) {
+            return;
         }
         
         rooms.forEach((room, roomId) => {

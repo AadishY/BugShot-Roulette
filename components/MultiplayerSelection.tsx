@@ -174,71 +174,71 @@ export const MultiplayerSelection: React.FC<MultiplayerSelectionProps> = ({
     return (
         <div 
             style={isMobile ? {
-                paddingTop: 'max(env(safe-area-inset-top, 0px), 8px)',
-                paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 8px)',
-                paddingLeft: 'max(env(safe-area-inset-left, 0px), 8px)',
-                paddingRight: 'max(env(safe-area-inset-right, 0px), 8px)'
+                paddingTop: 'max(env(safe-area-inset-top, 0px), 4px)',
+                paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 4px)',
+                paddingLeft: 'max(env(safe-area-inset-left, 0px), 4px)',
+                paddingRight: 'max(env(safe-area-inset-right, 0px), 4px)'
             } : { transform: `scale(${scale})`, transformOrigin: 'center center' }}
-            className="flex flex-col w-full max-w-[min(96vw,960px)] max-h-[92dvh] md:h-[600px] shrink-0 bg-stone-950/90 backdrop-blur-md border-2 border-cyan-500/20 rounded-xl overflow-hidden shadow-[0_0_60px_rgba(6,182,212,0.15)] animate-in zoom-in-95 duration-500 font-mono text-stone-300 relative"
+            className="flex flex-col w-full max-w-[min(96vw,960px)] max-h-[94dvh] lg:h-[600px] shrink-0 bg-stone-950/90 backdrop-blur-md border-2 border-cyan-500/20 rounded-xl overflow-hidden shadow-[0_0_60px_rgba(6,182,212,0.15)] animate-in zoom-in-95 duration-500 font-mono text-stone-300 relative"
         >
             {/* Header */}
-            <div className="p-3.5 sm:p-5 border-b border-stone-850 bg-stone-900/20 flex justify-between items-center relative shrink-0">
+            <div className="p-2.5 sm:p-4 border-b border-stone-850 bg-stone-900/20 flex justify-between items-center relative shrink-0 gap-2">
                 {/* Visual Accent Ticks */}
                 <div className="absolute top-2 left-2 w-2 h-2 border-t border-l border-cyan-500/40" />
                 <div className="absolute top-2 right-2 w-2 h-2 border-t border-r border-cyan-500/40" />
 
-                <div className="flex items-center gap-2.5 sm:gap-3">
+                <div className="flex items-center gap-2 sm:gap-3 min-w-0">
                     <button 
                         onClick={() => {
                             audioManager.playSound('click');
                             onBack();
                         }} 
-                        className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center hover:bg-stone-900 border border-stone-800 hover:border-cyan-500/50 text-stone-400 hover:text-cyan-400 rounded-xl transition-colors cursor-pointer"
+                        className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center hover:bg-stone-900 border border-stone-800 hover:border-cyan-500/50 text-stone-400 hover:text-cyan-400 rounded-xl transition-colors cursor-pointer shrink-0"
                         title="Return to Menu"
                         aria-label="Return to Menu"
                     >
                         <ArrowLeft size={16} />
                     </button>
-                    <div>
-                        <h1 className="text-base sm:text-xl font-black tracking-widest uppercase text-white flex items-center gap-2">
-                            <Swords size={18} className="text-cyan-400 animate-pulse sm:w-5 sm:h-5" />
-                            MULTIPLAYER PROTOCOL
+                    <div className="min-w-0">
+                        <h1 className="text-sm sm:text-xl font-black tracking-widest uppercase text-white flex items-center gap-2 truncate">
+                            <Swords size={16} className="text-cyan-400 animate-pulse sm:w-5 sm:h-5 shrink-0" />
+                            <span className="truncate">MULTIPLAYER</span>
                         </h1>
-                        <p className="text-[9px] sm:text-[10px] text-stone-500 tracking-wider uppercase mt-0.5">
-                            AGENT IDENTITY: <span className="text-cyan-500 font-bold">{playerName}</span>
+                        <p className="text-[8.5px] sm:text-[10px] text-stone-500 tracking-wider uppercase mt-0.5 truncate">
+                            AGENT: <span className="text-cyan-500 font-bold">{playerName}</span>
                         </p>
                     </div>
                 </div>
-                <div className="px-2.5 py-1 bg-cyan-950/20 border border-cyan-900/30 rounded text-cyan-400 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider block">
-                    PROT_VER: v2.5.0
+                <div className="px-2 py-1 bg-cyan-950/20 border border-cyan-900/30 rounded text-cyan-400 text-[8.5px] sm:text-[10px] font-bold uppercase tracking-wider shrink-0">
+                    v2.5.0
                 </div>
             </div>
 
             {/* Content Options */}
-            <div className="flex-1 p-3 sm:p-6 flex flex-col md:flex-row gap-3 sm:gap-5 justify-start md:justify-center items-stretch overflow-y-auto md:overflow-hidden custom-scrollbar">
+            <div className={`flex-1 p-2.5 sm:p-5 flex flex-col md:flex-row gap-2.5 sm:gap-4 justify-start ${isMobile ? 'overflow-y-auto' : 'md:justify-center md:overflow-hidden'} items-stretch custom-scrollbar min-h-0`}>
                 
                 {/* Quick Join Card */}
-                <div className="flex-1 border border-stone-850 hover:border-cyan-500/35 bg-stone-900/10 hover:bg-cyan-950/5 p-6 rounded-xl flex flex-col justify-between transition-all duration-300 transform hover:scale-[1.01] group relative">
-                    <div className="space-y-4">
-                        <div className="inline-flex items-center justify-center p-3 bg-cyan-950/30 border border-cyan-800/30 rounded-xl text-cyan-400 group-hover:scale-110 transition-transform duration-300">
-                            <Users size={24} />
+                <div className="flex-1 border border-stone-850 hover:border-cyan-500/35 bg-stone-900/10 hover:bg-cyan-950/5 p-3.5 sm:p-5 rounded-xl flex flex-col justify-between transition-all duration-300 group relative">
+                    <div className="space-y-2 sm:space-y-3">
+                        <div className="inline-flex items-center justify-center p-2 sm:p-2.5 bg-cyan-950/30 border border-cyan-800/30 rounded-xl text-cyan-400 group-hover:scale-105 transition-transform duration-300">
+                            <Users size={20} className="sm:w-6 sm:h-6" />
                         </div>
                         <div>
-                            <h2 className="text-sm font-black text-white tracking-widest uppercase">QUICK MATCH</h2>
-                            <p className="text-[10px] text-stone-500 uppercase leading-relaxed mt-2 tracking-wide">
-                                Scan active nodes and join the first available simulation queue. Auto-creates a new corridor if no matches are active.
+                            <h2 className="text-xs sm:text-sm font-black text-white tracking-widest uppercase">QUICK MATCH</h2>
+                            <p className="text-[9px] sm:text-[10px] text-stone-500 uppercase leading-relaxed mt-1 sm:mt-2 tracking-wide">
+                                Join the first available queue or auto-create a new corridor.
                             </p>
                         </div>
                     </div>
                     
-                    <div className="mt-6 flex flex-row gap-3">
+                    <div className="mt-3 sm:mt-5 flex flex-row gap-2">
                         <button
                             onClick={() => {
                                 audioManager.playSound('click');
                                 onQuickJoin();
                             }}
                             disabled={isConnecting}
-                            className="flex-1 py-3 min-h-[44px] bg-cyan-955/45 hover:bg-cyan-900/70 border border-cyan-800 hover:border-cyan-400 text-cyan-400 hover:text-white font-black text-xs tracking-widest rounded-xl transition-all cursor-pointer active:scale-98 disabled:opacity-50 flex items-center justify-center gap-2"
+                            className="flex-1 py-2.5 min-h-[44px] bg-cyan-955/45 hover:bg-cyan-900/70 border border-cyan-800 hover:border-cyan-400 text-cyan-400 hover:text-white font-black text-[11px] sm:text-xs tracking-wider rounded-xl transition-all cursor-pointer active:scale-98 disabled:opacity-50 flex items-center justify-center gap-1.5"
                         >
                             {isConnecting ? <RefreshCw size={14} className="animate-spin" /> : null}
                             <span>QUICK JOIN</span>
@@ -249,23 +249,23 @@ export const MultiplayerSelection: React.FC<MultiplayerSelectionProps> = ({
                                 handleOpenBrowser();
                             }}
                             disabled={isConnecting}
-                            className="flex-1 py-3 min-h-[44px] bg-stone-900/60 hover:bg-cyan-950/20 border border-stone-850 hover:border-cyan-800 text-stone-400 hover:text-cyan-400 font-black text-xs tracking-widest rounded-xl transition-all cursor-pointer active:scale-98 disabled:opacity-50 flex items-center justify-center gap-2"
+                            className="flex-1 py-2.5 min-h-[44px] bg-stone-900/60 hover:bg-cyan-950/20 border border-stone-850 hover:border-cyan-800 text-stone-400 hover:text-cyan-400 font-black text-[11px] sm:text-xs tracking-wider rounded-xl transition-all cursor-pointer active:scale-98 disabled:opacity-50 flex items-center justify-center gap-1.5"
                         >
-                            <span>SHOW ROOMS</span>
+                            <span>ROOMS</span>
                         </button>
                     </div>
                 </div>
 
                 {/* Create Room Card */}
-                <div className="flex-1 border border-stone-850 hover:border-cyan-500/35 bg-stone-900/10 hover:bg-cyan-955/5 p-4 sm:p-6 rounded-xl flex flex-col justify-between transition-all duration-300 transform hover:scale-[1.01] group relative">
-                    <div className="space-y-3 sm:space-y-4">
-                        <div className="inline-flex items-center justify-center p-2.5 sm:p-3 bg-cyan-950/30 border border-cyan-800/30 rounded-xl text-cyan-400 group-hover:scale-110 transition-transform duration-300">
-                            <Plus size={22} className="sm:w-6 sm:h-6" />
+                <div className="flex-1 border border-stone-850 hover:border-cyan-500/35 bg-stone-900/10 hover:bg-cyan-955/5 p-3.5 sm:p-5 rounded-xl flex flex-col justify-between transition-all duration-300 group relative">
+                    <div className="space-y-2 sm:space-y-3">
+                        <div className="inline-flex items-center justify-center p-2 sm:p-2.5 bg-cyan-950/30 border border-cyan-800/30 rounded-xl text-cyan-400 group-hover:scale-105 transition-transform duration-300">
+                            <Plus size={20} className="sm:w-6 sm:h-6" />
                         </div>
                         <div>
                             <h2 className="text-xs sm:text-sm font-black text-white tracking-widest uppercase">HOST STAGE</h2>
-                            <p className="text-[9.5px] sm:text-[10px] text-stone-500 uppercase leading-relaxed mt-1 sm:mt-2 tracking-wide">
-                                Configure a custom bunker cluster. Set participant limits (2, 3, 4P), custom starting HP, and shipment rations.
+                            <p className="text-[9px] sm:text-[10px] text-stone-500 uppercase leading-relaxed mt-1 sm:mt-2 tracking-wide">
+                                Host a custom bunker (2–4P), starting HP, and shipment rations.
                             </p>
                         </div>
                     </div>
@@ -276,7 +276,7 @@ export const MultiplayerSelection: React.FC<MultiplayerSelectionProps> = ({
                             setIsCreateDialogOpen(true);
                         }}
                         disabled={isConnecting}
-                        className="mt-4 sm:mt-6 w-full py-3 min-h-[44px] bg-cyan-955/45 hover:bg-cyan-900/70 border border-cyan-800 hover:border-cyan-400 text-cyan-400 hover:text-white font-black text-xs tracking-widest rounded-xl transition-all cursor-pointer active:scale-98 disabled:opacity-50 flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(6,182,212,0.15)]"
+                        className="mt-3 sm:mt-5 w-full py-2.5 min-h-[44px] bg-cyan-955/45 hover:bg-cyan-900/70 border border-cyan-800 hover:border-cyan-400 text-cyan-400 hover:text-white font-black text-[11px] sm:text-xs tracking-widest rounded-xl transition-all cursor-pointer active:scale-98 disabled:opacity-50 flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(6,182,212,0.15)]"
                     >
                         {isConnecting ? <RefreshCw size={14} className="animate-spin" /> : <Sliders size={14} className="shrink-0" />}
                         <span>CONFIGURE & HOST</span>
@@ -284,20 +284,20 @@ export const MultiplayerSelection: React.FC<MultiplayerSelectionProps> = ({
                 </div>
 
                 {/* Join Room Card */}
-                <div className="flex-1 border border-stone-850 hover:border-cyan-500/35 bg-stone-900/10 hover:bg-cyan-955/5 p-4 sm:p-6 rounded-xl flex flex-col justify-between transition-all duration-300 transform hover:scale-[1.01] group relative">
-                    <div className="space-y-3 sm:space-y-4">
-                        <div className="inline-flex items-center justify-center p-2.5 sm:p-3 bg-cyan-950/30 border border-cyan-800/30 rounded-xl text-cyan-400 group-hover:scale-110 transition-transform duration-300">
-                            <Key size={22} className="sm:w-6 sm:h-6" />
+                <div className="flex-1 border border-stone-850 hover:border-cyan-500/35 bg-stone-900/10 hover:bg-cyan-955/5 p-3.5 sm:p-5 rounded-xl flex flex-col justify-between transition-all duration-300 group relative">
+                    <div className="space-y-2 sm:space-y-3">
+                        <div className="inline-flex items-center justify-center p-2 sm:p-2.5 bg-cyan-950/30 border border-cyan-800/30 rounded-xl text-cyan-400 group-hover:scale-105 transition-transform duration-300">
+                            <Key size={20} className="sm:w-6 sm:h-6" />
                         </div>
                         <div>
                             <h2 className="text-xs sm:text-sm font-black text-white tracking-widest uppercase">JOIN LOBBY</h2>
-                            <p className="text-[9.5px] sm:text-[10px] text-stone-500 uppercase leading-relaxed mt-1 sm:mt-2 tracking-wide">
-                                Access an established corridor via a specific 4-digit code. Ensure your coordinates are exact.
+                            <p className="text-[9px] sm:text-[10px] text-stone-500 uppercase leading-relaxed mt-1 sm:mt-2 tracking-wide">
+                                Enter a 4-digit corridor code to join directly.
                             </p>
                         </div>
                     </div>
                     
-                    <form onSubmit={handleJoinSubmit} className="mt-4 space-y-3">
+                    <form onSubmit={handleJoinSubmit} className="mt-3 space-y-2">
                         <div className="relative flex items-center">
                             <span className="absolute left-3 text-cyan-600 font-bold text-sm select-none">[</span>
                             <input
@@ -308,7 +308,7 @@ export const MultiplayerSelection: React.FC<MultiplayerSelectionProps> = ({
                                 value={roomCode}
                                 onChange={handleRoomCodeChange}
                                 placeholder="ROOM CODE"
-                                className="w-full min-h-[44px] bg-stone-950 border border-stone-800 hover:border-stone-700 focus:border-cyan-500/60 px-6 py-2.5 text-center text-sm font-bold tracking-[0.4em] uppercase rounded-lg outline-none transition-all placeholder-stone-700 text-cyan-400"
+                                className="w-full min-h-[44px] bg-stone-950 border border-stone-800 hover:border-stone-700 focus:border-cyan-500/60 px-6 py-2 text-center text-sm font-bold tracking-[0.4em] uppercase rounded-lg outline-none transition-all placeholder-stone-700 text-cyan-400"
                                 required
                             />
                             <span className="absolute right-3 text-cyan-600 font-bold text-sm select-none">]</span>
@@ -317,7 +317,7 @@ export const MultiplayerSelection: React.FC<MultiplayerSelectionProps> = ({
                         <button
                             type="submit"
                             disabled={isConnecting || roomCode.length !== 4}
-                            className="w-full py-3 min-h-[44px] bg-cyan-500 text-black disabled:bg-stone-900 disabled:text-stone-600 disabled:border-stone-850 border border-cyan-400 font-black text-xs tracking-widest rounded-xl transition-all cursor-pointer active:scale-98 shadow-[0_0_20px_rgba(6,182,212,0.15)] disabled:shadow-none"
+                            className="w-full py-2.5 min-h-[44px] bg-cyan-500 text-black disabled:bg-stone-900 disabled:text-stone-600 disabled:border-stone-850 border border-cyan-400 font-black text-[11px] sm:text-xs tracking-widest rounded-xl transition-all cursor-pointer active:scale-98 shadow-[0_0_20px_rgba(6,182,212,0.15)] disabled:shadow-none"
                         >
                             JOIN DEPLOYMENT
                         </button>
@@ -337,7 +337,7 @@ export const MultiplayerSelection: React.FC<MultiplayerSelectionProps> = ({
 
             {/* Room Creation Customization Dialog */}
             {isCreateDialogOpen && (
-                <div className="absolute inset-0 z-50 bg-stone-950/95 backdrop-blur-md flex flex-col p-4 sm:p-6 font-mono text-stone-300 animate-in fade-in zoom-in-95 duration-200">
+                <div className="absolute inset-0 z-50 bg-stone-950/95 backdrop-blur-md flex flex-col p-3 sm:p-5 font-mono text-stone-300 animate-in fade-in zoom-in-95 duration-200 min-h-0">
                     {/* Visual Border Accents */}
                     <div className="absolute top-2 left-2 w-2 h-2 border-t border-l border-cyan-500/40" />
                     <div className="absolute top-2 right-2 w-2 h-2 border-t border-r border-cyan-500/40" />
@@ -345,14 +345,14 @@ export const MultiplayerSelection: React.FC<MultiplayerSelectionProps> = ({
                     <div className="absolute bottom-2 right-2 w-2 h-2 border-b border-r border-cyan-500/40" />
 
                     {/* Dialog Header */}
-                    <div className="flex justify-between items-center border-b border-stone-850 pb-3 mb-3">
-                        <div className="flex items-center gap-2.5">
-                            <div className="p-1.5 bg-cyan-950/30 border border-cyan-800/40 rounded-lg text-cyan-400">
-                                <Sliders size={16} />
+                    <div className="flex justify-between items-center border-b border-stone-850 pb-2.5 mb-2.5 shrink-0">
+                        <div className="flex items-center gap-2 min-w-0">
+                            <div className="p-1.5 bg-cyan-950/30 border border-cyan-800/40 rounded-lg text-cyan-400 shrink-0">
+                                <Sliders size={15} />
                             </div>
-                            <div>
-                                <h2 className="text-sm sm:text-base font-black text-white tracking-widest uppercase">CREATE CUSTOM BUNKER</h2>
-                                <p className="text-[8px] sm:text-[9px] text-stone-500 tracking-wider uppercase">Set deployment parameters before opening corridor</p>
+                            <div className="min-w-0">
+                                <h2 className="text-xs sm:text-base font-black text-white tracking-widest uppercase truncate">CREATE CUSTOM BUNKER</h2>
+                                <p className="text-[8px] sm:text-[9px] text-stone-500 tracking-wider uppercase truncate">Set deployment parameters</p>
                             </div>
                         </div>
                         <button
@@ -360,7 +360,7 @@ export const MultiplayerSelection: React.FC<MultiplayerSelectionProps> = ({
                                 audioManager.playSound('click');
                                 setIsCreateDialogOpen(false);
                             }}
-                            className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center hover:bg-stone-900 border border-stone-800 text-stone-400 hover:text-white rounded-xl transition-colors cursor-pointer"
+                            className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center hover:bg-stone-900 border border-stone-800 text-stone-400 hover:text-white rounded-xl transition-colors cursor-pointer shrink-0"
                             title="Close"
                             aria-label="Close"
                         >
@@ -574,7 +574,7 @@ export const MultiplayerSelection: React.FC<MultiplayerSelectionProps> = ({
 
             {/* Active Rooms Browser Overlay Panel */}
             {isBrowserOpen && (
-                <div className="absolute inset-0 z-50 bg-stone-950 flex flex-col p-4 sm:p-6 font-mono text-stone-300 animate-in fade-in duration-200">
+                <div className="absolute inset-0 z-50 bg-stone-950 flex flex-col p-3 sm:p-5 font-mono text-stone-300 animate-in fade-in duration-200 min-h-0">
                     {/* Visual Border Accents */}
                     <div className="absolute top-2 left-2 w-2 h-2 border-t border-l border-cyan-500/40" />
                     <div className="absolute top-2 right-2 w-2 h-2 border-t border-r border-cyan-500/40" />
@@ -582,37 +582,37 @@ export const MultiplayerSelection: React.FC<MultiplayerSelectionProps> = ({
                     <div className="absolute bottom-2 right-2 w-2 h-2 border-b border-r border-cyan-500/40" />
 
                     {/* Header */}
-                    <div className="flex flex-col sm:flex-row justify-between sm:items-center border-b border-stone-850 pb-3 mb-3 gap-2">
-                        <div className="flex items-center gap-3">
+                    <div className="flex flex-col sm:flex-row justify-between sm:items-center border-b border-stone-850 pb-2.5 mb-2.5 gap-2 shrink-0">
+                        <div className="flex items-center gap-2.5 min-w-0">
                             <button
                                 onClick={() => {
                                     audioManager.playSound('click');
                                     setIsBrowserOpen(false);
                                 }}
-                                className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center hover:bg-stone-900 border border-stone-800 hover:border-cyan-500/50 text-stone-400 hover:text-cyan-400 rounded-xl transition-colors cursor-pointer"
+                                className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center hover:bg-stone-900 border border-stone-800 hover:border-cyan-500/50 text-stone-400 hover:text-cyan-400 rounded-xl transition-colors cursor-pointer shrink-0"
                                 title="Back to Protocol Selection"
                                 aria-label="Back to Protocol Selection"
                             >
                                 <ArrowLeft size={16} />
                             </button>
-                            <div>
-                                <h2 className="text-sm sm:text-md font-black text-white tracking-wider uppercase">ACTIVE NETWORKS BROWSER</h2>
-                                <p className="text-[8px] sm:text-[9px] text-stone-500 tracking-wider uppercase">
-                                    LIVE SIMULATION CLUSTERS ({filteredRooms.length} FOUND)
+                            <div className="min-w-0">
+                                <h2 className="text-xs sm:text-md font-black text-white tracking-wider uppercase truncate">ACTIVE NETWORKS BROWSER</h2>
+                                <p className="text-[8px] sm:text-[9px] text-stone-500 tracking-wider uppercase truncate">
+                                    LIVE CLUSTERS ({filteredRooms.length} FOUND)
                                 </p>
                             </div>
                         </div>
 
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 w-full sm:w-auto">
                             {/* Search Filter Input */}
-                            <div className="relative flex items-center">
-                                <Search size={12} className="absolute left-2.5 text-stone-500" />
+                            <div className="relative flex items-center flex-1 sm:flex-initial min-w-0">
+                                <Search size={12} className="absolute left-2.5 text-stone-500 shrink-0" />
                                 <input
                                     type="text"
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                     placeholder="Filter by name / ID..."
-                                    className="bg-stone-900/80 border border-stone-800 focus:border-cyan-500/60 pl-7 pr-2.5 py-2 min-h-[44px] text-[10px] text-stone-200 uppercase rounded-xl outline-none w-36 sm:w-48 tracking-wider placeholder-stone-600"
+                                    className="bg-stone-900/80 border border-stone-800 focus:border-cyan-500/60 pl-7 pr-2.5 py-2 min-h-[44px] text-[10px] text-stone-200 uppercase rounded-xl outline-none w-full sm:w-48 tracking-wider placeholder-stone-600"
                                 />
                             </div>
 
@@ -622,10 +622,10 @@ export const MultiplayerSelection: React.FC<MultiplayerSelectionProps> = ({
                                     fetchRooms();
                                 }}
                                 disabled={isLoadingRooms}
-                                className="px-3.5 py-2.5 min-h-[44px] hover:bg-stone-900 border border-stone-850 hover:border-cyan-500/50 text-cyan-400 hover:text-white rounded-xl transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1.5 text-[9px] font-bold tracking-widest uppercase"
+                                className="px-3 py-2 min-h-[44px] hover:bg-stone-900 border border-stone-850 hover:border-cyan-500/50 text-cyan-400 hover:text-white rounded-xl transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1.5 text-[9px] font-bold tracking-widest uppercase shrink-0"
                             >
                                 <RefreshCw size={13} className={isLoadingRooms ? 'animate-spin' : ''} />
-                                <span>REFRESH</span>
+                                <span className="hidden sm:inline">REFRESH</span>
                             </button>
                         </div>
                     </div>

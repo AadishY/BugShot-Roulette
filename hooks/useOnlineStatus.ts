@@ -14,6 +14,8 @@ export const useOnlineStatus = (): boolean => {
     });
 
     useEffect(() => {
+        if (typeof window === 'undefined') return;
+
         const handleOnline = () => {
             console.log('[NetworkStatus] Connectivity restored: Online.');
             setIsOnline(true);
