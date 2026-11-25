@@ -159,11 +159,11 @@ export const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose 
                                     PINNED
                                 </span>
                                 <span className="text-cyan-400 font-black text-[10px] sm:text-xs tracking-wider uppercase">
-                                    MULTIPLAYER IS OUT!
+                                    ONLINE &amp; SPLIT MULTIPLAYER LIVE!
                                 </span>
                             </div>
                             <p className="leading-relaxed text-stone-300 text-[10px] sm:text-[11px]">
-                                Lobby matches, FOR NOW ONLY 1v1, and real-time interactive game synchronization are fully live! Challenge opponents on mobile and desktop devices.
+                                Challenge friends online in real-time lobbies or duel head-to-head on a single device with Local Split Multiplayer, custom sliders, and smooth eased camera swaps.
                             </p>
                         </div>
                     )}

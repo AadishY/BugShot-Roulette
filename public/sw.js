@@ -1,5 +1,5 @@
-const CACHE_NAME = 'bugshot-roulette-v12';
-const RUNTIME_CACHE = 'bugshot-roulette-runtime-v12';
+const CACHE_NAME = 'bugshot-roulette-v13';
+const RUNTIME_CACHE = 'bugshot-roulette-runtime-v13';
 
 // Critical core assets to pre-cache on install for 100% offline singleplayer capability
 const CRITICAL_ASSETS = [

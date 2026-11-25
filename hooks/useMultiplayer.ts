@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { RoomSettings, ChatMessage } from '../types';
 import { SocketBatcher } from '../utils/socketOptimizer';
+import { compactOfflineActionQueue } from '../utils/syncOptimizer';
 
 const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 const HF_BACKEND = import.meta.env.VITE_HF_BACKEND_URL || 'https://yoakatsuki-buckshot.hf.space';
@@ -157,16 +158,33 @@ export function useMultiplayer() {
         }
     }, []);
 
+    const enqueueOfflineAction = useCallback((roomId: string, action: any, isImmediate = false) => {
+        if (!roomId || !action) return;
+        actionQueueRef.current = compactOfflineActionQueue(
+            [...actionQueueRef.current, { roomId, action, isImmediate }],
+            30
+        );
+    }, []);
+
     const flushActionQueue = useCallback(() => {
         const s = socketRef.current;
         if (!s || !s.connected || actionQueueRef.current.length === 0) return;
-        const queued = actionQueueRef.current.slice();
+        const queued = compactOfflineActionQueue(actionQueueRef.current, 30);
         actionQueueRef.current = [];
+        if (queued.length === 0) return;
         if (queued.length === 1) {
             s.emit('gameAction', { roomId: queued[0].roomId, action: queued[0].action });
-        } else {
-            const batch = queued.map(q => ({ type: 'gameAction', data: { roomId: q.roomId, action: q.action } }));
-            s.emit('gameActionBatch', { actions: batch });
+            return;
+        }
+        const MAX_BATCH = 24;
+        for (let i = 0; i < queued.length; i += MAX_BATCH) {
+            const chunk = queued.slice(i, i + MAX_BATCH);
+            if (chunk.length === 1) {
+                s.emit('gameAction', { roomId: chunk[0].roomId, action: chunk[0].action });
+            } else {
+                const batch = chunk.map(q => ({ type: 'gameAction', data: { roomId: q.roomId, action: q.action } }));
+                s.emit('gameActionBatch', { actions: batch });
+            }
         }
     }, []);
 
@@ -239,11 +257,11 @@ export function useMultiplayer() {
             if (socketBatcherRef.current) {
                 socketBatcherRef.current.clear();
             }
-            socketBatcherRef.current = new SocketBatcher(2, 50, (actions) => {
+            socketBatcherRef.current = new SocketBatcher(4, 40, (actions) => {
                 if (!newSocket.connected) {
                     for (const act of actions) {
-                        if (actionQueueRef.current.length < 30 && act?.data?.roomId && act?.data?.action) {
-                            actionQueueRef.current.push({ roomId: act.data.roomId, action: act.data.action, isImmediate: false });
+                        if (act?.data?.roomId && act?.data?.action) {
+                            enqueueOfflineAction(act.data.roomId, act.data.action, false);
                         }
                     }
                     return;
@@ -271,12 +289,47 @@ export function useMultiplayer() {
         });
 
         const ioManager = newSocket.io as any;
+        let engineCleanup: (() => void) | null = null;
         const onPing = () => {
             (newSocket as any)._pingSentAt = Date.now();
         };
         const onPong = () => {
             const sent = (newSocket as any)._pingSentAt;
-            if (sent) setLatencyMs(Date.now() - sent);
+            if (sent) {
+                const rtt = Date.now() - sent;
+                if (rtt >= 0 && rtt < 15000) setLatencyMs(rtt);
+            }
+        };
+        const attachEngineRttListeners = () => {
+            if (engineCleanup) {
+                try { engineCleanup(); } catch {}
+                engineCleanup = null;
+            }
+            const engine = (newSocket.io as any)?.engine;
+            if (!engine || typeof engine.on !== 'function') return;
+            let lastPacketOut = 0;
+            const onPacketCreate = (packet: any) => {
+                if (packet?.type === 'pong') {
+                    lastPacketOut = Date.now();
+                }
+            };
+            const onEnginePing = () => {
+                if (lastPacketOut > 0) {
+                    // Track round-trip jitter when transport handles heartbeats
+                    const now = Date.now();
+                    if (now - lastPacketOut < 15000) {
+                        (newSocket as any)._pingSentAt = now;
+                    }
+                } else {
+                    (newSocket as any)._pingSentAt = Date.now();
+                }
+            };
+            engine.on('packetCreate', onPacketCreate);
+            engine.on('ping', onEnginePing);
+            engineCleanup = () => {
+                engine.off?.('packetCreate', onPacketCreate);
+                engine.off?.('ping', onEnginePing);
+            };
         };
         const onReconnectAttempt = (attempt: number) => {
             if (socketRef.current !== newSocket) return;
@@ -288,6 +341,7 @@ export function useMultiplayer() {
             setIsConnecting(false);
             setError(null);
             setConnectionStatus('');
+            attachEngineRttListeners();
             if (!lastJoinRef.current) {
                 flushActionQueue();
             }
@@ -304,6 +358,15 @@ export function useMultiplayer() {
             if (socketRef.current !== newSocket) return;
             console.warn("Socket reconnect error:", err);
         };
+        const onBrowserOnline = () => {
+            if (socketRef.current === newSocket && !newSocket.connected) {
+                setConnectionStatus('NETWORK RESTORED. RECONNECTING...');
+                try { newSocket.connect(); } catch {}
+            }
+        };
+        if (typeof window !== 'undefined') {
+            window.addEventListener('online', onBrowserOnline);
+        }
 
         if (ioManager && typeof ioManager.on === 'function') {
             ioManager.on('ping', onPing);
@@ -312,7 +375,15 @@ export function useMultiplayer() {
             ioManager.on('reconnect', onReconnect);
             ioManager.on('reconnect_failed', onReconnectFailed);
             ioManager.on('reconnect_error', onReconnectError);
+            attachEngineRttListeners();
             managerCleanupRef.current = () => {
+                if (typeof window !== 'undefined') {
+                    window.removeEventListener('online', onBrowserOnline);
+                }
+                if (engineCleanup) {
+                    try { engineCleanup(); } catch {}
+                    engineCleanup = null;
+                }
                 ioManager.off?.('ping', onPing);
                 ioManager.off?.('pong', onPong);
                 ioManager.off?.('reconnect_attempt', onReconnectAttempt);
@@ -460,7 +531,7 @@ export function useMultiplayer() {
         });
 
         return newSocket;
-    }, [clearTimers, flushActionQueue, teardownActiveSocket]);
+    }, [clearTimers, enqueueOfflineAction, flushActionQueue, teardownActiveSocket]);
 
     const disconnect = useCallback(() => {
         clearTimers();
@@ -569,8 +640,8 @@ export function useMultiplayer() {
             } catch (e) {}
             if (activeSocket?.connected) {
                 activeSocket.emit('gameAction', { roomId, action });
-            } else if (actionQueueRef.current.length < 30) {
-                actionQueueRef.current.push({ roomId, action, isImmediate: true });
+            } else {
+                enqueueOfflineAction(roomId, action, true);
             }
             return;
         }
@@ -579,10 +650,10 @@ export function useMultiplayer() {
             socketBatcherRef.current.queue('gameAction', { roomId, action });
         } else if (activeSocket?.connected) {
             activeSocket.emit('gameAction', { roomId, action });
-        } else if (actionQueueRef.current.length < 30) {
-            actionQueueRef.current.push({ roomId, action, isImmediate: false });
+        } else {
+            enqueueOfflineAction(roomId, action, false);
         }
-    }, []);
+    }, [enqueueOfflineAction]);
 
     // Bypass batcher for latency-sensitive events (aim, shoot, state sync)
     const sendImmediateAction = useCallback((roomId: string, action: any) => {
@@ -593,10 +664,10 @@ export function useMultiplayer() {
         } catch (e) {}
         if (activeSocket?.connected) {
             activeSocket.emit('gameAction', { roomId, action });
-        } else if (actionQueueRef.current.length < 30) {
-            actionQueueRef.current.push({ roomId, action, isImmediate: true });
+        } else {
+            enqueueOfflineAction(roomId, action, true);
         }
-    }, []);
+    }, [enqueueOfflineAction]);
 
     const kickPlayer = useCallback((roomId: string, targetPlayerId: string) => {
         if (!roomId || !targetPlayerId) return;

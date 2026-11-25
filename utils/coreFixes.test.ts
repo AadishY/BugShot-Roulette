@@ -20,6 +20,12 @@ import {
     SPLIT_ORBIT_VERTICAL_LIFT,
     SPLIT_ORBIT_MAX_BANK_ROLL,
 } from './three/splitCameraTransition.ts';
+import {
+    stripHeavySyncGameState,
+    computeSyncFingerprint,
+    compactOfflineActionQueue,
+} from './syncOptimizer.ts';
+import { SocketBatcher } from './socketOptimizer.ts';
 
 class MemoryStorage {
     private map = new Map<string, string>();
@@ -486,6 +492,62 @@ test('stepSplitCameraTransition smoothly orbits from current pose to target seat
     assert.ok(Math.abs(outLook[1] - targetLook[1]) < 1e-6);
     assert.ok(Math.abs(outLook[2] - targetLook[2]) < 1e-6);
 });
+
+test('syncOptimizer strips heavy room mirrors, fingerprints changes, and compacts offline queues cleanly', () => {
+    const rawGameState = {
+        round: 2,
+        phase: 'PLAYER_TURN',
+        turnOwner: 'PLAYER',
+        chamber: ['LIVE', 'BLANK'],
+        multiplayerState: { id: '1234', messages: Array.from({ length: 50 }, (_, i) => ({ id: i, text: 'msg' })) },
+        localSplitConfig: { player1Name: 'A', player2Name: 'B' },
+    };
+
+    const compact = stripHeavySyncGameState(rawGameState);
+    assert.equal('multiplayerState' in compact, false);
+    assert.equal('localSplitConfig' in compact, false);
+    assert.equal(compact.round, 2);
+    assert.deepEqual(compact.chamber, ['LIVE', 'BLANK']);
+
+    const p1 = { hp: 4, maxHp: 4, items: ['GLASS', 'SAW'], isHandcuffed: false };
+    const p2 = { hp: 3, maxHp: 4, items: ['BEER'], isHandcuffed: true };
+    const fpA = computeSyncFingerprint({ type: 'SYNC_STATE', player1State: p1, player2State: p2, gameState: compact });
+    const fpSame = computeSyncFingerprint({ type: 'SYNC_STATE', player1State: { ...p1 }, player2State: { ...p2 }, gameState: { ...compact } });
+    const fpChanged = computeSyncFingerprint({ type: 'SYNC_STATE', player1State: { ...p1, hp: 3 }, player2State: p2, gameState: compact });
+    assert.equal(fpA, fpSame);
+    assert.notEqual(fpA, fpChanged);
+
+    const compacted = compactOfflineActionQueue([
+        { roomId: '1001', action: { type: 'HOVER_TARGET', target: 'SELF' } },
+        { roomId: '1001', action: { type: 'USE_ITEM', index: 0 } },
+        { roomId: '1001', action: { type: 'HOVER_TARGET', target: 'OPPONENT' } },
+        { roomId: '1001', action: { type: 'SYNC_STATE', v: 1 } },
+        { roomId: '1001', action: { type: 'SHOOT', target: 'DEALER' } },
+        { roomId: '1001', action: { type: 'SYNC_STATE', v: 2 } },
+    ]);
+    assert.equal(compacted.length, 4);
+    assert.deepEqual(
+        compacted.map(q => q.action.type),
+        ['USE_ITEM', 'HOVER_TARGET', 'SHOOT', 'SYNC_STATE']
+    );
+    assert.equal(compacted[1].action.target, 'OPPONENT');
+    assert.equal(compacted[3].action.v, 2);
+
+    // SocketBatcher coalesces overwrite packets while keeping non-overwrite packets intact
+    const flushed: any[][] = [];
+    const batcher = new SocketBatcher(10, 500, (actions) => flushed.push(actions));
+    batcher.queue('gameAction', { roomId: '1001', action: { type: 'HOVER_TARGET', target: 'SELF' } });
+    batcher.queue('gameAction', { roomId: '1001', action: { type: 'HOVER_TARGET', target: 'OPPONENT' } });
+    batcher.queue('gameAction', { roomId: '1001', action: { type: 'SYNC_STATE', v: 1 } });
+    batcher.queue('gameAction', { roomId: '1001', action: { type: 'SYNC_STATE', v: 2 } });
+    batcher.flush();
+    assert.equal(flushed.length, 1);
+    assert.equal(flushed[0].length, 2);
+    assert.equal(flushed[0][0].data.action.target, 'OPPONENT');
+    assert.equal(flushed[0][1].data.action.v, 2);
+    batcher.clear();
+});
+
 
 
 

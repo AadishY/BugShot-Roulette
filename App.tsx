@@ -24,6 +24,7 @@ import { generateLootBatch, resolveJackpotOutcome } from './utils/game/inventory
 import { randomInt } from './utils/gameUtils';
 import { ShellType, ItemType, TurnOwner, AimTarget, LocalSplitConfig } from './types';
 import { resolveSplitSetupConfig } from './utils/splitMode';
+import { stripHeavySyncGameState, computeSyncFingerprint } from './utils/syncOptimizer';
 import { getCurrentUserProfile, UserProfile } from './utils/firebaseService';
 
 const urlParams = new URLSearchParams(window.location.search);
@@ -78,6 +79,8 @@ export default function App() {
   const lastTotalWins = useRef(0);
   const lastHoverRef = useRef<{ target: AimTarget; targetId?: string; time: number }>({ target: 'OPPONENT', time: 0 });
   const lastSyncBroadcastRef = useRef(0);
+  const lastSyncHashRef = useRef<string>('');
+  const syncTrailingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const gameStartTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const audioInitializedRef = useRef(false);
 
@@ -97,20 +100,26 @@ export default function App() {
         clearTimeout(gameStartTimeoutRef.current);
         gameStartTimeoutRef.current = null;
       }
+      if (syncTrailingTimerRef.current) {
+        clearTimeout(syncTrailingTimerRef.current);
+        syncTrailingTimerRef.current = null;
+      }
     };
   }, []);
 
-  // Ping the server to wake it up in case it's asleep on Hugging Face
+  // Ping the server to wake it up in case it's asleep on Hugging Face (only when online and non-blocking)
   useEffect(() => {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') return;
     const controller = new AbortController();
-    fetch(`${SERVER_URL}/health`, { signal: controller.signal }).then((res) => {
-      console.log("[Wakeup] Server response:", res.status);
-    }).catch((err) => {
-      if (err?.name !== 'AbortError') {
-        console.log("[Wakeup] Server wake-up ping attempted:", err.message);
-      }
-    });
-    return () => controller.abort();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    fetch(`${SERVER_URL}/health`, { signal: controller.signal })
+      .catch(() => { /* silent wake-up ping */ })
+      .finally(() => clearTimeout(timeoutId));
+    return () => {
+      clearTimeout(timeoutId);
+      controller.abort();
+    };
   }, []);
 
   // Propagate real-time avatar / profile edits to active multiplayer rooms & chat
@@ -793,10 +802,11 @@ export default function App() {
         const last = lastHoverRef.current;
         if (last.target === target && last.targetId === targetId && now - last.time < 50) return;
         lastHoverRef.current = { target, targetId, time: now };
-        mp.sendImmediateAction(currentRoom.id, { type: 'HOVER_TARGET', target, targetId });
+        // Route hover updates through SocketBatcher so rapid mouse movement coalesces automatically
+        mp.sendAction(currentRoom.id, { type: 'HOVER_TARGET', target, targetId });
       }
     }
-  }, [mp.sendImmediateAction]);
+  }, [mp.sendAction]);
 
   // Listen for remote actions
   useEffect(() => {
@@ -806,8 +816,6 @@ export default function App() {
         const currentRoom = mpRoomRef.current;
         const myId = mpPlayerIdRef.current || '';
         if (playerId !== myId) {
-          console.log('Received remote action:', action);
-
           const isMultiplayerSeat = game.gameState.isThreePlayer || game.gameState.isFourPlayer;
           const playersList = currentRoom?.players || [];
 
@@ -1806,8 +1814,9 @@ export default function App() {
     }
   }, [mp.room, appState, mp.playerId]);
 
-  // Sync state broadcast from host to keep clients in sync
-  // Throttled to at most once per 350ms to prevent spam during rapid item-use chains
+  // Sync state broadcast from host to keep clients in sync.
+  // Strips redundant room/chat objects, deduplicates identical snapshots, and uses a trailing-edge
+  // throttle so rapid state transitions within 300ms never drop the final authoritative state.
   const broadcastHostSync = useCallback((force = false) => {
     const game = spGameRef.current;
     const currentRoom = mpRoomRef.current;
@@ -1816,11 +1825,27 @@ export default function App() {
     if (game.isProcessing || game.gameState.phase === 'RESOLVING' || game.gameState.phase === 'GAME_OVER') return;
 
     const now = Date.now();
-    if (!force && now - lastSyncBroadcastRef.current < 350) return;
-    lastSyncBroadcastRef.current = now;
+    const elapsed = now - lastSyncBroadcastRef.current;
+    if (!force && elapsed < 300) {
+      if (!syncTrailingTimerRef.current) {
+        syncTrailingTimerRef.current = setTimeout(() => {
+          syncTrailingTimerRef.current = null;
+          broadcastHostSync(false);
+        }, Math.max(25, 300 - elapsed));
+      }
+      return;
+    }
 
+    if (syncTrailingTimerRef.current) {
+      clearTimeout(syncTrailingTimerRef.current);
+      syncTrailingTimerRef.current = null;
+    }
+
+    const compactGameState = stripHeavySyncGameState(game.gameState);
     const playerCount = currentRoom?.players?.length || 2;
     const isMulti = playerCount >= 3;
+    let payload: any;
+
     if (isMulti) {
       const myIndex = currentRoom?.players ? currentRoom.players.findIndex((p: any) => p.id === myId) : -1;
       let turnOwnerIndex = myIndex;
@@ -1831,26 +1856,43 @@ export default function App() {
       }
       const turnOwnerId = currentRoom?.players && turnOwnerIndex !== -1 ? currentRoom.players[turnOwnerIndex]?.id : '';
 
-      mp.sendImmediateAction(currentRoom.id, {
+      payload = {
         type: 'SYNC_THREE_PLAYER_STATE',
         playerState: game.player,
         dealerState: game.dealer,
         player3State: game.player3,
         player4State: game.player4,
         gameState: {
-          ...game.gameState,
+          ...compactGameState,
           turnOwnerId
         }
-      });
+      };
     } else {
-      mp.sendImmediateAction(currentRoom.id, {
+      payload = {
         type: 'SYNC_STATE',
         player1State: game.player,
         player2State: game.dealer,
-        gameState: game.gameState
-      });
+        gameState: compactGameState
+      };
     }
+
+    const fingerprint = computeSyncFingerprint(payload);
+    if (!force && fingerprint === lastSyncHashRef.current) return;
+
+    lastSyncHashRef.current = fingerprint;
+    lastSyncBroadcastRef.current = now;
+    mp.sendImmediateAction(currentRoom.id, payload);
   }, [mp.sendImmediateAction]);
+
+  useEffect(() => {
+    if (appState !== 'GAME') {
+      lastSyncHashRef.current = '';
+      if (syncTrailingTimerRef.current) {
+        clearTimeout(syncTrailingTimerRef.current);
+        syncTrailingTimerRef.current = null;
+      }
+    }
+  }, [appState, mp.room?.id]);
 
   useEffect(() => {
     broadcastHostSync();

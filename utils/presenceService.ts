@@ -137,8 +137,12 @@ class PresenceClient {
     private heartbeatTimer: any = null;
     private visibilityListenerAdded = false;
     private onlineHandler: (() => void) | null = null;
+    private offlineHandler: (() => void) | null = null;
     private visibilityHandler: (() => void) | null = null;
     private profileUpdatedHandler: ((e: any) => void) | null = null;
+    private notifyScheduled = false;
+    private lastFullSyncRequestAt = 0;
+    private localConnectFailures = 0;
 
     constructor() {
         if (typeof window !== 'undefined') {
@@ -171,17 +175,35 @@ class PresenceClient {
         window.addEventListener('bugshot_profile_updated', this.profileUpdatedHandler);
     }
 
+    private requestAllPresenceThrottled() {
+        const now = Date.now();
+        if (now - this.lastFullSyncRequestAt < 5000) return;
+        this.lastFullSyncRequestAt = now;
+        if (this.socket && this.socket.connected) {
+            this.socket.emit('presence:request_all');
+        }
+    }
+
     private initNetworkListener() {
         if (typeof window === 'undefined' || this.onlineHandler) return;
         this.onlineHandler = () => {
-            if (this.socket && !this.socket.connected) {
+            this.localConnectFailures = 0;
+            if (!this.socket) {
+                this.initSocket();
+                return;
+            }
+            if (!this.socket.connected) {
                 this.socket.connect();
             }
             if (this.currentUser) {
-                this.socket?.emit('presence:request_all');
+                this.requestAllPresenceThrottled();
             }
         };
+        this.offlineHandler = () => {
+            this.stopHeartbeat();
+        };
         window.addEventListener('online', this.onlineHandler);
+        window.addEventListener('offline', this.offlineHandler);
     }
 
     private initVisibilityListener() {
@@ -189,13 +211,19 @@ class PresenceClient {
         this.visibilityListenerAdded = true;
         this.visibilityHandler = () => {
             if (document.visibilityState === 'visible') {
-                if (this.socket && !this.socket.connected) {
+                if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+                if (this.socket && !this.socket.connected && !(isLocal && this.localConnectFailures >= 2)) {
                     this.socket.connect();
                 }
                 if (this.currentUser) {
                     this.updateStatus(this.currentStatus, this.currentMatchInfo);
-                    this.socket?.emit('presence:request_all');
+                    this.requestAllPresenceThrottled();
                 }
+                if (this.isConnected) {
+                    this.startHeartbeat();
+                }
+            } else {
+                this.stopHeartbeat();
             }
         };
         document.addEventListener('visibilitychange', this.visibilityHandler);
@@ -207,6 +235,10 @@ class PresenceClient {
             if (this.onlineHandler) {
                 window.removeEventListener('online', this.onlineHandler);
                 this.onlineHandler = null;
+            }
+            if (this.offlineHandler) {
+                window.removeEventListener('offline', this.offlineHandler);
+                this.offlineHandler = null;
             }
             if (this.profileUpdatedHandler) {
                 window.removeEventListener('bugshot_profile_updated', this.profileUpdatedHandler);
@@ -234,7 +266,9 @@ class PresenceClient {
     private startHeartbeat() {
         this.stopHeartbeat();
         if (typeof window === 'undefined') return;
+        if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
         this.heartbeatTimer = setInterval(() => {
+            if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
             if (this.socket && this.socket.connected && this.currentUser) {
                 this.socket.emit('presence:status', {
                     status: this.currentStatus,
@@ -258,25 +292,37 @@ class PresenceClient {
 
     private initSocket() {
         if (this.socket) return;
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
         const { socketUrl, socketPath } = getSocketConfig();
 
         this.socket = io(socketUrl, {
             path: socketPath,
             transports: ['websocket', 'polling'],
             reconnection: true,
-            reconnectionAttempts: 50,
-            reconnectionDelay: 1000,
-            reconnectionDelayMax: 4000,
+            reconnectionAttempts: isLocal ? 2 : 50,
+            reconnectionDelay: 1500,
+            reconnectionDelayMax: 15000,
+            randomizationFactor: 0.4,
             timeout: 15000
         });
 
         this.socket.on('connect', () => {
             this.isConnected = true;
+            this.localConnectFailures = 0;
             if (this.currentUser) {
                 this.identify(this.currentUser, this.currentStatus, this.currentMatchInfo);
             }
             this.startHeartbeat();
-            this.socket?.emit('presence:request_all');
+            this.requestAllPresenceThrottled();
+        });
+
+        this.socket.on('connect_error', () => {
+            if (isLocal) {
+                this.localConnectFailures += 1;
+                if (this.localConnectFailures >= 2 && this.socket && !this.socket.connected) {
+                    try { this.socket.disconnect(); } catch {}
+                }
+            }
         });
 
         this.socket.on('disconnect', () => {
@@ -476,8 +522,13 @@ class PresenceClient {
     }
 
     private notifyListeners() {
-        this.listeners.forEach(fn => {
-            try { fn(); } catch (e) { console.error('Presence listener error:', e); }
+        if (this.notifyScheduled) return;
+        this.notifyScheduled = true;
+        queueMicrotask(() => {
+            this.notifyScheduled = false;
+            this.listeners.forEach(fn => {
+                try { fn(); } catch (e) { console.error('Presence listener error:', e); }
+            });
         });
     }
 

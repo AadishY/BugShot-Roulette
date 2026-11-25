@@ -79,7 +79,7 @@ export const getInitialSettings = (): GameSettings => {
 
 export const DEFAULT_SETTINGS: GameSettings = getInitialSettings();
 
-export const GAME_VERSION = '2.2.0';
+export const GAME_VERSION = '2.3.0';
 export const ANNOUNCEMENT_VERSION = '1';
 
 /**
@@ -148,10 +148,32 @@ export interface ChangelogRelease {
 
 export const CHANGELOG: ChangelogRelease[] = [
   {
+    version: '2.3.0',
+    date: 'November 25, 2026',
+    title: 'Split Multiplayer, Sync Engine & Pre-Release Polish',
+    highlight: true,
+    items: [
+      {
+        tag: 'NEW',
+        title: 'Local Split Multiplayer (Pass-and-Play)',
+        description: 'Play 2-player matches on a single device with custom names, odd-match series, health & item sliders, per-option Random toggles, shared shipments, turn handoff banners, and smooth eased camera swaps.'
+      },
+      {
+        tag: 'OPTIMIZED',
+        title: 'Multiplayer Sync & Connection Performance',
+        description: 'Trimmed redundant room data from live state sync packets, added trailing-edge state sync, coalesced rapid aim/hover traffic, and hardened reconnect queue compaction.'
+      },
+      {
+        tag: 'IMPROVED',
+        title: 'Menu, Hard Mode & Match Polish',
+        description: 'Rebalanced main menu buttons, streamlined Hard Mode confirmation, restored compact Leaderboard rows, and upgraded match-over summaries.'
+      }
+    ]
+  },
+  {
     version: '2.2.0',
     date: 'November 19, 2026',
     title: 'Engine 4-Mode Graphics, Grandmaster AI & System Overhaul',
-    highlight: true,
     items: [
       {
         tag: 'NEW',

@@ -1891,18 +1891,48 @@ io.on('connection', (socket) => {
         if (!data || typeof data !== 'object' || shouldThrottle({ type: 'PRESENCE' })) return;
         const p = presenceMap.get(socket.id);
         if (p) {
-            if (typeof data.status === 'string' && data.status.trim()) p.status = data.status.trim().slice(0, 24);
-            if (data.matchInfo !== undefined) p.matchInfo = data.matchInfo && typeof data.matchInfo === 'object' ? data.matchInfo : null;
-            if (data.roomId !== undefined) p.roomId = sanitizeRoomId(data.roomId) || null;
+            let changed = false;
+            if (typeof data.status === 'string' && data.status.trim()) {
+                const nextStatus = data.status.trim().slice(0, 24);
+                if (nextStatus !== p.status) {
+                    p.status = nextStatus;
+                    changed = true;
+                }
+            }
+            if (data.matchInfo !== undefined) {
+                const nextMatchInfo = data.matchInfo && typeof data.matchInfo === 'object' ? data.matchInfo : null;
+                if (JSON.stringify(nextMatchInfo) !== JSON.stringify(p.matchInfo)) {
+                    p.matchInfo = nextMatchInfo;
+                    changed = true;
+                }
+            }
+            if (data.roomId !== undefined) {
+                const nextRoomId = sanitizeRoomId(data.roomId) || null;
+                if (nextRoomId !== p.roomId) {
+                    p.roomId = nextRoomId;
+                    changed = true;
+                }
+            }
             const cleanUrl = sanitizeAvatarUrl(data.avatarUrl);
             const cleanStyle = sanitizeShortString(data.avatarStyle, 40);
             const cleanSeed = sanitizeShortString(data.avatarSeed, 64);
-            if (cleanUrl !== undefined) p.avatarUrl = cleanUrl;
-            if (cleanStyle !== undefined) p.avatarStyle = cleanStyle;
-            if (cleanSeed !== undefined) p.avatarSeed = cleanSeed;
+            if (cleanUrl !== undefined && cleanUrl !== p.avatarUrl) {
+                p.avatarUrl = cleanUrl;
+                changed = true;
+            }
+            if (cleanStyle !== undefined && cleanStyle !== p.avatarStyle) {
+                p.avatarStyle = cleanStyle;
+                changed = true;
+            }
+            if (cleanSeed !== undefined && cleanSeed !== p.avatarSeed) {
+                p.avatarSeed = cleanSeed;
+                changed = true;
+            }
             p.lastSeen = Date.now();
             setTrackedLastSeen(p.username.toLowerCase(), p.lastSeen);
-            broadcastPresence(p);
+            if (changed) {
+                broadcastPresence(p);
+            }
         }
     });
 

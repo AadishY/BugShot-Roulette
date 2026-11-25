@@ -2100,7 +2100,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                     <div className="text-center mb-0.5">
                         <p className="text-[10px] sm:text-[11px] text-stone-300 font-black tracking-[0.35em] uppercase mb-1.5 flex items-center justify-center gap-2">
                             <span className={`w-1.5 h-1.5 bg-red-500 rounded-full ${reduceEffects ? '' : 'animate-ping'} shrink-0`} />
-                            <span>A Web Game By Aadish</span>
+                            <span>A Web Game By YoAkatsuki</span>
                         </p>
                         <div className="relative group max-w-[280px] mx-auto w-full">
                             <div className="relative flex items-center">
