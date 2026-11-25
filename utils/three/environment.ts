@@ -699,8 +699,8 @@ export const createEnvironment = (scene: THREE.Scene, isMobile: boolean = false,
         const clutter2 = new THREE.Mesh(boxGeo, boxMat); clutter2.position.set(12, -6.5, -18); clutter2.rotation.y = -0.3; scene.add(clutter2);
         const clutter3 = new THREE.Mesh(new THREE.BoxGeometry(2, 5, 2), boxMat); clutter3.position.set(10, -5, -19); clutter3.rotation.y = 0.4; scene.add(clutter3);
 
-        // === DEALER LAIR FOG (Only when fogSpriteCount > 0; disabled on Low & mobile Balanced to eliminate overdraw) ===
-        if (profile.fogSpriteCount > 0) {
+        // === DEALER LAIR FOG (Only for singleplayer AI demon; skip in Local Split & MP where cameras/avatars sit on -Z/+Z) ===
+        if (profile.fogSpriteCount > 0 && !scene.userData.isLocalSplit && !scene.userData.isMultiplayer) {
             const createDirtySkinTexture = () => {
                 if (_cachedDirtySkinTexture) return _cachedDirtySkinTexture;
                 const canvas = document.createElement('canvas');

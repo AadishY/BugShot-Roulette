@@ -345,6 +345,8 @@ export const initThreeScene = (container: HTMLElement, props: any): SceneContext
     scene.userData.isAndroid = isAndroid;
     scene.userData.isLowEndDevice = isLowEndDevice;
     scene.userData.settings = props.settings; // Make settings accessible to other scripts
+    scene.userData.isLocalSplit = Boolean(props.gameState?.isLocalSplit);
+    scene.userData.isMultiplayer = Boolean(props.gameState?.isMultiplayer);
     scene.userData.multiplayerDebugModels = props.gameState?.multiplayerState?.debugPlayerModels || {};
 
     container.appendChild(renderer.domElement);
@@ -640,7 +642,15 @@ export const initThreeScene = (container: HTMLElement, props: any): SceneContext
         localPlayer1Group.visible = isSplitSeatB;
         scene.userData.cachedLocalPlayer1Group = localPlayer1Group;
 
-        if (scene.fog instanceof THREE.FogExp2) scene.fog.density = 0.003;
+        if (scene.fog instanceof THREE.FogExp2) scene.fog.density = 0.002;
+
+        // Balanced symmetric face fill for Seat A (+Z) when viewed from Seat B (-Z)
+        if (!isPotato) {
+            const seatAFill = new THREE.PointLight(0xffd8b4, isMobile ? 16 : 22, 26);
+            seatAFill.position.set(0, 6.5, 4.5);
+            seatAFill.castShadow = false;
+            scene.add(seatAFill);
+        }
 
     } else {
         dealerGroup = createDealerModel(scene, props.settings?.debugHeadModel ?? 'DEFAULT');

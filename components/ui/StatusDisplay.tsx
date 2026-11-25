@@ -136,65 +136,89 @@ const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, 
 
     const totalAmmo = gameState.liveCount + gameState.blankCount;
 
-    const renderLeftTelemetry = (compactBadge: boolean) => (
-        <div className={`flex flex-wrap items-center ${compactBadge ? 'gap-1 mt-1' : 'gap-1.5 mt-1.5'}`}>
-            {/* Total Ammo Pill (Compact, left side below health) */}
-            <div
-                className={`flex items-center gap-1 bg-black/65 border border-white/10 rounded-md ${
-                    compactBadge ? 'px-1.5 py-0.5 text-[8.5px]' : 'px-2 py-0.5 text-[10px] md:text-[11px]'
-                }`}
-                title={`Total Shells Loaded: ${totalAmmo}`}
-            >
-                <Icons.Shell size={compactBadge ? 10 : 12} className="text-stone-300 shrink-0" />
-                <span className="font-mono font-black text-stone-100 tabular-nums leading-none">
+    const renderCenterAmmoWidget = (compactWidget: boolean) => (
+        <div
+            className={compactWidget
+                ? "flex items-center gap-1.5 bg-black/75 px-3 py-0.5 rounded-full border border-white/15 shadow-md"
+                : "flex items-center gap-2 md:gap-4 mt-1.5 md:mt-2.5"
+            }
+            title={`Total Shells Loaded: ${totalAmmo}`}
+        >
+            {!compactWidget && (
+                <div className="h-[1px] w-6 md:w-16 bg-gradient-to-r from-transparent via-stone-700 to-stone-700" />
+            )}
+            <div className={compactWidget
+                ? "flex items-center gap-1.5"
+                : "flex items-center gap-1.5 md:gap-2.5 bg-stone-950/75 px-3 md:px-4.5 py-1 md:py-1.5 rounded-xl border border-white/15 shadow-lg"
+            }>
+                <Icons.Shell size={compactWidget ? 13 : 18} className="text-stone-300 shrink-0" />
+                <span className={compactWidget
+                    ? "text-stone-100 font-black text-[11px] sm:text-xs tabular-nums leading-none tracking-wider"
+                    : "text-stone-100 font-black text-sm md:text-2xl tracking-[0.18em] tabular-nums leading-none"
+                }>
                     {totalAmmo}
                 </span>
             </div>
-
-            {/* Split Match Score & Progress Pill */}
-            {isSplitMode && splitScore && (
-                <div
-                    className={`flex items-center gap-1 bg-amber-950/60 border border-amber-500/40 rounded-md font-mono font-black tabular-nums leading-none whitespace-nowrap ${
-                        compactBadge ? 'px-1.5 py-0.5 text-[8px] text-amber-300' : 'px-2 py-0.5 text-[9.5px] md:text-[10.5px] text-amber-300'
-                    }`}
-                    title={`Split Match ${splitCurrentMatch} of ${splitTotalMatches}`}
-                >
-                    <span>M{splitCurrentMatch}/{splitTotalMatches}</span>
-                    <span className="text-amber-500/60">•</span>
-                    <span className="text-white">{splitScore.playerWins}-{splitScore.opponentWins}</span>
-                </div>
-            )}
-
-            {/* Hard Mode Phase */}
-            {gameState.isHardMode && gameState.hardModeState && (
-                <div className={`flex items-center gap-1 bg-red-950/50 border border-red-800/50 rounded-md font-mono font-black tabular-nums leading-none ${
-                    compactBadge ? 'px-1.5 py-0.5 text-[8px] text-red-400' : 'px-2 py-0.5 text-[9.5px] md:text-[10.5px] text-red-400'
-                }`}>
-                    <span>PH</span>
-                    <span className="text-red-300">{gameState.hardModeState.round}/3</span>
-                </div>
-            )}
-
-            {/* Normal Mode Round */}
-            {!gameState.isMultiplayer && !isSplitMode && !gameState.isHardMode && gameState.normalModeState && (
-                <div className={`flex items-center gap-1 bg-stone-900/75 border border-white/10 rounded-md font-mono font-black tabular-nums leading-none ${
-                    compactBadge ? 'px-1.5 py-0.5 text-[8px] text-stone-300' : 'px-2 py-0.5 text-[9.5px] md:text-[10.5px] text-stone-300'
-                }`}>
-                    <span>RD</span>
-                    <span className="text-stone-100">{gameState.normalModeState.round}/2</span>
-                </div>
-            )}
-
-            {/* Jackpot Immunity Shots */}
-            {player.jackpotImmunityShots !== undefined && player.jackpotImmunityShots > 0 && (
-                <div className={`flex items-center gap-1 bg-yellow-950/65 border border-yellow-500/40 rounded-md font-mono font-black text-yellow-400 tabular-nums leading-none ${
-                    compactBadge ? 'px-1.5 py-0.5 text-[8px]' : 'px-2 py-0.5 text-[9.5px] md:text-[10.5px]'
-                }`}>
-                    <span>★{player.jackpotImmunityShots}</span>
-                </div>
+            {!compactWidget && (
+                <div className="h-[1px] w-6 md:w-16 bg-gradient-to-l from-transparent via-stone-700 to-stone-700" />
             )}
         </div>
     );
+
+    const renderLeftTelemetry = (compactBadge: boolean) => {
+        const hasSplit = Boolean(isSplitMode && splitScore);
+        const hasHard = Boolean(gameState.isHardMode && gameState.hardModeState);
+        const hasNormal = Boolean(!gameState.isMultiplayer && !isSplitMode && !gameState.isHardMode && gameState.normalModeState);
+        const hasJackpot = Boolean(player.jackpotImmunityShots !== undefined && player.jackpotImmunityShots > 0);
+        if (!hasSplit && !hasHard && !hasNormal && !hasJackpot) return null;
+
+        return (
+            <div className={`flex flex-wrap items-center ${compactBadge ? 'gap-1 mt-1' : 'gap-1.5 mt-1.5'}`}>
+                {/* Split Match Score & Progress Pill (Compact, left side below health) */}
+                {hasSplit && splitScore && (
+                    <div
+                        className={`flex items-center gap-1 bg-amber-950/60 border border-amber-500/40 rounded-md font-mono font-black tabular-nums leading-none whitespace-nowrap ${
+                            compactBadge ? 'px-1.5 py-0.5 text-[8px] text-amber-300' : 'px-2 py-0.5 text-[9.5px] md:text-[10.5px] text-amber-300'
+                        }`}
+                        title={`Split Match ${splitCurrentMatch} of ${splitTotalMatches}`}
+                    >
+                        <span>M{splitCurrentMatch}/{splitTotalMatches}</span>
+                        <span className="text-amber-500/60">•</span>
+                        <span className="text-white">{splitScore.playerWins}-{splitScore.opponentWins}</span>
+                    </div>
+                )}
+
+                {/* Hard Mode Phase */}
+                {hasHard && gameState.hardModeState && (
+                    <div className={`flex items-center gap-1 bg-red-950/50 border border-red-800/50 rounded-md font-mono font-black tabular-nums leading-none ${
+                        compactBadge ? 'px-1.5 py-0.5 text-[8px] text-red-400' : 'px-2 py-0.5 text-[9.5px] md:text-[10.5px] text-red-400'
+                    }`}>
+                        <span>PH</span>
+                        <span className="text-red-300">{gameState.hardModeState.round}/3</span>
+                    </div>
+                )}
+
+                {/* Normal Mode Round */}
+                {hasNormal && gameState.normalModeState && (
+                    <div className={`flex items-center gap-1 bg-stone-900/75 border border-white/10 rounded-md font-mono font-black tabular-nums leading-none ${
+                        compactBadge ? 'px-1.5 py-0.5 text-[8px] text-stone-300' : 'px-2 py-0.5 text-[9.5px] md:text-[10.5px] text-stone-300'
+                    }`}>
+                        <span>RD</span>
+                        <span className="text-stone-100">{gameState.normalModeState.round}/2</span>
+                    </div>
+                )}
+
+                {/* Jackpot Immunity Shots */}
+                {hasJackpot && (
+                    <div className={`flex items-center gap-1 bg-yellow-950/65 border border-yellow-500/40 rounded-md font-mono font-black text-yellow-400 tabular-nums leading-none ${
+                        compactBadge ? 'px-1.5 py-0.5 text-[8px]' : 'px-2 py-0.5 text-[9.5px] md:text-[10.5px]'
+                    }`}>
+                        <span>★{player.jackpotImmunityShots}</span>
+                    </div>
+                )}
+            </div>
+        );
+    };
 
     if (isCompact && isPortrait) {
         return (
@@ -266,9 +290,9 @@ const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, 
                     </div>
                 </div>
 
-                {/* Row 2: Centered Slim Turn Badge + Extra 3P/4P Chips */}
-                <div className="flex flex-wrap items-center justify-center gap-1 w-full">
-                    <div className={`px-2.5 py-0.5 rounded-full border text-[9px] font-black tracking-wider uppercase italic whitespace-nowrap max-w-[75vw] truncate ${
+                {/* Row 2: Centered Turn Badge + Total Ammo Left Widget + Extra 3P/4P Chips */}
+                <div className="flex flex-wrap items-center justify-center gap-1.5 w-full">
+                    <div className={`px-2.5 py-0.5 rounded-full border text-[9px] font-black tracking-wider uppercase italic whitespace-nowrap max-w-[65vw] truncate ${
                         isP1Turn
                             ? 'bg-green-950/70 border-green-500/50 text-green-400'
                             : isSplitMode
@@ -277,6 +301,7 @@ const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, 
                     }`}>
                         {turnLabel}
                     </div>
+                    {renderCenterAmmoWidget(true)}
                     {(gameState.isThreePlayer || gameState.isFourPlayer) && player3 && (
                         <div className="flex items-center gap-1 bg-black/60 border border-amber-500/25 rounded-full px-1.5 py-0.5 text-[8px]">
                             <span className="font-black text-amber-300 uppercase truncate max-w-[54px]">{getPlayer3Name()}</span>
@@ -335,8 +360,8 @@ const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, 
                     {isSplitMode && isP2Turn && renderItems(player.items)}
                 </div>
 
-                {/* Center Turn Pill */}
-                <div className="flex flex-wrap items-center justify-center gap-1 pt-0.5 min-w-0 shrink">
+                {/* Center Turn Pill + Total Ammo Left Widget */}
+                <div className="flex flex-col items-center justify-center gap-1 pt-0.5 min-w-0 shrink">
                     <div className={`px-2.5 py-0.5 rounded-full border text-[9px] sm:text-[10px] font-black tracking-wider uppercase italic whitespace-nowrap max-w-[160px] truncate ${
                         isP1Turn
                             ? 'bg-green-950/60 border-green-500/50 text-green-400'
@@ -346,6 +371,7 @@ const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, 
                     }`}>
                         {turnLabel}
                     </div>
+                    {renderCenterAmmoWidget(true)}
                 </div>
 
                 {/* Dealer / Opponents Side (Compact) */}
@@ -457,7 +483,7 @@ const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, 
                 )}
             </div>
 
-            {/* Center Protocol Display (Clean Turn Pill only - keeps opponent face & nametag clear) */}
+            {/* Center Protocol Display (Turn Pill + Enlarged Total Ammo Widget; Split Match sits compact on left below HP) */}
             <div className="flex-1 flex flex-col items-center justify-start pt-1 md:pt-2 animate-in fade-in duration-1000">
                 <div className={`relative px-2 md:px-6 py-1 md:py-2 rounded-xl overflow-hidden transition-all duration-500 border ${isP1Turn
                     ? 'bg-green-950/20 border-green-500/40'
@@ -479,6 +505,7 @@ const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, 
                         {turnLabel}
                     </div>
                 </div>
+                {renderCenterAmmoWidget(false)}
             </div>
 
             {/* Dealer & Opponent Side (Right aligned stack) */}
