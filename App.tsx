@@ -1,25 +1,17 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo, Suspense } from 'react';
 import { RotateCw } from 'lucide-react';
-import { ThreeScene } from './components/ThreeScene';
 import { GameUI } from './components/GameUI';
 import { useGameLogic } from './hooks/useGameLogic';
 import { useDealerAI } from './hooks/useDealerAI';
-import { SettingsMenu } from './components/SettingsMenu';
 import { GameSettings } from './types';
-import { DEFAULT_SETTINGS, ACTIVE_ITEMS, TACTICAL_STICKERS, isUltraPerf } from './constants';
+import { DEFAULT_SETTINGS, ACTIVE_ITEMS, TACTICAL_STICKERS, isUltraPerf, getGraphicsPreset } from './constants';
 import { DiscordSDK } from '@discord/embedded-app-sdk';
 
 import { LoadingScreen } from './components/LoadingScreen';
-import { DebugOverlay } from './components/ui/DebugOverlay';
-import { TutorialGuide } from './components/TutorialGuide';
-import { Scoreboard } from './components/ui/Scoreboard';
 import { UpdateNotification } from './components/ui/UpdateNotification';
 import { audioManager } from './utils/audioManager';
 import { preloadAllModels, getGLBLoadingProgress } from './utils/three/glbPreloader';
 import { useMultiplayer } from './hooks/useMultiplayer';
-import { MultiplayerLobby } from './components/MultiplayerLobby';
-import { ChatBox } from './components/ChatBox';
-import { MultiplayerSelection } from './components/MultiplayerSelection';
 import { generateLootBatch, resolveJackpotOutcome } from './utils/game/inventory';
 import { randomInt } from './utils/gameUtils';
 import { ShellType, ItemType, TurnOwner, AimTarget, LocalSplitConfig } from './types';
@@ -33,6 +25,17 @@ import {
   shouldTriggerGameReveal,
 } from './utils/cinematicTransition';
 import { ExperimentalTargetOwner, isExperimentalTurnActive } from './utils/three/experimentalAim';
+
+// Lazy-load heavy 3D engine, lobby, and secondary modals so Main Menu startup stays small & fast
+const loadThreeScene = () => import('./components/ThreeScene').then((m) => ({ default: m.ThreeScene }));
+const ThreeScene = React.lazy(loadThreeScene);
+const SettingsMenu = React.lazy(() => import('./components/SettingsMenu').then((m) => ({ default: m.SettingsMenu })));
+const DebugOverlay = React.lazy(() => import('./components/ui/DebugOverlay').then((m) => ({ default: m.DebugOverlay })));
+const TutorialGuide = React.lazy(() => import('./components/TutorialGuide').then((m) => ({ default: m.TutorialGuide })));
+const Scoreboard = React.lazy(() => import('./components/ui/Scoreboard').then((m) => ({ default: m.Scoreboard })));
+const MultiplayerLobby = React.lazy(() => import('./components/MultiplayerLobby').then((m) => ({ default: m.MultiplayerLobby })));
+const MultiplayerSelection = React.lazy(() => import('./components/MultiplayerSelection').then((m) => ({ default: m.MultiplayerSelection })));
+const ChatBox = React.lazy(() => import('./components/ChatBox').then((m) => ({ default: m.ChatBox })));
 
 const urlParams = new URLSearchParams(window.location.search);
 
@@ -561,6 +564,7 @@ export default function App() {
   }, []);
 
   const handleStartSP = useCallback((name: string, hardMode: boolean = false) => {
+    void loadThreeScene();
     pendingSplitConfigRef.current = null;
     setIsHardModeSelected(hardMode);
     if (name) spGameRef.current.setPlayerName(name);
@@ -572,6 +576,7 @@ export default function App() {
   }, [triggerMenuLaunchTransition]);
 
   const handleStartLocalSplit = useCallback((config: LocalSplitConfig) => {
+    void loadThreeScene();
     pendingSplitConfigRef.current = config;
     lastSplitConfigRef.current = config;
     setIsHardModeSelected(false);
@@ -594,6 +599,7 @@ export default function App() {
   }, [triggerMenuLaunchTransition]);
 
   const handleStartMP = useCallback((name: string) => {
+    void loadThreeScene();
     pendingSplitConfigRef.current = null;
     spGameRef.current.setPlayerName(name);
     triggerMenuLaunchTransition(() => {
@@ -603,10 +609,12 @@ export default function App() {
   }, [mp.connect, triggerMenuLaunchTransition]);
 
   // Broadcast local actions to server
-  const handleFireShot = useCallback(async (target: TurnOwner, bypassMobileConfirm: boolean = false) => {
+  const handleFireShot = useCallback(async (target: TurnOwner, targetIdOrBypass?: string | boolean) => {
     const game = spGameRef.current;
     const currentRoom = mpRoomRef.current;
     const currentPlayerId = mpPlayerIdRef.current;
+    const bypassMobileConfirm = targetIdOrBypass === true;
+    const explicitTargetId = typeof targetIdOrBypass === 'string' ? targetIdOrBypass : undefined;
     if (game.gameState.phase !== 'PLAYER_TURN' && game.gameState.phase !== 'DEALER_TURN' && game.gameState.phase !== 'PLAYER3_TURN' && game.gameState.phase !== 'RESOLVING') return;
     const isSplitHumanDealer = Boolean(game.gameState.isLocalSplit) && game.gameState.turnOwner === 'DEALER';
     if (game.gameState.turnOwner !== 'PLAYER' && !isSplitHumanDealer) return;
@@ -617,16 +625,18 @@ export default function App() {
     const isMultiPlayerGame = game.gameState.isThreePlayer || game.gameState.isFourPlayer;
     const playersList = currentRoom?.players || [];
     const myId = currentPlayerId || '';
-    const opponentId = playersList.find((p: any) => p.id !== myId)?.id;
+    const opponentId = explicitTargetId || playersList.find((p: any) => p.id !== myId)?.id;
 
     if (isMultiPlayerGame) {
       const myIndex = playersList.findIndex((p: any) => p.id === myId);
       const playerCount = playersList.length;
 
-      let targetPlayerId = myId;
-      if (target === 'DEALER') targetPlayerId = playersList[(myIndex + 2) % playerCount]?.id || myId;
-      else if (target === 'PLAYER3') targetPlayerId = playersList[(myIndex + 1) % playerCount]?.id || myId;
-      else if (target === 'PLAYER4') targetPlayerId = playersList[(myIndex + 3) % playerCount]?.id || myId;
+      let targetPlayerId = explicitTargetId || myId;
+      if (!explicitTargetId && myIndex !== -1 && playerCount > 0) {
+        if (target === 'DEALER') targetPlayerId = playersList[(myIndex + 2) % playerCount]?.id || myId;
+        else if (target === 'PLAYER3') targetPlayerId = playersList[(myIndex + 1) % playerCount]?.id || myId;
+        else if (target === 'PLAYER4') targetPlayerId = playersList[(myIndex + 3) % playerCount]?.id || myId;
+      }
 
       const intendedAim: AimTarget = target === 'PLAYER'
         ? 'SELF'
@@ -2396,33 +2406,35 @@ export default function App() {
       </div>
 
       {(appState === 'GAME' || appState === 'LOADING_SP' || appState === 'LOADING_GAME') && (
-        <ThreeScene
-          isSawed={spGame.player.isSawedActive || spGame.dealer.isSawedActive}
-          isChokeActive={spGame.player.isChokeActive || spGame.dealer.isChokeActive}
-          isPlayerCuffed={spGame.player.isHandcuffed}
-          knownShell={spGame.knownShell}
-          onGunClick={handleGunClick}
-          aimTarget={spGame.aimTarget}
-          cameraView={spGame.cameraView}
-          animState={spGame.animState}
-          turnOwner={spGame.gameState.turnOwner}
-          settings={settings}
-          isHardMode={spGame.gameState.isHardMode}
-          player={spGame.player}
-          dealer={spGame.dealer}
-          player3={spGame.player3}
-          player4={spGame.player4}
-          gameState={spGame.gameState}
-          onCardClick={handleCardClick}
-          onLowPerformance={handleLowPerformance}
-          isPaused={false}
-          onUpdateNameTags={handleUpdateNameTags}
-          isProcessing={spGame.isProcessing}
-          isRecovering={spGame.animState.playerHit || spGame.animState.playerRecovering || spGame.animState.dealerDropping || spGame.animState.dealerRecovering}
-          onExperimentalShoot={handleExperimentalShoot}
-          onExperimentalHover={setExperimentalHoverLabel}
-          onHoverTarget={handleHoverTarget}
-        />
+        <Suspense fallback={null}>
+          <ThreeScene
+            isSawed={spGame.player.isSawedActive || spGame.dealer.isSawedActive}
+            isChokeActive={spGame.player.isChokeActive || spGame.dealer.isChokeActive}
+            isPlayerCuffed={spGame.player.isHandcuffed}
+            knownShell={spGame.knownShell}
+            onGunClick={handleGunClick}
+            aimTarget={spGame.aimTarget}
+            cameraView={spGame.cameraView}
+            animState={spGame.animState}
+            turnOwner={spGame.gameState.turnOwner}
+            settings={settings}
+            isHardMode={spGame.gameState.isHardMode}
+            player={spGame.player}
+            dealer={spGame.dealer}
+            player3={spGame.player3}
+            player4={spGame.player4}
+            gameState={spGame.gameState}
+            onCardClick={handleCardClick}
+            onLowPerformance={handleLowPerformance}
+            isPaused={false}
+            onUpdateNameTags={handleUpdateNameTags}
+            isProcessing={spGame.isProcessing}
+            isRecovering={spGame.animState.playerHit || spGame.animState.playerRecovering || spGame.animState.dealerDropping || spGame.animState.dealerRecovering}
+            onExperimentalShoot={handleExperimentalShoot}
+            onExperimentalHover={setExperimentalHoverLabel}
+            onHoverTarget={handleHoverTarget}
+          />
+        </Suspense>
       )}
 
       {/* UI Overlay */}
@@ -2477,52 +2489,56 @@ export default function App() {
       />
 
       {appState === 'LOBBY' && mp.room && (
-        <div className="absolute inset-0 z-[110] flex flex-col bg-stone-950 overflow-hidden lobby-three-cols-container">
-          <div className="w-full flex-1 flex flex-row gap-0 min-h-0 overflow-hidden">
-            {/* Lobby View */}
-            <div className="h-full min-h-0 flex lobby-main-view">
-              <MultiplayerLobby
-                room={mp.room}
-                playerId={mp.playerId!}
-                onUpdateSettings={handleLobbyUpdateSettings}
-                onReadyUp={handleLobbyReadyUp}
-                onStartGame={handleStartMPGame}
-                onKick={handleLobbyKick}
-                onJoinRoom={handleLobbyJoinRoom}
-                onBack={handleBackToMenu}
-              />
-            </div>
-            
-            {/* Chat View */}
-            <div className="h-full min-h-0 flex border-l border-stone-900 lobby-chat-view">
-              <ChatBox
-                messages={mp.messages}
-                onSendMessage={handleSendChatMessage}
-                playerName={spGame.playerName}
-                stickers={stickersList}
-                onJoinRoom={handleLobbyJoinRoom}
-                players={mp.room.players}
-                currentUser={currentUser}
-              />
+        <Suspense fallback={null}>
+          <div className="absolute inset-0 z-[110] flex flex-col bg-stone-950 overflow-hidden lobby-three-cols-container">
+            <div className="w-full flex-1 flex flex-row gap-0 min-h-0 overflow-hidden">
+              {/* Lobby View */}
+              <div className="h-full min-h-0 flex lobby-main-view">
+                <MultiplayerLobby
+                  room={mp.room}
+                  playerId={mp.playerId!}
+                  onUpdateSettings={handleLobbyUpdateSettings}
+                  onReadyUp={handleLobbyReadyUp}
+                  onStartGame={handleStartMPGame}
+                  onKick={handleLobbyKick}
+                  onJoinRoom={handleLobbyJoinRoom}
+                  onBack={handleBackToMenu}
+                />
+              </div>
+              
+              {/* Chat View */}
+              <div className="h-full min-h-0 flex border-l border-stone-900 lobby-chat-view">
+                <ChatBox
+                  messages={mp.messages}
+                  onSendMessage={handleSendChatMessage}
+                  playerName={spGame.playerName}
+                  stickers={stickersList}
+                  onJoinRoom={handleLobbyJoinRoom}
+                  players={mp.room.players}
+                  currentUser={currentUser}
+                />
+              </div>
             </div>
           </div>
-        </div>
+        </Suspense>
       )}
 
       {appState === 'MP_SELECTION' && (
-        <div className="absolute inset-0 z-[110] flex items-center justify-center bg-black/80 p-4 md:p-10 animate-in fade-in duration-300 overflow-hidden">
-          <MultiplayerSelection
-            playerName={spGame.playerName}
-            getActiveRooms={mp.getActiveRooms}
-            onQuickJoin={handleQuickJoin}
-            onCreateRoom={handleCreateRoom}
-            onJoinRoom={handleJoinRoom}
-            onBack={handleBackToMenu}
-            error={mp.error}
-            clearError={mp.clearError}
-            isConnecting={mp.isConnecting}
-          />
-        </div>
+        <Suspense fallback={null}>
+          <div className="absolute inset-0 z-[110] flex items-center justify-center bg-black/80 p-4 md:p-10 animate-in fade-in duration-300 overflow-hidden">
+            <MultiplayerSelection
+              playerName={spGame.playerName}
+              getActiveRooms={mp.getActiveRooms}
+              onQuickJoin={handleQuickJoin}
+              onCreateRoom={handleCreateRoom}
+              onJoinRoom={handleJoinRoom}
+              onBack={handleBackToMenu}
+              error={mp.error}
+              clearError={mp.clearError}
+              isConnecting={mp.isConnecting}
+            />
+          </div>
+        </Suspense>
       )}
 
       {(appState === 'LOADING_SP' || appState === 'LOADING_GAME' || appState === 'LOADING_MP') && (
@@ -2541,21 +2557,25 @@ export default function App() {
       )}
 
       {isScoreboardOpen && (
-        <Scoreboard
-          onClose={handleCloseScoreboard}
-        />
+        <Suspense fallback={null}>
+          <Scoreboard
+            onClose={handleCloseScoreboard}
+          />
+        </Suspense>
       )}
 
       {isSettingsOpen && (
-        <SettingsMenu
-          settings={settings}
-          onUpdateSettings={setSettings}
-          onClose={handleCloseSettings}
-          onResetDefaults={handleResetSettings}
-          isMultiplayer={spGame.gameState.isMultiplayer}
-          showExitToMenu={true}
-          onExitToMenu={handleExitToMenuFromSettings}
-        />
+        <Suspense fallback={null}>
+          <SettingsMenu
+            settings={settings}
+            onUpdateSettings={setSettings}
+            onClose={handleCloseSettings}
+            onResetDefaults={handleResetSettings}
+            isMultiplayer={spGame.gameState.isMultiplayer}
+            showExitToMenu={true}
+            onExitToMenu={handleExitToMenuFromSettings}
+          />
+        </Suspense>
       )}
 
       {/* Server Offline / Disconnected during match overlay */}
@@ -2594,77 +2614,96 @@ export default function App() {
         </div>
       )}
 
-      {showPerformancePopup && (
-        <div className="fixed inset-0 z-[300] flex flex-col items-center justify-center bg-black/85 backdrop-blur-sm p-4 animate-in fade-in duration-300">
-          <div className="w-full max-w-md bg-stone-950 border-2 border-amber-600/50 shadow-[0_0_50px_rgba(245,158,11,0.15)] rounded-2xl p-6 text-center space-y-6 relative overflow-hidden">
-            {/* CRT scanlines effect */}
-            <div className="absolute inset-0 pointer-events-none bg-gradient-to-b from-stone-950/20 via-transparent to-stone-950/20" />
-            
-            <div className="space-y-2">
-              <div className="inline-flex items-center justify-center p-3 bg-amber-950/30 border border-amber-500/30 rounded-full text-amber-500 animate-pulse">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-gauge">
-                  <path d="m12 14 4-4"/>
-                  <path d="M3.34 19a10 10 0 1 1 17.32 0"/>
-                </svg>
-              </div>
-              <h2 className="text-lg font-black text-amber-500 tracking-[0.2em] uppercase">PERFORMANCE WARNING</h2>
-              <p className="text-[10px] text-stone-400 font-bold uppercase tracking-widest leading-relaxed">
-                {settings.ultraPerformance ? (
-                  `SYSTEM DETECTED LOW FRAME RATE (${detectedLowFps} FPS) EVEN IN POTATO MODE. CONSIDER CLOSING OTHER APPS.`
-                ) : settings.balancedPerformance ? (
-                  `SYSTEM DETECTED LOW FRAME RATE (${detectedLowFps} FPS) WHILE IN BALANCED MODE. PLEASE SWITCH TO POTATO PROFILE TO OPTIMIZE.`
-                ) : (
-                  `SYSTEM DETECTED LOW FRAME RATE (${detectedLowFps} FPS). ADJUST GRAPHICS PROFILE TO IMPROVE GAMEPLAY FLUIDITY.`
-                )}
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 gap-2.5">
-              {!settings.balancedPerformance && !settings.ultraPerformance && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSettings((prev) => ({
-                      ...prev,
-                      ultraPerformance: false,
-                      balancedPerformance: true,
-                    }));
-                    setShowPerformancePopup(false);
-                  }}
-                  className="w-full py-3 bg-amber-950/25 border border-amber-700/50 hover:bg-amber-900/40 text-amber-400 font-black text-[10px] sm:text-xs tracking-[0.2em] uppercase rounded-xl transition-all active:scale-[0.98] cursor-pointer"
-                >
-                  SWITCH TO BALANCED PROFILE
-                </button>
-              )}
+      {showPerformancePopup && (() => {
+        const activePreset = getGraphicsPreset(settings);
+        return (
+          <div className="fixed inset-0 z-[300] flex flex-col items-center justify-center bg-black/85 backdrop-blur-sm p-4 animate-in fade-in duration-300">
+            <div className="w-full max-w-md bg-stone-950 border-2 border-amber-600/50 shadow-[0_0_50px_rgba(245,158,11,0.15)] rounded-2xl p-6 text-center space-y-6 relative overflow-hidden">
+              {/* CRT scanlines effect */}
+              <div className="absolute inset-0 pointer-events-none bg-gradient-to-b from-stone-950/20 via-transparent to-stone-950/20" />
               
-              {!settings.ultraPerformance && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSettings((prev) => ({
-                      ...prev,
-                      ultraPerformance: true,
-                      balancedPerformance: false,
-                    }));
-                    setShowPerformancePopup(false);
-                  }}
-                  className="w-full py-3 bg-orange-950/25 border border-orange-700/50 hover:bg-orange-900/40 text-orange-400 font-black text-[10px] sm:text-xs tracking-[0.2em] uppercase rounded-xl transition-all active:scale-[0.98] cursor-pointer"
-                >
-                  SWITCH TO POTATO PROFILE
-                </button>
-              )}
-            </div>
+              <div className="space-y-2">
+                <div className="inline-flex items-center justify-center p-3 bg-amber-950/30 border border-amber-500/30 rounded-full text-amber-500 animate-pulse">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-gauge">
+                    <path d="m12 14 4-4"/>
+                    <path d="M3.34 19a10 10 0 1 1 17.32 0"/>
+                  </svg>
+                </div>
+                <h2 className="text-lg font-black text-amber-500 tracking-[0.2em] uppercase">PERFORMANCE WARNING</h2>
+                <p className="text-[10px] text-stone-400 font-bold uppercase tracking-widest leading-relaxed">
+                  {activePreset === 'potato'
+                    ? `SYSTEM DETECTED LOW FRAME RATE (${detectedLowFps} FPS) EVEN IN POTATO MODE. CONSIDER CLOSING OTHER APPS.`
+                    : `SYSTEM DETECTED LOW FRAME RATE (${detectedLowFps} FPS) WHILE IN ${activePreset.toUpperCase()} MODE. LOWERING PRESET WILL IMPROVE FLUIDITY.`}
+                </p>
+              </div>
 
-            <button
-              type="button"
-              onClick={() => setShowPerformancePopup(false)}
-              className="px-6 py-2 border border-stone-800 text-stone-500 hover:text-white hover:bg-stone-900 font-black text-[9px] tracking-[0.2em] uppercase rounded-lg transition-all active:scale-95 cursor-pointer block mx-auto"
-            >
-              DISMISS
-            </button>
+              <div className="grid grid-cols-1 gap-2.5">
+                {activePreset === 'high' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSettings((prev) => ({
+                        ...prev,
+                        graphicsMode: 'balanced',
+                        ultraPerformance: false,
+                        balancedPerformance: true,
+                      }));
+                      setShowPerformancePopup(false);
+                    }}
+                    className="w-full py-3 bg-amber-950/25 border border-amber-700/50 hover:bg-amber-900/40 text-amber-400 font-black text-[10px] sm:text-xs tracking-[0.2em] uppercase rounded-xl transition-all active:scale-[0.98] cursor-pointer"
+                  >
+                    SWITCH TO BALANCED PROFILE
+                  </button>
+                )}
+
+                {(activePreset === 'high' || activePreset === 'balanced') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSettings((prev) => ({
+                        ...prev,
+                        graphicsMode: 'low',
+                        ultraPerformance: false,
+                        balancedPerformance: true,
+                      }));
+                      setShowPerformancePopup(false);
+                    }}
+                    className="w-full py-3 bg-sky-950/25 border border-sky-700/50 hover:bg-sky-900/40 text-sky-400 font-black text-[10px] sm:text-xs tracking-[0.2em] uppercase rounded-xl transition-all active:scale-[0.98] cursor-pointer"
+                  >
+                    SWITCH TO LOW PROFILE
+                  </button>
+                )}
+
+                {activePreset !== 'potato' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSettings((prev) => ({
+                        ...prev,
+                        graphicsMode: 'potato',
+                        ultraPerformance: true,
+                        balancedPerformance: false,
+                      }));
+                      setShowPerformancePopup(false);
+                    }}
+                    className="w-full py-3 bg-orange-950/25 border border-orange-700/50 hover:bg-orange-900/40 text-orange-400 font-black text-[10px] sm:text-xs tracking-[0.2em] uppercase rounded-xl transition-all active:scale-[0.98] cursor-pointer"
+                  >
+                    SWITCH TO POTATO PROFILE
+                  </button>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowPerformancePopup(false)}
+                className="px-6 py-2 border border-stone-800 text-stone-500 hover:text-white hover:bg-stone-900 font-black text-[9px] tracking-[0.2em] uppercase rounded-lg transition-all active:scale-95 cursor-pointer block mx-auto"
+              >
+                DISMISS
+              </button>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {settings.debugMode && appState === 'GAME' && spGame.gameState.phase !== 'BOOT' && spGame.gameState.phase !== 'INTRO' && (() => {
         if (!spGame.gameState.isMultiplayer) return true;
@@ -2679,24 +2718,26 @@ export default function App() {
         } catch (e) {}
         return spGame.playerName.toLowerCase() === 'aadish';
       })() && (
-        <DebugOverlay
-          gameState={spGame.gameState}
-          player={spGame.player}
-          dealer={spGame.dealer}
-          player3={spGame.player3}
-          player4={spGame.player4}
-          setPlayer={spGame.setPlayer}
-          setDealer={spGame.setDealer}
-          setPlayer3={spGame.setPlayer3}
-          setPlayer4={spGame.setPlayer4}
-          setGameState={spGame.setGameState}
-          settings={settings}
-          setSettings={setSettings}
-          selectTarotCard={spGame.selectTarotCard}
-          setCameraView={spGame.setCameraView}
-          processItemEffect={spGame.processItemEffect}
-          onSyncDebugState={handleSyncDebugState}
-        />
+        <Suspense fallback={null}>
+          <DebugOverlay
+            gameState={spGame.gameState}
+            player={spGame.player}
+            dealer={spGame.dealer}
+            player3={spGame.player3}
+            player4={spGame.player4}
+            setPlayer={spGame.setPlayer}
+            setDealer={spGame.setDealer}
+            setPlayer3={spGame.setPlayer3}
+            setPlayer4={spGame.setPlayer4}
+            setGameState={spGame.setGameState}
+            settings={settings}
+            setSettings={setSettings}
+            selectTarotCard={spGame.selectTarotCard}
+            setCameraView={spGame.setCameraView}
+            processItemEffect={spGame.processItemEffect}
+            onSyncDebugState={handleSyncDebugState}
+          />
+        </Suspense>
       )}
 
       {abortedByName && (
@@ -2764,7 +2805,9 @@ export default function App() {
 
       {/* Tutorial Guide Modal */}
       {isGuideOpen && (
-        <TutorialGuide onClose={handleCloseGuide} />
+        <Suspense fallback={null}>
+          <TutorialGuide onClose={handleCloseGuide} />
+        </Suspense>
       )}
 
       {/* Crisp HTML Player Name Tags (Multiplayer & Local Split) */}

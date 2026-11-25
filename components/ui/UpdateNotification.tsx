@@ -4,6 +4,7 @@ import { shouldAllowUpdateReload, recordUpdateReload } from '../../utils/updateG
 
 interface UpdateNotificationProps {
     onUpdateAccepted?: () => void;
+    isGameActive?: boolean;
 }
 
 const getSafeSessionStorage = () => {
@@ -20,7 +21,7 @@ const getWorkerKey = (registration?: ServiceWorkerRegistration | null): string =
     return `${sw.scriptURL || 'sw.js'}::${sw.state || 'waiting'}`;
 };
 
-export const UpdateNotification: React.FC<UpdateNotificationProps> = ({ onUpdateAccepted }) => {
+export const UpdateNotification: React.FC<UpdateNotificationProps> = ({ onUpdateAccepted, isGameActive = false }) => {
     const [updateAvailable, setUpdateAvailable] = useState(false);
     const [isUpdating, setIsUpdating] = useState(false);
     const [dismissed, setDismissed] = useState(false);
@@ -141,14 +142,14 @@ export const UpdateNotification: React.FC<UpdateNotificationProps> = ({ onUpdate
         }
     }, [registration, onUpdateAccepted, executeSingleReload]);
 
-    // Auto-apply update ONCE after a 3s grace period so cached users get fresh builds without looping
+    // Auto-apply update ONCE after a 3s grace period when not actively in a match
     useEffect(() => {
-        if (!updateAvailable || dismissed || isUpdating) return;
+        if (!updateAvailable || dismissed || isUpdating || isGameActive) return;
         const autoReloadTimer = window.setTimeout(() => {
             applyUpdate();
         }, 3000);
         return () => window.clearTimeout(autoReloadTimer);
-    }, [updateAvailable, dismissed, isUpdating, applyUpdate]);
+    }, [updateAvailable, dismissed, isUpdating, isGameActive, applyUpdate]);
 
     const handleDismiss = () => {
         setDismissed(true);
@@ -200,7 +201,9 @@ export const UpdateNotification: React.FC<UpdateNotificationProps> = ({ onUpdate
                                 <p className="text-[10px] sm:text-xs text-stone-400 leading-snug mt-0.5">
                                     {isUpdating
                                         ? 'Applying update and refreshing once...'
-                                        : 'A fresh version is ready. Updating automatically in 3s...'}
+                                        : isGameActive
+                                            ? 'A fresh version is ready. Updates automatically after match.'
+                                            : 'A fresh version is ready. Updating automatically in 3s...'}
                                 </p>
                             </div>
 

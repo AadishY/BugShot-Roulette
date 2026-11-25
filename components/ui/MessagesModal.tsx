@@ -768,8 +768,8 @@ export const MessagesModal: React.FC<MessagesModalProps> = ({
                 Date.now(),
                 currentUser.username,
                 {
-                    displayName: activeChatFriend?.displayName || selectedChatId,
-                    avatarUrl: activeChatFriend?.avatarUrl
+                    displayName: selectedFriend?.displayName || selectedChatId,
+                    avatarUrl: selectedFriend?.avatarUrl
                 }
             );
             await sendDirectMessage(currentUser, selectedChatId, text, stickerId);

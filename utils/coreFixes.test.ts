@@ -644,6 +644,10 @@ test('experimentalAim maps gun pickup, front opponent shots, 3P/4P targets, and 
         true
     );
     assert.equal(
+        isExperimentalTurnActive({ phase: 'DEALER_TURN', turnOwner: 'DEALER', isLocalSplit: true }),
+        true
+    );
+    assert.equal(
         isExperimentalTurnActive({ phase: 'PLAYER_TURN', turnOwner: 'PLAYER', isProcessing: true }),
         false
     );

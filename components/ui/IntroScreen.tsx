@@ -1,8 +1,13 @@
-import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo, Suspense } from 'react';
 import { createPortal } from 'react-dom';
-import { ChangelogModal } from './ChangelogModal';
-import { AnnouncementModal } from './AnnouncementModal';
-import { LeaderboardModal } from '../LeaderboardModal';
+const ChangelogModal = React.lazy(() => import('./ChangelogModal').then((m) => ({ default: m.ChangelogModal })));
+const AnnouncementModal = React.lazy(() => import('./AnnouncementModal').then((m) => ({ default: m.AnnouncementModal })));
+const LeaderboardModal = React.lazy(() => import('../LeaderboardModal').then((m) => ({ default: m.LeaderboardModal })));
+const SplitSetupModal = React.lazy(() => import('../SplitSetupModal').then((m) => ({ default: m.SplitSetupModal })));
+const ProfileModal = React.lazy(() => import('./ProfileModal').then((m) => ({ default: m.ProfileModal })));
+const MigrationModal = React.lazy(() => import('./MigrationModal').then((m) => ({ default: m.MigrationModal })));
+const AdminDashboardModal = React.lazy(() => import('./AdminDashboardModal').then((m) => ({ default: m.AdminDashboardModal })));
+const MessagesModal = React.lazy(() => import('./MessagesModal').then((m) => ({ default: m.MessagesModal })));
 import {
     Settings as SettingsIcon,
     HelpCircle,
@@ -30,7 +35,6 @@ import {
     ChevronUp,
     Users
 } from 'lucide-react';
-import { SplitSetupModal } from '../SplitSetupModal';
 import type { LocalSplitConfig } from '../../types';
 import { audioManager } from '../../utils/audioManager';
 import {
@@ -47,10 +51,6 @@ import {
     updateUserLastSeen,
     isLegacyUpstashUser
 } from '../../utils/firebaseService';
-import { ProfileModal } from './ProfileModal';
-import { MigrationModal } from './MigrationModal';
-import { AdminDashboardModal } from './AdminDashboardModal';
-import { MessagesModal } from './MessagesModal';
 import { subscribeToNotifications, NotificationCounts, subscribeToFriends, FriendUser, resolvePlayerAvatar } from '../../utils/messagingService';
 import { presenceClient, UserPresence } from '../../utils/presenceService';
 import { getDicebearUrl } from '../../utils/dicebear';
@@ -2116,42 +2116,44 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                 </div>
             )}
 
-            {showChangelog && (
-                <ChangelogModal
-                    isOpen={showChangelog}
-                    onClose={() => setShowChangelog(false)}
-                />
-            )}
+            <Suspense fallback={null}>
+                {showChangelog && (
+                    <ChangelogModal
+                        isOpen={showChangelog}
+                        onClose={() => setShowChangelog(false)}
+                    />
+                )}
 
-            {showAnnouncement && (
-                <AnnouncementModal
-                    isOpen={showAnnouncement}
-                    onClose={() => {
-                        setShowAnnouncement(false);
-                        if (pendingChangelog) {
-                            setShowChangelog(true);
-                            setPendingChangelog(false);
-                        }
-                    }}
-                />
-            )}
+                {showAnnouncement && (
+                    <AnnouncementModal
+                        isOpen={showAnnouncement}
+                        onClose={() => {
+                            setShowAnnouncement(false);
+                            if (pendingChangelog) {
+                                setShowChangelog(true);
+                                setPendingChangelog(false);
+                            }
+                        }}
+                    />
+                )}
 
-            {showLeaderboard && (
-                <LeaderboardModal
-                    isOpen={showLeaderboard}
-                    onClose={() => setShowLeaderboard(false)}
-                    leaderboard={leaderboard}
-                    isLoading={isLoadingLeaderboard}
-                    onRefresh={loadLeaderboardData}
-                    currentUser={currentUser}
-                    getUserPresence={getUserPresence}
-                    onSelectProfile={(entry) => {
-                        openedProfileFromLeaderboardRef.current = true;
-                        setShowLeaderboard(false);
-                        setSelectedPublicProfile(entry);
-                    }}
-                />
-            )}
+                {showLeaderboard && (
+                    <LeaderboardModal
+                        isOpen={showLeaderboard}
+                        onClose={() => setShowLeaderboard(false)}
+                        leaderboard={leaderboard}
+                        isLoading={isLoadingLeaderboard}
+                        onRefresh={loadLeaderboardData}
+                        currentUser={currentUser}
+                        getUserPresence={getUserPresence}
+                        onSelectProfile={(entry) => {
+                            openedProfileFromLeaderboardRef.current = true;
+                            setShowLeaderboard(false);
+                            setSelectedPublicProfile(entry);
+                        }}
+                    />
+                )}
+            </Suspense>
 
             {/* Menu Center Frame Area */}
             <div
@@ -2548,80 +2550,82 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                 </div>
             </div>
 
-            {showProfileModal && (
-                <ProfileModal
-                    isOpen={showProfileModal}
-                    onClose={() => setShowProfileModal(false)}
-                    profile={currentUser}
-                    currentUser={currentUser}
-                    isOwnProfile={true}
-                    getUserPresence={getUserPresence}
-                    onProfileUpdated={(updated) => {
-                        setCurrentUser(updated);
-                        setInputName((updated.displayName || updated.username).toUpperCase());
-                    }}
-                    onLogout={handleLogout}
-                    onOpenMessages={(target) => {
-                        setMessagesTargetUser(target);
-                        setShowMessagesModal(true);
-                    }}
-                    onRequireLogin={() => setShowLoginModal(true)}
-                />
-            )}
-
-            {selectedPublicProfile && (
-                <ProfileModal
-                    isOpen={Boolean(selectedPublicProfile)}
-                    onClose={() => {
-                        setSelectedPublicProfile(null);
-                        if (openedProfileFromLeaderboardRef.current) {
-                            setShowLeaderboard(true);
-                            openedProfileFromLeaderboardRef.current = false;
-                        }
-                    }}
-                    profile={selectedPublicProfile}
-                    currentUser={currentUser}
-                    isOwnProfile={currentUser?.username?.toLowerCase() === selectedPublicProfile.username?.toLowerCase()}
-                    getUserPresence={getUserPresence}
-                    onProfileUpdated={(updated) => {
-                        if (currentUser?.username?.toLowerCase() === updated.username?.toLowerCase()) {
+            <Suspense fallback={null}>
+                {showProfileModal && (
+                    <ProfileModal
+                        isOpen={showProfileModal}
+                        onClose={() => setShowProfileModal(false)}
+                        profile={currentUser}
+                        currentUser={currentUser}
+                        isOwnProfile={true}
+                        getUserPresence={getUserPresence}
+                        onProfileUpdated={(updated) => {
                             setCurrentUser(updated);
                             setInputName((updated.displayName || updated.username).toUpperCase());
-                        }
-                    }}
-                    onOpenMessages={(target) => {
-                        setSelectedPublicProfile(null);
-                        setMessagesTargetUser(target);
-                        setShowMessagesModal(true);
-                    }}
-                    onRequireLogin={() => {
-                        setSelectedPublicProfile(null);
-                        setShowLoginModal(true);
-                    }}
-                />
-            )}
+                        }}
+                        onLogout={handleLogout}
+                        onOpenMessages={(target) => {
+                            setMessagesTargetUser(target);
+                            setShowMessagesModal(true);
+                        }}
+                        onRequireLogin={() => setShowLoginModal(true)}
+                    />
+                )}
 
-            {showMigrationModal && (
-                <MigrationModal
-                    isOpen={showMigrationModal}
-                    legacyUser={legacyUserToMigrate}
-                    onClose={() => {
-                        if (currentUser && isLegacyUpstashUser(currentUser)) {
-                            handleLogout();
-                        } else {
+                {selectedPublicProfile && (
+                    <ProfileModal
+                        isOpen={Boolean(selectedPublicProfile)}
+                        onClose={() => {
+                            setSelectedPublicProfile(null);
+                            if (openedProfileFromLeaderboardRef.current) {
+                                setShowLeaderboard(true);
+                                openedProfileFromLeaderboardRef.current = false;
+                            }
+                        }}
+                        profile={selectedPublicProfile}
+                        currentUser={currentUser}
+                        isOwnProfile={currentUser?.username?.toLowerCase() === selectedPublicProfile.username?.toLowerCase()}
+                        getUserPresence={getUserPresence}
+                        onProfileUpdated={(updated) => {
+                            if (currentUser?.username?.toLowerCase() === updated.username?.toLowerCase()) {
+                                setCurrentUser(updated);
+                                setInputName((updated.displayName || updated.username).toUpperCase());
+                            }
+                        }}
+                        onOpenMessages={(target) => {
+                            setSelectedPublicProfile(null);
+                            setMessagesTargetUser(target);
+                            setShowMessagesModal(true);
+                        }}
+                        onRequireLogin={() => {
+                            setSelectedPublicProfile(null);
+                            setShowLoginModal(true);
+                        }}
+                    />
+                )}
+
+                {showMigrationModal && (
+                    <MigrationModal
+                        isOpen={showMigrationModal}
+                        legacyUser={legacyUserToMigrate}
+                        onClose={() => {
+                            if (currentUser && isLegacyUpstashUser(currentUser)) {
+                                handleLogout();
+                            } else {
+                                setShowMigrationModal(false);
+                                setLegacyUserToMigrate(null);
+                            }
+                        }}
+                        onMigrationSuccess={(migratedUser) => {
                             setShowMigrationModal(false);
                             setLegacyUserToMigrate(null);
-                        }
-                    }}
-                    onMigrationSuccess={(migratedUser) => {
-                        setShowMigrationModal(false);
-                        setLegacyUserToMigrate(null);
-                        setCurrentUser(migratedUser);
-                        setInputName((migratedUser.displayName || migratedUser.username).toUpperCase());
-                        audioManager.playSound('click');
-                    }}
-                />
-            )}
+                            setCurrentUser(migratedUser);
+                            setInputName((migratedUser.displayName || migratedUser.username).toUpperCase());
+                            audioManager.playSound('click');
+                        }}
+                    />
+                )}
+            </Suspense>
 
             {showResetSpamModal && (
                 <div
@@ -2662,53 +2666,55 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                 </div>
             )}
 
-            {isDeveloper && showAdminModal && (
-                <AdminDashboardModal
-                    isOpen={showAdminModal}
-                    onClose={() => setShowAdminModal(false)}
-                    adminAPI={adminAPI}
-                    currentUsername={currentUser?.username || ''}
-                    isDeveloper={isDeveloper}
-                />
-            )}
+            <Suspense fallback={null}>
+                {isDeveloper && showAdminModal && (
+                    <AdminDashboardModal
+                        isOpen={showAdminModal}
+                        onClose={() => setShowAdminModal(false)}
+                        adminAPI={adminAPI}
+                        currentUsername={currentUser?.username || ''}
+                        isDeveloper={isDeveloper}
+                    />
+                )}
 
-            {showMessagesModal && (
-                <MessagesModal
-                    isOpen={showMessagesModal}
-                    onClose={() => {
-                        setShowMessagesModal(false);
-                        setMessagesTargetUser(null);
-                    }}
-                    currentUser={currentUser}
-                    getUserPresence={getUserPresence}
-                    initialTargetUsername={messagesTargetUser}
-                    onOpenProfile={(targetUser) => {
-                        openedProfileFromLeaderboardRef.current = false;
-                        setShowMessagesModal(false);
-                        setSelectedPublicProfile(targetUser as any);
-                    }}
-                    onOpenLogin={() => {
-                        setShowMessagesModal(false);
-                        setShowLoginModal(true);
-                    }}
-                    onJoinRoom={(roomId) => {
-                        setShowMessagesModal(false);
-                        setMessagesTargetUser(null);
-                        const name = currentUser?.username || inputName?.trim() || 'Player';
-                        onStartMultiplayer(name, roomId);
-                    }}
-                />
-            )}
-            {showSplitSetup && (
-                <SplitSetupModal
-                    defaultPlayer1Name={inputName.trim() || currentUser?.displayName || currentUser?.username || 'PLAYER 1'}
-                    onClose={() => setShowSplitSetup(false)}
-                    onStart={(config) => {
-                        setShowSplitSetup(false);
-                        onStartLocalSplit?.(config);
-                    }}
-                />
-            )}
+                {showMessagesModal && (
+                    <MessagesModal
+                        isOpen={showMessagesModal}
+                        onClose={() => {
+                            setShowMessagesModal(false);
+                            setMessagesTargetUser(null);
+                        }}
+                        currentUser={currentUser}
+                        getUserPresence={getUserPresence}
+                        initialTargetUsername={messagesTargetUser}
+                        onOpenProfile={(targetUser) => {
+                            openedProfileFromLeaderboardRef.current = false;
+                            setShowMessagesModal(false);
+                            setSelectedPublicProfile(targetUser as any);
+                        }}
+                        onOpenLogin={() => {
+                            setShowMessagesModal(false);
+                            setShowLoginModal(true);
+                        }}
+                        onJoinRoom={(roomId) => {
+                            setShowMessagesModal(false);
+                            setMessagesTargetUser(null);
+                            const name = currentUser?.username || inputName?.trim() || 'Player';
+                            onStartMultiplayer(name, roomId);
+                        }}
+                    />
+                )}
+                {showSplitSetup && (
+                    <SplitSetupModal
+                        defaultPlayer1Name={inputName.trim() || currentUser?.displayName || currentUser?.username || 'PLAYER 1'}
+                        onClose={() => setShowSplitSetup(false)}
+                        onStart={(config) => {
+                            setShowSplitSetup(false);
+                            onStartLocalSplit?.(config);
+                        }}
+                    />
+                )}
+            </Suspense>
         </div>
     );
 });

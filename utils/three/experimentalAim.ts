@@ -39,7 +39,8 @@ export interface ExperimentalResolveInput {
 
 export function isExperimentalTurnActive(input: ExperimentalTurnCheckInput): boolean {
     if (input.isProcessing || input.isRecovering) return false;
-    if (input.phase !== 'PLAYER_TURN') return false;
+    const isSplitSeatBTurn = Boolean(input.isLocalSplit && input.turnOwner === 'DEALER' && input.phase === 'DEALER_TURN');
+    if (input.phase !== 'PLAYER_TURN' && !isSplitSeatBTurn) return false;
     if (input.isMultiplayer) {
         return Boolean(input.isMyTurn);
     }

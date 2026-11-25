@@ -206,12 +206,12 @@ const InventoryComponent: React.FC<InventoryProps> = ({ player, dealer, gameStat
 
     let containerClass = isCompact
         ? (isPotato
-            ? "relative flex gap-1.5 px-2 py-1.5 bg-neutral-950/90 border border-neutral-800 min-h-[48px] items-center overflow-x-auto max-w-full [&::-webkit-scrollbar]:hidden [scrollbar-width:none] rounded-xl"
-            : "relative flex gap-1.5 px-2 py-1.5 bg-black/55 border border-white/10 backdrop-blur-md min-h-[48px] items-center overflow-x-auto max-w-full [&::-webkit-scrollbar]:hidden [scrollbar-width:none] rounded-2xl")
-        : "relative flex gap-1 md:gap-3 p-2 md:p-4 bg-gradient-to-t from-black/95 to-black/70 border-t border-l border-r border-white/10 backdrop-blur-3xl min-h-[48px] md:min-h-[100px] items-end overflow-x-auto overflow-y-visible md:overflow-visible max-w-full [&::-webkit-scrollbar]:hidden [scrollbar-width:none] rounded-t-[2rem]";
+            ? "pointer-events-auto relative flex gap-1.5 px-2 py-1.5 bg-neutral-950/90 border border-neutral-800 min-h-[48px] items-center overflow-x-auto max-w-full [&::-webkit-scrollbar]:hidden [scrollbar-width:none] rounded-xl"
+            : "pointer-events-auto relative flex gap-1.5 px-2 py-1.5 bg-black/55 border border-white/10 backdrop-blur-md min-h-[48px] items-center overflow-x-auto max-w-full [&::-webkit-scrollbar]:hidden [scrollbar-width:none] rounded-2xl")
+        : "pointer-events-auto relative flex gap-1 md:gap-3 p-2 md:p-4 bg-gradient-to-t from-black/95 to-black/70 border-t border-l border-r border-white/10 backdrop-blur-3xl min-h-[48px] md:min-h-[100px] items-end overflow-x-auto overflow-y-visible md:overflow-visible max-w-full [&::-webkit-scrollbar]:hidden [scrollbar-width:none] rounded-t-[2rem]";
     if (!isCompact) {
         if (isPotato) {
-            containerClass = "relative flex gap-1 md:gap-3 p-2 md:p-3 bg-neutral-950 border-t border-neutral-800 min-h-[48px] md:min-h-[100px] items-end overflow-x-auto overflow-y-visible md:overflow-visible max-w-full [&::-webkit-scrollbar]:hidden [scrollbar-width:none] rounded-none";
+            containerClass = "pointer-events-auto relative flex gap-1 md:gap-3 p-2 md:p-3 bg-neutral-950 border-t border-neutral-800 min-h-[48px] md:min-h-[100px] items-end overflow-x-auto overflow-y-visible md:overflow-visible max-w-full [&::-webkit-scrollbar]:hidden [scrollbar-width:none] rounded-none";
         } else if (isBalanced) {
             containerClass += " shadow-none";
         } else {
@@ -224,10 +224,10 @@ const InventoryComponent: React.FC<InventoryProps> = ({ player, dealer, gameStat
     const mobileTooltipItem = isMobileView ? hoveredItem ?? selectedItem : hoveredItem;
     const isHoveredCuffDisabled = (hoveredItem ?? selectedItem) === 'CUFFS' && dealer.isHandcuffed;
 
-    if (isCompact && player.items.length === 0 && !player.isFlashbanged) {
+    if (player.items.length === 0 && !player.isFlashbanged) {
         return (
             <div className="flex justify-center pointer-events-none w-full">
-                <div className="px-2.5 py-0.5 rounded-full bg-black/40 border border-white/5 text-[8px] font-bold tracking-[0.2em] text-stone-500 uppercase">
+                <div className={`${isCompact ? 'px-2.5 py-0.5 text-[8px]' : 'px-3 py-1 text-[9px]'} rounded-full bg-black/40 border border-white/5 font-bold tracking-[0.2em] text-stone-500 uppercase`}>
                     NO ITEMS
                 </div>
             </div>
@@ -235,7 +235,7 @@ const InventoryComponent: React.FC<InventoryProps> = ({ player, dealer, gameStat
     }
 
     return (
-        <div className={`flex justify-center gap-1 pointer-events-auto items-end relative w-full ${isCompact ? '' : 'flex-1 h-full'}`}>
+        <div className={`flex justify-center gap-1 pointer-events-none items-end relative w-full ${isCompact ? '' : 'flex-1 h-full'}`}>
             {/* Left scroll mask */}
             {showLeftMask && (
                 <div className={`absolute left-0 bottom-0 top-0 w-6 bg-gradient-to-r from-black/80 to-transparent pointer-events-none z-40 transition-opacity duration-300 ${isPotato ? '' : (isCompact ? 'rounded-l-2xl' : 'rounded-l-[2rem]')}`} />

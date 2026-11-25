@@ -730,7 +730,7 @@ export const GameUI: React.FC<GameUIProps> = ({
                         >
                             {/* Controls */}
                             {gameState.phase !== 'STEALING' && gameState.phase !== 'CARD_SELECT' && isMyTurn && !showLootOverlay && (
-                                <div className="pointer-events-auto w-full max-w-full flex justify-center">
+                                <div className="pointer-events-none w-full max-w-full flex justify-center">
                                     <Controls
                                         isGunHeld={isGunHeld}
                                         isProcessing={isProcessing}
@@ -756,7 +756,7 @@ export const GameUI: React.FC<GameUIProps> = ({
                             )}
 
                             {/* Inventory */}
-                            <div className="pointer-events-auto w-full max-w-full flex flex-col items-center min-w-0">
+                            <div className="pointer-events-none w-full max-w-full flex flex-col items-center min-w-0">
                                 {isSplitMode && (
                                     <div className={`mb-1 px-2.5 py-0.5 rounded-full border text-[9px] font-mono font-black uppercase tracking-[0.2em] ${
                                         isSplitP2Turn

@@ -659,9 +659,9 @@ export const initThreeScene = (container: HTMLElement, props: any): SceneContext
         c.userData.type = 'GUN';
         c.userData.experimentalTarget = 'GUN';
     });
-    const gunHitbox = new THREE.Mesh(new THREE.BoxGeometry(2.6, 2.4, 15.0), expHitboxMat);
+    const gunHitbox = new THREE.Mesh(new THREE.BoxGeometry(3.4, 3.0, 16.5), expHitboxMat);
     gunHitbox.name = 'EXP_GUN_HITBOX';
-    gunHitbox.position.set(0, 0.2, 2.0);
+    gunHitbox.position.set(0, 0.3, 2.2);
     gunHitbox.castShadow = false;
     gunHitbox.receiveShadow = false;
     gunHitbox.userData.type = 'GUN';

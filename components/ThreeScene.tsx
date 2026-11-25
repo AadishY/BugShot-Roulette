@@ -160,6 +160,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
     isRecovering = false,
     onExperimentalShoot,
     onExperimentalHover,
+    onHoverTarget,
 }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     // Pre-allocated reusable vectors — avoids GC allocations inside gun-fire effects
@@ -701,9 +702,11 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
             if (!activeTurn) return null;
 
             const { raycaster, mouse, camera, gunGroup, scene } = sceneRef.current;
+            camera.updateMatrixWorld();
+            gunGroup.updateMatrixWorld(true);
             raycaster.setFromCamera(mouse, camera);
             const intersects = _rayIntersectsScratch.current;
-            const isGunHeld = currentProps.cameraView === 'GUN';
+            const isGunHeld = currentProps.cameraView === 'GUN' || currentProps.aimTarget !== 'IDLE';
 
             if (!isGunHeld) {
                 intersects.length = 0;
@@ -875,6 +878,18 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
 
             if (!sceneRef.current) return;
 
+            if (containerRef.current && e && 'clientX' in e && typeof e.clientX === 'number') {
+                let rect = containerRectRef.current;
+                if (!rect || rect.width === 0) {
+                    rect = containerRef.current.getBoundingClientRect();
+                    containerRectRef.current = rect;
+                }
+                if (rect.width > 0 && rect.height > 0) {
+                    sceneRef.current.mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+                    sceneRef.current.mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+                }
+            }
+
             const currentProps = propsRef.current;
             const currentGameState = currentProps.gameState;
 
@@ -953,6 +968,18 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
         const handleTouchEnd = (e: TouchEvent) => {
             // Prevent default browser click generation if we handle it here
             if (e.cancelable) e.preventDefault();
+            if (containerRef.current && sceneRef.current && e.changedTouches.length > 0) {
+                let rect = containerRectRef.current;
+                if (!rect || rect.width === 0) {
+                    rect = containerRef.current.getBoundingClientRect();
+                    containerRectRef.current = rect;
+                }
+                const touch = e.changedTouches[0];
+                if (rect.width > 0 && rect.height > 0) {
+                    sceneRef.current.mouse.x = ((touch.clientX - rect.left) / rect.width) * 2 - 1;
+                    sceneRef.current.mouse.y = -((touch.clientY - rect.top) / rect.height) * 2 + 1;
+                }
+            }
             handleClick(e);
 
             // Reset flag after a delay to allow mouse usage again later if needed (hybrid devices)
@@ -1018,6 +1045,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
                 }
                 sceneRef.current = null;
             }
+            el.style.cursor = '';
             if (containerRef.current) containerRef.current.innerHTML = '';
         };
     }, [
