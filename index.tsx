@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import './src/index.css';
 import App from './App';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { ConfirmModalHost } from './components/ui/ConfirmModalHost';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -14,6 +15,7 @@ root.render(
   <React.StrictMode>
     <ErrorBoundary>
       <App />
+      <ConfirmModalHost />
     </ErrorBoundary>
   </React.StrictMode>
 );

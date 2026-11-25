@@ -53,6 +53,9 @@ import {
     removeFriend,
     subscribeToDirectMessages,
     sendDirectMessage,
+    subscribeToRecentDMContacts,
+    recordRecentDMContact,
+    DMContactRecord,
     subscribeToBroadcasts,
     sendBroadcastMessage,
     deleteBroadcastMessage,
@@ -65,6 +68,7 @@ import {
     subscribeToFeedbacks,
     deleteFeedback
 } from '../../utils/messagingService';
+import { mergeDMContacts, MergedDMContact } from '../../utils/dmContacts';
 import { audioManager } from '../../utils/audioManager';
 import { UserPresence, formatLastSeen, presenceClient } from '../../utils/presenceService';
 import { showConfirm } from '../../utils/modalService';
@@ -318,8 +322,9 @@ export const MessagesModal: React.FC<MessagesModalProps> = ({
     // Active conversation: null (standby selection), 'global_broadcast', 'admin_feedbacks', or username of mutual friend
     const [selectedChatId, setSelectedChatId] = useState<string | null>(initialTargetUsername ? initialTargetUsername.toLowerCase() : null);
 
-    // Friends and Requests real-time state
+    // Friends, Persistent Recent DMs, and Requests real-time state
     const [friends, setFriends] = useState<FriendUser[]>([]);
+    const [recentDMContacts, setRecentDMContacts] = useState<DMContactRecord[]>([]);
     const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
     
     // Messages state
@@ -445,6 +450,18 @@ export const MessagesModal: React.FC<MessagesModalProps> = ({
         if (!isOpen || !currentUser) return;
         const unsubscribe = subscribeToFriends(currentUser.username, (loadedFriends) => {
             setFriends(loadedFriends);
+        });
+        return () => unsubscribe();
+    }, [isOpen, currentUser?.username]);
+
+    // 1b. Subscribe to Persistent Recent DM Contacts (sent & received conversations stay in DM section)
+    useEffect(() => {
+        if (!isOpen || !currentUser) {
+            setRecentDMContacts([]);
+            return;
+        }
+        const unsubscribe = subscribeToRecentDMContacts(currentUser.username, (contacts) => {
+            setRecentDMContacts(contacts);
         });
         return () => unsubscribe();
     }, [isOpen, currentUser?.username]);
@@ -579,6 +596,7 @@ export const MessagesModal: React.FC<MessagesModalProps> = ({
         if (!isOpen) return;
         const candidates = new Set<string>();
         friends.forEach(f => f.username && candidates.add(f.username.toLowerCase()));
+        recentDMContacts.forEach(r => r.username && candidates.add(r.username.toLowerCase()));
         friendRequests.forEach(r => r.from && candidates.add(r.from.toLowerCase()));
         Object.keys(notificationCounts.unreadBySender || {}).forEach(s => candidates.add(s.toLowerCase()));
         if (selectedChatId && !['global_broadcast', 'admin_feedbacks', 'bugshot', 'system'].includes(selectedChatId.toLowerCase())) {
@@ -601,7 +619,7 @@ export const MessagesModal: React.FC<MessagesModalProps> = ({
         return () => {
             cancelled = true;
         };
-    }, [isOpen, friends, friendRequests, notificationCounts.unreadBySender, selectedChatId, directMessages.length, feedbacks.length]);
+    }, [isOpen, friends, recentDMContacts, friendRequests, notificationCounts.unreadBySender, selectedChatId, directMessages.length, feedbacks.length]);
 
     const getResolvedAvatar = (username?: string, fallbackObj?: any) => {
         const clean = (username || '').trim().toLowerCase();
@@ -657,31 +675,14 @@ export const MessagesModal: React.FC<MessagesModalProps> = ({
         return { isOnline: false, status: 'offline', text: 'Offline' };
     };
 
-    // Unified list of contacts: Mutual friends + Any active conversations/senders
-    const allContacts = useMemo(() => {
-        const list: FriendUser[] = friends.map(f => {
-            const live = resolvedProfiles[f.username.toLowerCase()];
-            if (!live) {
-                return { ...f, avatarUrl: resolvePlayerAvatar(f) };
-            }
-            return {
-                ...f,
-                displayName: live.displayName || f.displayName,
-                avatarUrl: resolvePlayerAvatar(live),
-                avatarStyle: live.avatarStyle,
-                avatarSeed: live.avatarSeed,
-                playerId: live.playerId || f.playerId,
-                isDeveloper: Boolean(live.isDeveloper || live.role === 'developer' || f.isDeveloper)
-            };
-        });
-        const knownUsernames = new Set(list.map(f => f.username.toLowerCase()));
-
-        const buildContactFromKey = (uname: string): FriendUser => {
+    // Unified list of contacts: Mutual friends + All persisted DM conversations (sent & received) + Unread + Selected
+    const allContacts = useMemo<MergedDMContact[]>(() => {
+        const resolveContact = (uname: string, fallback?: Partial<DMContactRecord>): MergedDMContact => {
             const prof = resolvedProfiles[uname] || getCachedUserSync(uname);
             if (prof) {
                 return {
                     username: prof.username,
-                    displayName: prof.displayName || prof.username,
+                    displayName: prof.displayName || fallback?.displayName || prof.username,
                     avatarUrl: resolvePlayerAvatar(prof),
                     avatarStyle: prof.avatarStyle,
                     avatarSeed: prof.avatarSeed,
@@ -691,41 +692,21 @@ export const MessagesModal: React.FC<MessagesModalProps> = ({
             }
             return {
                 username: uname,
-                displayName: uname,
-                avatarUrl: resolvePlayerAvatar({ username: uname }),
+                displayName: fallback?.displayName || uname,
+                avatarUrl: fallback?.avatarUrl || resolvePlayerAvatar({ username: uname }),
                 playerId: getPlayerId({ username: uname })
             };
         };
 
-        // Add anyone who has sent unread messages to us
-        if (notificationCounts.unreadBySender) {
-            Object.keys(notificationCounts.unreadBySender).forEach(sender => {
-                const cleanSender = sender.toLowerCase().trim();
-                if (cleanSender && cleanSender !== 'bugshot' && cleanSender !== 'system' && !knownUsernames.has(cleanSender)) {
-                    knownUsernames.add(cleanSender);
-                    list.push(buildContactFromKey(cleanSender));
-                }
-            });
-        }
-
-        // Add currently selected chat recipient if they are not already in the list
-        if (selectedChatId) {
-            const cleanSelected = selectedChatId.toLowerCase().trim();
-            if (
-                cleanSelected &&
-                cleanSelected !== 'global_broadcast' &&
-                cleanSelected !== 'admin_feedbacks' &&
-                cleanSelected !== 'bugshot' &&
-                cleanSelected !== 'system' &&
-                !knownUsernames.has(cleanSelected)
-            ) {
-                knownUsernames.add(cleanSelected);
-                list.push(buildContactFromKey(cleanSelected));
-            }
-        }
-
-        return list;
-    }, [friends, notificationCounts.unreadBySender, selectedChatId, resolvedProfiles, profileVersion]);
+        return mergeDMContacts({
+            friends,
+            recentDMs: recentDMContacts,
+            unreadBySender: notificationCounts.unreadBySender,
+            selectedChatId,
+            currentUsername: currentUser?.username,
+            resolveContact
+        });
+    }, [friends, recentDMContacts, notificationCounts.unreadBySender, selectedChatId, resolvedProfiles, profileVersion, currentUser?.username]);
 
     // Filter contacts based on search and online status
     const filteredFriends = useMemo(() => {
@@ -748,7 +729,12 @@ export const MessagesModal: React.FC<MessagesModalProps> = ({
             const bUnread = (notificationCounts.unreadBySender[b.username.toLowerCase()] || 0) > 0 ? 1 : 0;
             if (bUnread !== aUnread) return bUnread - aUnread;
 
-            // Sort online friends next
+            // Keep most recently messaged DM conversations at the top so active chats stay visible
+            const aTime = a.lastTimestamp || 0;
+            const bTime = b.lastTimestamp || 0;
+            if (bTime !== aTime) return bTime - aTime;
+
+            // Sort online contacts next
             const aOnline = getFriendPresence(a.username).isOnline ? 1 : 0;
             const bOnline = getFriendPresence(b.username).isOnline ? 1 : 0;
             return bOnline - aOnline;
@@ -775,6 +761,17 @@ export const MessagesModal: React.FC<MessagesModalProps> = ({
         setIsSending(true);
         audioManager.playSound('click');
         try {
+            recordRecentDMContact(
+                currentUser.username,
+                selectedChatId,
+                text.trim() || (stickerId ? '[Sticker]' : ''),
+                Date.now(),
+                currentUser.username,
+                {
+                    displayName: activeChatFriend?.displayName || selectedChatId,
+                    avatarUrl: activeChatFriend?.avatarUrl
+                }
+            );
             await sendDirectMessage(currentUser, selectedChatId, text, stickerId);
             setMessageInput('');
             setShowStickers(false);
@@ -1532,24 +1529,27 @@ export const MessagesModal: React.FC<MessagesModalProps> = ({
                                     </div>
                                 </div>
 
-                                {/* SECTION HEADER: MUTUAL FRIENDS */}
+                                {/* SECTION HEADER: DIRECT MESSAGES */}
                                 <div className="px-3 py-1.5 bg-stone-950 text-[8px] font-mono text-stone-500 uppercase tracking-widest font-black border-y border-stone-900">
-                                    MUTUAL OPERATIVES ({filteredFriends.length})
+                                    DIRECT MESSAGES ({filteredFriends.length})
                                 </div>
 
                                 {filteredFriends.length === 0 ? (
                                     <div className="p-6 text-center text-stone-500 space-y-2">
                                         <p className="text-[9.5px] font-bold uppercase tracking-wider">
-                                            {onlyOnlineFilter ? 'No mutual friends currently online' : 'No mutual friends found'}
+                                            {onlyOnlineFilter ? 'No operatives currently online' : 'No direct messages yet'}
                                         </p>
                                         <p className="text-[8.5px] text-stone-600">
-                                            Add friends using the REQUESTS tab above to enable direct messaging!
+                                            Message any player or add friends using the REQUESTS tab above — conversations stay saved here.
                                         </p>
                                     </div>
                                 ) : (
                                     filteredFriends.map((friend) => {
                                         const presence = getFriendPresence(friend.username);
                                         const isSelected = selectedChatId?.toLowerCase() === friend.username.toLowerCase();
+                                        const lastPreview = friend.lastMessage
+                                            ? `${friend.lastSender === currentUser.username.toLowerCase() ? 'You: ' : ''}${friend.lastMessage}`
+                                            : friend.playerId;
                                         
                                         const statusBg = presence.status === 'in_match' 
                                             ? 'bg-red-500 animate-pulse' 
@@ -1601,8 +1601,8 @@ export const MessagesModal: React.FC<MessagesModalProps> = ({
                                                                 </span>
                                                             )}
                                                         </div>
-                                                        <span className="text-[8px] text-stone-500 font-mono tracking-wider truncate">
-                                                            {friend.playerId}
+                                                        <span className="text-[8.5px] text-stone-400 font-mono tracking-normal truncate max-w-[165px]">
+                                                            {lastPreview}
                                                         </span>
                                                     </div>
                                                 </div>

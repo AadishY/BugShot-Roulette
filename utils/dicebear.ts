@@ -111,15 +111,46 @@ export const resolveCanonicalAvatar = (user?: {
     return getDicebearUrl(style, seed);
 };
 
+const RANDOM_SEED_PREFIXES = [
+    'viper', 'wraith', 'phantom', 'reaper', 'cipher', 'cobalt', 'ember', 'onyx',
+    'kestrel', 'specter', 'jackal', 'warden', 'hydra', 'nomad', 'vector', 'lynx',
+    'sable', 'striker', 'talon', 'zephyr', 'ash', 'pulse', 'rogue', 'valkyrie'
+];
+
+let avatarEntropyCounter = 0;
+
+const getRandomUint32 = (): number => {
+    try {
+        if (typeof globalThis !== 'undefined' && globalThis.crypto && typeof globalThis.crypto.getRandomValues === 'function') {
+            const buf = new Uint32Array(1);
+            globalThis.crypto.getRandomValues(buf);
+            return buf[0];
+        }
+    } catch {}
+    return Math.floor(Math.random() * 0xffffffff);
+};
+
 export const generateRandomAvatar = (preferredSeed?: string): AvatarConfig => {
-    const randomStyle = DICEBEAR_STYLES[Math.floor(Math.random() * DICEBEAR_STYLES.length)].id;
-    const seed = preferredSeed && preferredSeed.trim() 
-        ? preferredSeed.trim() 
-        : `operator_${Math.random().toString(36).substring(2, 9)}`;
-    
+    avatarEntropyCounter = (avatarEntropyCounter + 1) % 100000;
+    const styleIdx = getRandomUint32() % DICEBEAR_STYLES.length;
+    const randomStyle = DICEBEAR_STYLES[styleIdx].id;
+
+    const prefix = RANDOM_SEED_PREFIXES[getRandomUint32() % RANDOM_SEED_PREFIXES.length];
+    const tokenA = getRandomUint32().toString(36).slice(0, 5);
+    const tokenB = ((Date.now() ^ avatarEntropyCounter) >>> 0).toString(36).slice(-4);
+
+    const cleanedHint = preferredSeed
+        ? preferredSeed.trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 12)
+        : '';
+
+    const seed = cleanedHint
+        ? `${cleanedHint}-${prefix}-${tokenA}${tokenB}`
+        : `${prefix}-${tokenA}${tokenB}`;
+
     return {
         url: getDicebearUrl(randomStyle, seed),
         style: randomStyle,
         seed
     };
 };
+

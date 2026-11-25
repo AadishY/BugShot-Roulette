@@ -60,7 +60,7 @@ export const AnnouncementModal: React.FC<AnnouncementModalProps> = ({ isOpen, on
 
                 <div className="absolute top-0 left-0 w-full h-[2px] bg-amber-500/30 animate-[scan-line-move_4s_linear_infinite]" />
 
-                <div className="flex items-center justify-between gap-4 pb-3 border-b border-stone-900 mb-4">
+                <div className="flex items-center justify-between gap-4 pb-3 border-b border-stone-900 mb-4 pr-14">
                     <div className="flex items-center gap-2">
                         <div className="p-2 bg-amber-500/10 text-amber-300 rounded-2xl">
                             <Bell size={18} />

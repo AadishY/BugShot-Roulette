@@ -54,6 +54,9 @@ export async function resumeAudioContext(): Promise<boolean> {
 const SOUND_FILES: Record<string, string> = {
     grab: '/sound/grab1.ogg',
     click: '/sound/grab1.ogg',
+    confirm: '/sound/grab1.ogg',
+    insert: '/sound/grab1.ogg',
+    rack: '/sound/grab1.ogg',
     blankshell: '/sound/blankshellshoot.wav',
     liveshell: '/sound/liveshellshoot.mp3',
     // Animation Sounds
@@ -102,10 +105,13 @@ const DIMMING_SFX_KEYS = new Set([
 ]);
 
 const BOOST_MAP: Record<string, number> = {
-    liveshell: 1.5,
-    blankshell: 1.5,
-    grab: 1.5,
-    click: 0.8
+    liveshell: 1.35,
+    blankshell: 1.25,
+    grab: 1.2,
+    rack: 1.15,
+    insert: 1.05,
+    confirm: 0.9,
+    click: 0.72
 };
 
 interface ActiveSFXNode {
@@ -136,6 +142,8 @@ export class AudioManager {
     private activeFallbackSounds: Set<HTMLAudioElement> = new Set();
     private criticalReadyUrls: Set<string> = new Set();
     private sfxEpoch: number = 0;
+    private masterCompressor: DynamicsCompressorNode | null = null;
+    private noiseBuffer: AudioBuffer | null = null;
 
     private musicCrossfadeTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -400,10 +408,10 @@ export class AudioManager {
         if (playbackRate && playbackRate > 0) {
             source.playbackRate.value = playbackRate;
         }
-        gain.gain.value = Math.max(0, Math.min(1.5, volume));
+        gain.gain.value = Math.max(0, Math.min(1.4, volume));
 
         source.connect(gain);
-        gain.connect(ctx.destination);
+        gain.connect(this.getMasterOutput(ctx));
 
         if (shouldDimMusic) {
             this.activeDimmingCount++;
@@ -498,6 +506,135 @@ export class AudioManager {
         }
     }
 
+    private getMasterOutput(ctx: AudioContext): AudioNode {
+        if (!this.masterCompressor || this.masterCompressor.context !== ctx) {
+            try {
+                const comp = ctx.createDynamicsCompressor();
+                comp.threshold.setValueAtTime(-10, ctx.currentTime);
+                comp.knee.setValueAtTime(14, ctx.currentTime);
+                comp.ratio.setValueAtTime(6, ctx.currentTime);
+                comp.attack.setValueAtTime(0.003, ctx.currentTime);
+                comp.release.setValueAtTime(0.14, ctx.currentTime);
+                comp.connect(ctx.destination);
+                this.masterCompressor = comp;
+            } catch {
+                return ctx.destination;
+            }
+        }
+        return this.masterCompressor;
+    }
+
+    private getNoiseBuffer(ctx: AudioContext): AudioBuffer {
+        if (!this.noiseBuffer || this.noiseBuffer.sampleRate !== ctx.sampleRate) {
+            const len = Math.floor(ctx.sampleRate * 0.28);
+            const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+            const data = buf.getChannelData(0);
+            for (let i = 0; i < len; i++) {
+                data[i] = Math.random() * 2 - 1;
+            }
+            this.noiseBuffer = buf;
+        }
+        return this.noiseBuffer;
+    }
+
+    /**
+     * Synthesize crisp, zero-latency mechanical SFX for keys without dedicated MP3s
+     * ('insert' shell load, 'rack' pump-action slide, 'confirm' tactical lock).
+     */
+    private playSynthesizedSFX(ctx: AudioContext, key: 'insert' | 'rack' | 'confirm', volume: number): boolean {
+        try {
+            const now = ctx.currentTime;
+            const out = this.getMasterOutput(ctx);
+            const vol = Math.max(0.01, Math.min(1.1, volume));
+
+            if (key === 'insert') {
+                // Metallic shotgun shell click + hollow chamber thud
+                const osc = ctx.createOscillator();
+                const oscGain = ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(320, now);
+                osc.frequency.exponentialRampToValueAtTime(115, now + 0.065);
+                oscGain.gain.setValueAtTime(vol * 0.5, now);
+                oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+                osc.connect(oscGain);
+                oscGain.connect(out);
+                osc.start(now);
+                osc.stop(now + 0.085);
+
+                const click = ctx.createBufferSource();
+                click.buffer = this.getNoiseBuffer(ctx);
+                const bp = ctx.createBiquadFilter();
+                bp.type = 'bandpass';
+                bp.frequency.setValueAtTime(2400, now);
+                bp.Q.setValueAtTime(2.5, now);
+                const nGain = ctx.createGain();
+                nGain.gain.setValueAtTime(vol * 0.35, now);
+                nGain.gain.exponentialRampToValueAtTime(0.001, now + 0.045);
+                click.connect(bp);
+                bp.connect(nGain);
+                nGain.connect(out);
+                click.start(now);
+                click.stop(now + 0.05);
+                return true;
+            }
+
+            if (key === 'rack') {
+                // Two-stage pump-action shotgun chuk-chuk slide
+                const triggerClack = (offset: number, freq: number, band: number) => {
+                    const t = now + offset;
+                    const src = ctx.createBufferSource();
+                    src.buffer = this.getNoiseBuffer(ctx);
+                    const bp = ctx.createBiquadFilter();
+                    bp.type = 'bandpass';
+                    bp.frequency.setValueAtTime(band, t);
+                    bp.Q.setValueAtTime(1.8, t);
+                    const g = ctx.createGain();
+                    g.gain.setValueAtTime(vol * 0.55, t);
+                    g.gain.exponentialRampToValueAtTime(0.001, t + 0.095);
+                    src.connect(bp);
+                    bp.connect(g);
+                    g.connect(out);
+                    src.start(t);
+                    src.stop(t + 0.1);
+
+                    const body = ctx.createOscillator();
+                    const bg = ctx.createGain();
+                    body.type = 'sawtooth';
+                    body.frequency.setValueAtTime(freq, t);
+                    body.frequency.exponentialRampToValueAtTime(freq * 0.45, t + 0.07);
+                    bg.gain.setValueAtTime(vol * 0.22, t);
+                    bg.gain.exponentialRampToValueAtTime(0.001, t + 0.075);
+                    body.connect(bg);
+                    bg.connect(out);
+                    body.start(t);
+                    body.stop(t + 0.08);
+                };
+                triggerClack(0, 260, 1750);
+                triggerClack(0.13, 340, 2250);
+                return true;
+            }
+
+            if (key === 'confirm') {
+                // Clean tactical lock confirmation tone
+                const osc = ctx.createOscillator();
+                const g = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(520, now);
+                osc.frequency.exponentialRampToValueAtTime(780, now + 0.075);
+                g.gain.setValueAtTime(vol * 0.28, now);
+                g.gain.exponentialRampToValueAtTime(0.001, now + 0.11);
+                osc.connect(g);
+                g.connect(out);
+                osc.start(now);
+                osc.stop(now + 0.115);
+                return true;
+            }
+        } catch {
+            // Fall through to file buffer fallback
+        }
+        return false;
+    }
+
     public playSound(key: string, options?: { volume?: number; playbackRate?: number; dimMusic?: boolean }) {
         const url = SOUND_FILES[key];
         if (!url) return;
@@ -507,7 +644,19 @@ export class AudioManager {
 
         let finalVolume = this.sfxVolume * boost;
         if (options?.volume !== undefined) finalVolume *= options.volume;
-        finalVolume = Math.max(0, Math.min(1.0, finalVolume));
+        if (finalVolume <= 0.001) return; // Fast-path skip when SFX is muted
+
+        const webAudioVolume = Math.max(0, Math.min(1.35, finalVolume));
+        const htmlAudioVolume = Math.max(0, Math.min(1.0, finalVolume));
+
+        // Subtle pitch micro-variation for repeated UI clicks so rapid tapping feels tactile
+        const effectivePlaybackRate = options?.playbackRate ?? (
+            key === 'click'
+                ? 0.96 + Math.random() * 0.08
+                : key === 'confirm'
+                    ? 1.18
+                    : undefined
+        );
 
         const ctx = getAudioContext();
         if (ctx) {
@@ -515,10 +664,16 @@ export class AudioManager {
                 ctx.resume().catch(() => {});
             }
 
+            if ((key === 'insert' || key === 'rack' || key === 'confirm') && ctx.state === 'running') {
+                if (this.playSynthesizedSFX(ctx, key, webAudioVolume)) {
+                    return;
+                }
+            }
+
             const cached = this.audioBuffers.get(url);
             if (cached) {
                 this.touchBufferLRU(url, cached);
-                this.playWithBuffer(ctx, cached, finalVolume, options?.playbackRate, shouldDimMusic);
+                this.playWithBuffer(ctx, cached, webAudioVolume, effectivePlaybackRate, shouldDimMusic);
                 return;
             }
 
@@ -526,15 +681,15 @@ export class AudioManager {
             this.getOrDecodeBuffer(url).then((decoded) => {
                 if (epochAtStart !== this.sfxEpoch) return; // Teardown occurred while decoding
                 if (decoded && getAudioContext()) {
-                    this.playWithBuffer(getAudioContext()!, decoded, finalVolume, options?.playbackRate, shouldDimMusic);
+                    this.playWithBuffer(getAudioContext()!, decoded, webAudioVolume, effectivePlaybackRate, shouldDimMusic);
                 } else {
-                    this.playFallbackHTMLAudio(url, finalVolume, options?.playbackRate, shouldDimMusic);
+                    this.playFallbackHTMLAudio(url, htmlAudioVolume, effectivePlaybackRate, shouldDimMusic);
                 }
             });
             return;
         }
 
-        this.playFallbackHTMLAudio(url, finalVolume, options?.playbackRate, shouldDimMusic);
+        this.playFallbackHTMLAudio(url, htmlAudioVolume, effectivePlaybackRate, shouldDimMusic);
     }
 
     public stopAllSFX() {

@@ -53,6 +53,7 @@ import { audioManager } from '../../utils/audioManager';
 import { presenceClient, formatLastSeen, UserPresence } from '../../utils/presenceService';
 import { sendFriendRequest, subscribeToFriends, removeFriend, resolvePlayerAvatar } from '../../utils/messagingService';
 import { showConfirm } from '../../utils/modalService';
+import { computeDetailedStats } from '../../utils/statsAnalytics';
 
 interface ProfileModalProps {
     isOpen: boolean;
@@ -300,6 +301,12 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     };
 
     const hardModeWins = profileAny.hardModeWins ?? ((stats.matchHistory || []) as any[]).filter((m: any) => m.result === 'WIN' && m.isHardMode).length;
+    const detailedStats = computeDetailedStats(stats, {
+        wins,
+        losses,
+        hardModeWins,
+        totalTimePlayed: profileAny.totalTimePlayed
+    });
     const playerId = profile ? (profile.playerId || getPlayerId(profile)) : '';
 
     // Real, accurate online/offline calculation using live presence & last seen telemetry
@@ -1122,66 +1129,87 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                                 </div>
                             )}
 
-                            {/* Clean Professional Stats Grid */}
-                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                                <div className="p-3 bg-stone-900/50 border border-stone-800 rounded-xl">
+                            {/* Full Career Stats Grid */}
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono tabular-nums">
+                                <div className="p-2.5 bg-emerald-950/20 border border-emerald-800/40 rounded-xl">
                                     <div className="flex items-center justify-between mb-1">
-                                        <span className="text-[8px] text-stone-500 font-bold uppercase tracking-wider block">Career Wins</span>
-                                        <Trophy className="w-3.5 h-3.5 text-stone-400" />
+                                        <span className="text-[8px] text-emerald-400 font-bold uppercase tracking-wider block">Wins / Rate</span>
+                                        <Trophy className="w-3.5 h-3.5 text-emerald-400" />
                                     </div>
-                                    <span className="text-xl font-black text-stone-100 font-mono">{stats.wins || 0}</span>
+                                    <span className="text-lg font-black text-white">{detailedStats.wins}</span>
+                                    <span className="text-[9px] text-emerald-400 ml-1.5 font-bold">{detailedStats.winRate}%</span>
                                 </div>
 
-                                <div className="p-3 bg-stone-900/50 border border-stone-800 rounded-xl">
+                                <div className="p-2.5 bg-stone-900/60 border border-stone-800 rounded-xl">
                                     <div className="flex items-center justify-between mb-1">
-                                        <span className="text-[8px] text-stone-500 font-bold uppercase tracking-wider block">Career Losses</span>
-                                        <Skull className="w-3.5 h-3.5 text-stone-500" />
+                                        <span className="text-[8px] text-stone-400 font-bold uppercase tracking-wider block">Losses / Total</span>
+                                        <Skull className="w-3.5 h-3.5 text-red-400" />
                                     </div>
-                                    <span className="text-xl font-black text-stone-300 font-mono">{stats.losses || 0}</span>
+                                    <span className="text-lg font-black text-stone-200">{detailedStats.losses}</span>
+                                    <span className="text-[9px] text-stone-500 ml-1.5 font-bold">/{detailedStats.totalMatches}M</span>
                                 </div>
 
-                                <div className="p-3 bg-stone-900/50 border border-stone-800 rounded-xl col-span-2 sm:col-span-1">
+                                <div className="p-2.5 bg-red-950/20 border border-red-900/40 rounded-xl">
                                     <div className="flex items-center justify-between mb-1">
-                                        <span className="text-[8px] text-stone-500 font-bold uppercase tracking-wider block">Hard Mode Wins</span>
-                                        <Flame className="w-3.5 h-3.5 text-amber-500/80" />
+                                        <span className="text-[8px] text-red-400 font-bold uppercase tracking-wider block">Hard Mode</span>
+                                        <Flame className="w-3.5 h-3.5 text-amber-400" />
                                     </div>
-                                    <span className="text-xl font-black text-stone-200 font-mono">{hardModeWins}</span>
+                                    <span className="text-lg font-black text-red-300">{detailedStats.hardModeWins}W</span>
+                                    <span className="text-[9px] text-stone-400 ml-1.5 font-bold">STRK {detailedStats.bestStreak}W</span>
+                                </div>
+
+                                <div className="p-2.5 bg-amber-950/20 border border-amber-800/40 rounded-xl">
+                                    <div className="flex items-center justify-between mb-1">
+                                        <span className="text-[8px] text-amber-400 font-bold uppercase tracking-wider block">Rating / Rank</span>
+                                        <Award className="w-3.5 h-3.5 text-amber-400" />
+                                    </div>
+                                    <span className="text-lg font-black text-amber-300">{detailedStats.combatRating.toLocaleString()}</span>
+                                    <span className="text-[9px] text-amber-400/90 ml-1 font-bold">{detailedStats.combatRank.tier}</span>
                                 </div>
                             </div>
 
-                            {/* Combat Analytics Box */}
-                            <div className="space-y-2.5 bg-stone-900/30 p-3.5 rounded-2xl border border-stone-850">
-                                <span className="text-[9px] font-bold uppercase tracking-wider text-stone-400 flex items-center gap-1.5">
-                                    <Crosshair className="w-3.5 h-3.5 text-stone-500" />
-                                    Combat Analytics
-                                </span>
+                            {/* Full Combat Analytics Box */}
+                            <div className="space-y-2.5 bg-stone-900/40 p-3 rounded-2xl border border-stone-850 font-mono tabular-nums">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-[9px] font-bold uppercase tracking-wider text-stone-400 flex items-center gap-1.5">
+                                        <Crosshair className="w-3.5 h-3.5 text-cyan-400" />
+                                        Full Combat Analytics
+                                    </span>
+                                    <span className="text-[8.5px] font-bold text-stone-400">
+                                        PLAYTIME: <strong className="text-stone-200">{detailedStats.formattedPlaytime}</strong>
+                                    </span>
+                                </div>
 
                                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[9px]">
-                                    <div className="p-2 bg-stone-950/60 rounded-xl border border-stone-850">
-                                        <span className="text-stone-500 block uppercase">Shots Fired</span>
-                                        <span className="text-stone-200 font-bold text-xs">{stats.shotsFired || 0}</span>
+                                    <div className="p-2 bg-stone-950 rounded-xl border border-stone-850">
+                                        <span className="text-stone-500 block uppercase text-[8px]">Accuracy</span>
+                                        <span className="text-cyan-300 font-black text-xs">{detailedStats.accuracy}%</span>
+                                        <span className="text-stone-500 text-[8px] block">{detailedStats.shotsHit}/{detailedStats.shotsFired} SHOTS</span>
                                     </div>
-                                    <div className="p-2 bg-stone-950/60 rounded-xl border border-stone-850">
-                                        <span className="text-stone-500 block uppercase">Shots Hit</span>
-                                        <span className="text-stone-200 font-bold text-xs">{stats.shotsHit || 0}</span>
+                                    <div className="p-2 bg-stone-950 rounded-xl border border-stone-850">
+                                        <span className="text-stone-500 block uppercase text-[8px]">Damage Dealt</span>
+                                        <span className="text-orange-300 font-black text-xs">{detailedStats.damageDealt} HP</span>
+                                        <span className="text-stone-500 text-[8px] block">TAKEN {detailedStats.damageTaken} ({detailedStats.damageRatio}×)</span>
                                     </div>
-                                    <div className="p-2 bg-stone-950/60 rounded-xl border border-stone-850">
-                                        <span className="text-stone-500 block uppercase">Self Shots</span>
-                                        <span className="text-stone-300 font-bold text-xs">{stats.selfShots || 0}</span>
+                                    <div className="p-2 bg-stone-950 rounded-xl border border-stone-850">
+                                        <span className="text-stone-500 block uppercase text-[8px]">Items / Fav</span>
+                                        <span className="text-amber-300 font-black text-xs">{detailedStats.itemsUsed} USED</span>
+                                        <span className="text-stone-400 text-[8px] block truncate">{detailedStats.mostUsedItem}</span>
                                     </div>
-                                    <div className="p-2 bg-stone-950/60 rounded-xl border border-stone-850">
-                                        <span className="text-stone-500 block uppercase">Damage Dealt</span>
-                                        <span className="text-stone-200 font-bold text-xs">{stats.damageDealt || 0} HP</span>
+                                    <div className="p-2 bg-stone-950 rounded-xl border border-stone-850">
+                                        <span className="text-stone-500 block uppercase text-[8px]">Peak / Self</span>
+                                        <span className="text-white font-black text-xs">RD {detailedStats.highestRound}</span>
+                                        <span className="text-stone-500 text-[8px] block">{detailedStats.totalRounds} RDS • {detailedStats.selfShots} SELF</span>
                                     </div>
                                 </div>
                             </div>
 
-                            {/* Match History: ONLY SHOWN ON OTHER PLAYERS' PROFILES */}
-                            {!isOwnProfile && stats.matchHistory && stats.matchHistory.length > 0 && (
+                            {/* Match History: Shown for both own & public profiles */}
+                            {stats.matchHistory && stats.matchHistory.length > 0 && (
                                 <div className="space-y-2">
                                     <span className="text-[9px] font-bold uppercase tracking-wider text-stone-400 flex items-center gap-1.5">
                                         <History className="w-3.5 h-3.5 text-stone-500" />
-                                        Match History (Click for full report)
+                                        Match History ({stats.matchHistory.length} Recorded — Click for full report)
                                     </span>
 
                                     <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1 custom-scrollbar">

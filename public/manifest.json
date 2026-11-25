@@ -5,10 +5,10 @@
   "start_url": "/",
   "id": "/",
   "scope": "/",
-  "display": "standalone",
+  "display": "fullscreen",
   "display_override": [
-    "standalone",
     "fullscreen",
+    "standalone",
     "minimal-ui",
     "window-controls-overlay"
   ],

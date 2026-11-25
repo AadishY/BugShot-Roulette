@@ -31,6 +31,10 @@ interface ControlsProps {
     onMpShoot?: (targetId: string) => void;
     settings?: GameSettings;
     isCompact?: boolean;
+    isLocalSplit?: boolean;
+    activeTurnOwner?: TurnOwner;
+    activePlayerName?: string;
+    targetOpponentName?: string;
 }
 
 const ControlsComponent: React.FC<ControlsProps> = ({
@@ -48,7 +52,11 @@ const ControlsComponent: React.FC<ControlsProps> = ({
     mpMyPlayerId,
     onMpShoot,
     settings,
-    isCompact: isCompactProp
+    isCompact: isCompactProp,
+    isLocalSplit = false,
+    activeTurnOwner = 'PLAYER',
+    activePlayerName,
+    targetOpponentName
 }) => {
     const isBalanced = !!settings?.balancedPerformance || !!settings?.ultraPerformance;
     const isPotato = !!settings?.ultraPerformance;
@@ -60,13 +68,14 @@ const ControlsComponent: React.FC<ControlsProps> = ({
         : [];
 
     const handleShootOpponent = (opponentId?: string) => {
-        // Direct Fire - Snappier response
-        onFireShot('DEALER', opponentId);
+        // In Local Split Seat B (DEALER), opponent is PLAYER
+        const targetOwner: TurnOwner = isLocalSplit && activeTurnOwner === 'DEALER' ? 'PLAYER' : 'DEALER';
+        onFireShot(targetOwner, opponentId);
     };
 
     const handleShootSelf = () => {
-        // Direct Fire
-        onFireShot('PLAYER');
+        const selfOwner: TurnOwner = isLocalSplit && activeTurnOwner === 'DEALER' ? 'DEALER' : 'PLAYER';
+        onFireShot(selfOwner);
     };
 
     const isOppAimed = isMobileTouch && currentAimTarget === 'OPPONENT';
@@ -103,6 +112,11 @@ const ControlsComponent: React.FC<ControlsProps> = ({
                         <Hand size={isCompact ? 15 : 18} className="lg:w-6 lg:h-6 shrink-0" />
                         {isRecovering ? (
                             <><span className={isCompact ? 'hidden' : 'hidden md:inline'}>WAIT </span>RECOVERING...</>
+                        ) : isLocalSplit && activePlayerName ? (
+                            <span className="whitespace-nowrap flex items-center gap-1.5">
+                                <span className="truncate max-w-[140px] sm:max-w-[220px]">{activePlayerName.toUpperCase()}</span>
+                                <span>• GRAB SHOTGUN</span>
+                            </span>
                         ) : (
                             <>GRAB SHOTGUN</>
                         )}
@@ -274,7 +288,13 @@ const ControlsComponent: React.FC<ControlsProps> = ({
                                         }
                                     >
                                         <Target size={isCompact ? 15 : 18} className="lg:w-6 lg:h-6 shrink-0" />
-                                        {isOppAimed ? 'CONFIRM FIRE' : (isMultiplayer ? 'SHOOT OPPONENT' : 'SHOOT DEALER')}
+                                        <span className="truncate max-w-[220px] sm:max-w-[320px]">
+                                            {isOppAimed
+                                                ? 'CONFIRM FIRE'
+                                                : isLocalSplit && targetOpponentName
+                                                    ? `SHOOT ${targetOpponentName.toUpperCase()}`
+                                                    : (isMultiplayer ? 'SHOOT OPPONENT' : 'SHOOT DEALER')}
+                                        </span>
                                     </button>
                                 )}
 

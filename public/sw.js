@@ -1,5 +1,5 @@
-const CACHE_NAME = 'bugshot-roulette-v11';
-const RUNTIME_CACHE = 'bugshot-roulette-runtime-v11';
+const CACHE_NAME = 'bugshot-roulette-v12';
+const RUNTIME_CACHE = 'bugshot-roulette-runtime-v12';
 
 // Critical core assets to pre-cache on install for 100% offline singleplayer capability
 const CRITICAL_ASSETS = [
@@ -181,16 +181,7 @@ self.addEventListener('activate', (event) => {
             );
 
             await self.clients.claim();
-            console.log('[Service Worker] Clients claimed. Broadcasting UPDATE_AVAILABLE...');
-
-            const clients = await self.clients.matchAll({ type: 'window' });
-            clients.forEach((client) => {
-                client.postMessage({
-                    type: 'UPDATE_AVAILABLE',
-                    version: CACHE_NAME,
-                    timestamp: Date.now()
-                });
-            });
+            console.log('[Service Worker] Clients claimed for version:', CACHE_NAME);
         })()
     );
 });
@@ -345,9 +336,15 @@ self.addEventListener('fetch', (event) => {
 
     if (isStaticAsset) {
         const isUnhashedMutable = /\.(json|js|css)$/i.test(url.pathname) && !url.pathname.startsWith('/assets/');
+        // CRITICAL: Never ignore query strings for query-parameterized endpoints (e.g. DiceBear ?seed=..., Google Fonts)
+        const shouldIgnoreSearch =
+            url.origin === self.location.origin &&
+            !url.search &&
+            !url.host.includes('api.dicebear.com') &&
+            !url.host.includes('fonts.googleapis.com');
 
         event.respondWith(
-            caches.match(event.request, { ignoreSearch: true }).then((cachedResponse) => {
+            caches.match(event.request, shouldIgnoreSearch ? { ignoreSearch: true } : undefined).then((cachedResponse) => {
                 const fetchPromise = fetch(
                     event.request,
                     isUnhashedMutable ? { cache: 'no-cache' } : undefined

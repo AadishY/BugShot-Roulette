@@ -1564,8 +1564,26 @@ io.on('connection', (socket) => {
         const room = rooms.get(safeRoomId);
         if (room && room.hostId === socket.id && !room.gameState) {
             const nextSettings = buildRoomSettings(settings, false);
-            if (room.settings?.maxPlayers && settings.maxPlayers === undefined) {
+            const activeCount = room.players.filter(p => !p.disconnected).length;
+            if (settings.maxPlayers !== undefined) {
+                const requestedMax = Number(settings.maxPlayers);
+                const clampedMax = Number.isFinite(requestedMax)
+                    ? Math.min(4, Math.max(2, Math.max(activeCount, Math.round(requestedMax))))
+                    : (room.settings?.maxPlayers || 4);
+                nextSettings.maxPlayers = clampedMax;
+                room.maxPlayers = clampedMax;
+            } else if (room.settings?.maxPlayers) {
                 nextSettings.maxPlayers = room.settings.maxPlayers;
+            }
+            const rawName = typeof settings.roomName === 'string'
+                ? settings.roomName
+                : (typeof settings.name === 'string' ? settings.name : null);
+            if (rawName !== null) {
+                const cleanedName = sanitizeShortString(rawName, 24);
+                if (cleanedName) {
+                    room.name = cleanedName;
+                    nextSettings.roomName = cleanedName;
+                }
             }
             room.settings = nextSettings;
             room.lastActivity = Date.now();

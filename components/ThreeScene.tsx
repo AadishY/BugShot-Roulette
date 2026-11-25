@@ -104,12 +104,13 @@ const syncResolution = (container: HTMLDivElement, sceneContext: SceneContext, s
 
     const pxScale = getPresetPixelScale(settings, width);
     const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
-    const maxPixelRatio = getPresetMaxPixelRatio(preset, nativeDpr, isAndroid);
+    const isSoftwareGl = !!scene.userData.isSoftwareGl;
+    const maxPixelRatio = getPresetMaxPixelRatio(preset, nativeDpr, isAndroid, isSoftwareGl);
 
     scene.userData.basePixelRatio = maxPixelRatio;
     const dynamicScale = scene.userData.dynamicPixelRatioScale ?? 1.0;
     const minDpr = isAndroid ? 0.55 : 0.65;
-    const effectivePixelRatio = Math.max(minDpr, Math.min(maxPixelRatio, maxPixelRatio * dynamicScale));
+    const effectivePixelRatio = isSoftwareGl ? 1 : Math.max(minDpr, Math.min(maxPixelRatio, maxPixelRatio * dynamicScale));
     renderer.setPixelRatio(effectivePixelRatio);
     renderer.setSize(width / pxScale, height / pxScale, false);
     renderer.domElement.style.imageRendering = 'auto';
@@ -239,10 +240,14 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
                 (context.renderer.domElement.style as any).webkitTouchCallout = 'none';
                 updateCameraResponsive();
 
-                // Precompile shaders and render an initial warmup frame while loading overlay is active
+                // Render an initial warmup frame; skip heavy synchronous compile on low/potato/mobile-balanced/software GL to avoid blocking clicks
                 try {
-                    if (!context.renderer.getContext().isContextLost()) {
-                        context.renderer.compile(context.scene, context.camera);
+                    const gl = context.renderer.getContext();
+                    const profile = context.scene.userData.graphicsProfile;
+                    if (gl && !gl.isContextLost()) {
+                        if (!profile?.skipSyncCompile) {
+                            context.renderer.compile(context.scene, context.camera);
+                        }
                         context.renderer.render(context.scene, context.camera);
                     }
                 } catch (e) {
@@ -308,14 +313,21 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
         document.addEventListener('visibilitychange', handleVisibilityChange);
 
         const animate = (currentTime: number = performance.now()) => {
-            frameId = requestAnimationFrame(animate);
+            if (!isMounted) return;
+            const isSoftwareGl = !!sceneRef.current?.scene.userData?.isSoftwareGl;
+            if (!isSoftwareGl) {
+                frameId = requestAnimationFrame(animate);
+            }
             if (!sceneRef.current) return;
             // Skip/pause 3D render loop when window is hidden, paused, or WebGL context is lost
             if (propsRef.current.isPaused || !isTabVisible || document.hidden || document.visibilityState !== 'visible' || sceneRef.current.scene.userData?.isContextLost || sceneRef.current.renderer.getContext().isContextLost()) {
-                lastTime = currentTime; 
-                lastFrameTime = currentTime; 
+                lastTime = currentTime;
+                lastFrameTime = currentTime;
                 fpsTimeStart = currentTime;
                 frameCount = 0;
+                if (isSoftwareGl && isMounted) {
+                    swPaceTimeout = setTimeout(() => { frameId = requestAnimationFrame(animate); }, 100);
+                }
                 return;
             }
 
@@ -323,15 +335,22 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
             const isInMenu = phase === 'BOOT' || phase === 'INTRO' || phase === 'LOAD';
 
             const preset = getGraphicsPreset(propsRef.current.settings);
-            // Target FPS: 30 in menu to save battery, 60 during active match
-            const currentTargetFPS = isInMenu ? 30 : 60;
+            // Target FPS: 24 in software GL, 30 in menu to save battery, 60 during active match
+            const currentTargetFPS = isSoftwareGl ? 24 : (isInMenu ? 30 : 60);
             const currentFrameInterval = currentTargetFPS > 0 ? (1000 / currentTargetFPS) : 0;
             const shouldLimitFrame = currentTargetFPS > 0;
 
             // Frame Limiting Logic (Enforce based on performance settings to save battery/thermal)
             if (shouldLimitFrame) {
                 const elapsed = currentTime - lastFrameTime;
-                if (elapsed < currentFrameInterval) return;
+                if (elapsed < currentFrameInterval) {
+                    if (isSoftwareGl && isMounted) {
+                        swPaceTimeout = setTimeout(() => {
+                            if (isMounted) frameId = requestAnimationFrame(animate);
+                        }, Math.max(8, currentFrameInterval - elapsed));
+                    }
+                    return;
+                }
                 lastFrameTime = currentTime - (elapsed % currentFrameInterval);
             } else {
                 lastFrameTime = currentTime;
@@ -455,11 +474,8 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
 
             if (sceneRef.current && propsRef.current.onUpdateNameTags) {
                 const shouldReduceNameTags = !!sceneRef.current.scene.userData.performanceMode;
-                if (++nameTagFrameCounter % (shouldReduceNameTags ? 4 : nameTagUpdateInterval) !== 0) {
-                    return;
-                }
-
-                const { scene, camera, dealerGroup } = sceneRef.current;
+                if (++nameTagFrameCounter % (shouldReduceNameTags ? 4 : nameTagUpdateInterval) === 0) {
+                    const { scene, camera, dealerGroup } = sceneRef.current;
                 const worldPos = worldPositionVec.current;
                 const bbox3 = _headBox3.current;
                 const tagsList = _tagsScratch.current;
@@ -472,30 +488,49 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
                 if (!scene.userData.cachedDealerHead) scene.userData.cachedDealerHead = dealerHead;
 
                 let tagCount = 0;
-                if (dealerHead && projectHeadTag(dealerHead, propsRef.current.gameState.opponentName || 'OPPONENT', camera, worldPos, bbox3, tagsList[tagCount])) {
-                    tagCount++;
-                }
-
-                const player3Head = getCachedHead(scene, 'cachedPlayer3Head', 'PLAYER3');
-                let player3Name = 'OPPONENT 2';
-                if (myIndex !== -1) {
-                    const size = players.length >= 4 ? 4 : 3;
-                    const sideOpponent = players[(myIndex + 1) % size];
-                    if (sideOpponent) player3Name = sideOpponent.name;
-                }
-                if (player3Head && projectHeadTag(player3Head, player3Name, camera, worldPos, bbox3, tagsList[tagCount])) {
-                    tagCount++;
-                }
-
-                if (players.length >= 4) {
-                    const player4Head = getCachedHead(scene, 'cachedPlayer4Head', 'PLAYER4');
-                    let player4Name = 'OPPONENT 3';
-                    if (myIndex !== -1) {
-                        const rightOpponent = players[(myIndex + 3) % 4];
-                        if (rightOpponent) player4Name = rightOpponent.name;
+                if (propsRef.current.gameState.isLocalSplit) {
+                    if (camera.position.z < -6) {
+                        const localP1Head = getCachedHead(scene, 'cachedLocalPlayer1Head', 'LOCAL_PLAYER1');
+                        const p1Label = propsRef.current.gameState.player1Name || 'PLAYER 1';
+                        if (localP1Head && projectHeadTag(localP1Head, p1Label, camera, worldPos, bbox3, tagsList[tagCount])) {
+                            tagsList[tagCount].x = Math.max(12, Math.min(88, tagsList[tagCount].x));
+                            tagsList[tagCount].y = Math.max(21, Math.min(76, tagsList[tagCount].y));
+                            tagCount++;
+                        }
+                    } else if (camera.position.z > 6) {
+                        const p2Label = propsRef.current.gameState.opponentName || 'PLAYER 2';
+                        if (dealerHead && projectHeadTag(dealerHead, p2Label, camera, worldPos, bbox3, tagsList[tagCount])) {
+                            tagsList[tagCount].x = Math.max(12, Math.min(88, tagsList[tagCount].x));
+                            tagsList[tagCount].y = Math.max(21, Math.min(76, tagsList[tagCount].y));
+                            tagCount++;
+                        }
                     }
-                    if (player4Head && projectHeadTag(player4Head, player4Name, camera, worldPos, bbox3, tagsList[tagCount])) {
+                } else {
+                    if (dealerHead && projectHeadTag(dealerHead, propsRef.current.gameState.opponentName || 'OPPONENT', camera, worldPos, bbox3, tagsList[tagCount])) {
                         tagCount++;
+                    }
+
+                    const player3Head = getCachedHead(scene, 'cachedPlayer3Head', 'PLAYER3');
+                    let player3Name = 'OPPONENT 2';
+                    if (myIndex !== -1) {
+                        const size = players.length >= 4 ? 4 : 3;
+                        const sideOpponent = players[(myIndex + 1) % size];
+                        if (sideOpponent) player3Name = sideOpponent.name;
+                    }
+                    if (player3Head && projectHeadTag(player3Head, player3Name, camera, worldPos, bbox3, tagsList[tagCount])) {
+                        tagCount++;
+                    }
+
+                    if (players.length >= 4) {
+                        const player4Head = getCachedHead(scene, 'cachedPlayer4Head', 'PLAYER4');
+                        let player4Name = 'OPPONENT 3';
+                        if (myIndex !== -1) {
+                            const rightOpponent = players[(myIndex + 3) % 4];
+                            if (rightOpponent) player4Name = rightOpponent.name;
+                        }
+                        if (player4Head && projectHeadTag(player4Head, player4Name, camera, worldPos, bbox3, tagsList[tagCount])) {
+                            tagCount++;
+                        }
                     }
                 }
 
@@ -526,6 +561,14 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
                     prevTagsRef.current = pool;
                     propsRef.current.onUpdateNameTags(pool);
                 }
+                }
+            }
+
+            if (isSoftwareGl && isMounted) {
+                // Yield to main thread after draw on software WebGL renderers so UI stays responsive
+                swPaceTimeout = setTimeout(() => {
+                    if (isMounted) frameId = requestAnimationFrame(animate);
+                }, Math.max(16, 40 - frameDuration));
             }
         };
 
@@ -535,35 +578,49 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
             syncResolution(containerRef.current, sceneRef.current, propsRef.current.settings);
         };
 
+        let isMounted = true;
         let checkInterval: any = null;
         let touchTimeout: any = null;
+        let initRafId = 0;
+        let initTimer: ReturnType<typeof setTimeout> | null = null;
+        let swPaceTimeout: ReturnType<typeof setTimeout> | null = null;
 
-        // Initialize immediately if possible to avoid flash
+        const scheduleInit = () => {
+            if (!isMounted || sceneRef.current) return;
+            // Yield 1 animation frame + macrotask so LoadingScreen paints immediately with zero UI freeze on Start Game
+            initRafId = requestAnimationFrame(() => {
+                if (!isMounted || sceneRef.current) return;
+                initTimer = setTimeout(() => {
+                    if (!isMounted || sceneRef.current || !containerRef.current || containerRef.current.clientWidth <= 0) return;
+                    initThree();
+                    if (sceneRef.current) {
+                        animate();
+                    }
+                }, 16);
+            });
+        };
+
         if (containerRef.current && containerRef.current.clientWidth > 0) {
-            initThree();
-            animate();
+            scheduleInit();
         } else {
-            // Fallback for edge cases when layout takes a few frames
             checkInterval = setInterval(() => {
                 if (containerRef.current && containerRef.current.clientWidth > 0) {
                     if (!sceneRef.current) {
-                        initThree();
-                        animate();
+                        scheduleInit();
                     }
                     if (checkInterval) {
                         clearInterval(checkInterval);
                         checkInterval = null;
                     }
                 }
-            }, 16);
+            }, 32);
         }
 
         const resizeObserver = new ResizeObserver(() => {
             if (sceneRef.current) {
                 updateCameraResponsive();
-            } else if (containerRef.current && containerRef.current.clientWidth > 0) {
-                initThree();
-                animate();
+            } else if (containerRef.current && containerRef.current.clientWidth > 0 && !initRafId && !initTimer) {
+                scheduleInit();
                 if (checkInterval) {
                     clearInterval(checkInterval);
                     checkInterval = null;
@@ -578,7 +635,8 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
         const updateHoverIndex = () => {
             if (!sceneRef.current) return;
             const currentGameState = propsRef.current.gameState;
-            if (currentGameState.phase === 'CARD_SELECT' && currentGameState.turnOwner === 'PLAYER' && currentGameState.selectedCardIndex == null) {
+            const canPickCard = currentGameState.turnOwner === 'PLAYER' || (Boolean(currentGameState.isLocalSplit) && currentGameState.turnOwner === 'DEALER');
+            if (currentGameState.phase === 'CARD_SELECT' && canPickCard && currentGameState.selectedCardIndex == null) {
                 if (sceneRef.current.itemDeckCards) {
                     sceneRef.current.raycaster.setFromCamera(sceneRef.current.mouse, sceneRef.current.camera);
                     const intersects = _rayIntersectsScratch.current;
@@ -628,7 +686,8 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
             const currentProps = propsRef.current;
             const currentGameState = currentProps.gameState;
 
-            if (currentGameState.phase === 'CARD_SELECT' && currentGameState.turnOwner === 'PLAYER' && currentGameState.selectedCardIndex == null) {
+            const canPickCard = currentGameState.turnOwner === 'PLAYER' || (Boolean(currentGameState.isLocalSplit) && currentGameState.turnOwner === 'DEALER');
+            if (currentGameState.phase === 'CARD_SELECT' && canPickCard && currentGameState.selectedCardIndex == null) {
                 const itemDeckCards = sceneRef.current.itemDeckCards;
                 if (itemDeckCards && itemDeckCards.length > 0) {
                     sceneRef.current.raycaster.setFromCamera(sceneRef.current.mouse, sceneRef.current.camera);
@@ -699,6 +758,19 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
         el.addEventListener('touchend', handleTouchEnd, touchOpt);
 
         return () => {
+            isMounted = false;
+            if (initRafId) {
+                cancelAnimationFrame(initRafId);
+                initRafId = 0;
+            }
+            if (initTimer) {
+                clearTimeout(initTimer);
+                initTimer = null;
+            }
+            if (swPaceTimeout) {
+                clearTimeout(swPaceTimeout);
+                swPaceTimeout = null;
+            }
             if (checkInterval) {
                 clearInterval(checkInterval);
                 checkInterval = null;
@@ -731,6 +803,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
         };
     }, [
         gameState.isMultiplayer,
+        gameState.isLocalSplit,
         gameState.isThreePlayer,
         gameState.multiplayerState?.players?.map(p => `${p.id}:${p.model || ''}`).join(','),
         Object.entries(gameState.multiplayerState?.debugPlayerModels || {})
@@ -743,7 +816,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
         settings.debugHeadModel,
         isPaused,
         dealerModel
-    ]); // Rebuild scene when switching SP/MP, toggling perf/head override, or unpausing the game
+    ]); // Rebuild scene when switching SP/MP/Split, toggling perf/head override, or unpausing the game
 
     // Separate effect for Pixel Scale / Resolution updates (No Rebuild)
     useEffect(() => {

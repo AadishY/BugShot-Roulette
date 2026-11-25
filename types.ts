@@ -1,6 +1,9 @@
 import type * as THREE from 'three';
 import type { GameStats, MatchStats } from './utils/statsManager';
 import type { DicebearStyle } from './utils/dicebear';
+import type { SplitItemRule, LocalSplitConfig } from './utils/splitMode';
+
+export type { SplitItemRule, LocalSplitConfig };
 
 export type TarotCardName =
   | 'The Magician'
@@ -80,6 +83,9 @@ export interface GameState {
   roundCount: number;
   isHardMode: boolean;
   isMultiplayer?: boolean;
+  isLocalSplit?: boolean;
+  localSplitConfig?: LocalSplitConfig;
+  player1Name?: string;
   isThreePlayer?: boolean;
   isFourPlayer?: boolean;
   opponentName?: string;
@@ -137,9 +143,13 @@ export interface RoomSettings {
   rounds: number;
   hp: number;
   itemsPerShipment: number;
+  itemRule?: SplitItemRule;
   isAdvanced?: boolean;
   itemWeights?: Record<string, number>;
   isPrivate?: boolean;
+  roomName?: string;
+  name?: string;
+  maxPlayers?: number;
 }
 
 export interface ChatMessage {

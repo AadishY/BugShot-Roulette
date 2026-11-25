@@ -91,9 +91,13 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
     // FOV & Heartbeat Handling
     let targetCameraFOV = settings.fov || 85;
     
+    const isSplitMode = Boolean(gameState?.isLocalSplit);
+    const isSplitSeatB = isSplitMode && turnOwner === 'DEALER';
+    const isLocalHumanTurn = turnOwner === 'PLAYER' || isSplitSeatB;
+
     // Heartbeat pulse calculation for self-aim (150 BPM)
     let heartbeatPulse = 0;
-    if (turnOwner === 'PLAYER' && aimTarget === 'SELF') {
+    if (isLocalHumanTurn && aimTarget === 'SELF') {
         const beatTime = (time * 2.5) % 1.0;
         heartbeatPulse = (beatTime < 0.15 ? Math.sin((beatTime / 0.15) * Math.PI) : (beatTime < 0.45 ? 0.5 * Math.sin(((beatTime - 0.15) / 0.3) * Math.PI) : 0));
     }
@@ -101,11 +105,11 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
     // Zoom Logic
     if (cameraView === 'TABLE') {
         targetCameraFOV *= 0.8;
-    } else if (aimTarget === 'OPPONENT' && turnOwner === 'DEALER') {
+    } else if (aimTarget === 'OPPONENT' && turnOwner === 'DEALER' && !isSplitMode) {
         targetCameraFOV *= 0.85;
-    } else if (aimTarget === 'SELF' && turnOwner === 'PLAYER') {
+    } else if (aimTarget === 'SELF' && isLocalHumanTurn) {
         targetCameraFOV *= (0.75 - heartbeatPulse * 0.15); // Deep contraction zoom on thumps
-    } else if (aimTarget !== 'IDLE' && turnOwner === 'PLAYER') {
+    } else if (aimTarget !== 'IDLE' && isLocalHumanTurn) {
         targetCameraFOV *= 0.9;
     }
 
@@ -223,6 +227,32 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
         } else {
             targets.targetPos.set(6, -0.6, -2);
             targets.targetRot.set(0, -Math.PI / 2, -Math.PI / 2);
+        }
+    } else if (isSplitSeatB) {
+        // Seat B (-Z) human player aiming across table (+Z) or at self (-Z)
+        if (aimTarget === 'OPPONENT') {
+            const swayX = Math.sin(time * 1.5) * 0.02;
+            const swayY = Math.cos(time * 2.0) * 0.02;
+            const xOffset = isMobile ? swayX * 0.5 : swayX;
+            targets.targetPos.set(-xOffset, swayY, -8);
+            targets.targetRot.set(swayY * 0.5, -xOffset * 0.5, 0);
+        } else if (aimTarget === 'SELF') {
+            const yOffset = isMobile ? 1.55 : 1.8;
+            targets.targetPos.set(0, yOffset, -8.5 + flashZ);
+            targets.targetRot.set(0.08, Math.PI, 0);
+        } else if (aimTarget === 'CHOOSING') {
+            const xPos = isMobile ? 0.0 : -0.5;
+            const yPos = isMobile ? -0.4 : -1.0;
+            const zPos = isMobile ? -4.8 : -5.5;
+            targets.targetPos.set(xPos, yPos, zPos);
+            targets.targetRot.set(0, -Math.PI / 2.2, Math.PI / 2);
+        } else if (cameraView === 'GUN') {
+            const yPos = isMobile ? -0.4 : -0.75;
+            targets.targetPos.set(0, yPos, -4);
+            targets.targetRot.set(0, -Math.PI / 2, Math.PI / 2);
+        } else {
+            targets.targetPos.set(0, -0.8, -2);
+            targets.targetRot.set(0, -Math.PI / 2, 0);
         }
     } else {
         const isMP = gameState?.isMultiplayer;
@@ -410,15 +440,17 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
     if (scene.userData.lastPhase === undefined) scene.userData.lastPhase = phase;
     if (scene.userData.lastPhase !== phase) {
         if (phase === 'LOAD' || phase === 'LOOTING') {
-            camera.position.set(0, 3.8, 12);
-            targetCamPos.set(0, 3.8, 12);
+            const snapZ = isSplitSeatB ? -12 : 12;
+            const snapLookZ = isSplitSeatB ? 2 : -2;
+            camera.position.set(0, 3.8, snapZ);
+            targetCamPos.set(0, 3.8, snapZ);
             if (!scene.userData._curLookAt) {
-                scene.userData._curLookAt = new THREE.Vector3(0, 1.5, -2);
+                scene.userData._curLookAt = new THREE.Vector3(0, 1.5, snapLookZ);
             } else {
-                scene.userData._curLookAt.set(0, 1.5, -2);
+                scene.userData._curLookAt.set(0, 1.5, snapLookZ);
             }
             camera.rotation.set(0, 0, 0);
-            camera.lookAt(0, 1.5, -2);
+            camera.lookAt(0, 1.5, snapLookZ);
             scene.userData.cameraShake = 0;
             scene.userData.needsRecovery = false;
             scene.userData.hasPlayedDrop = false;
@@ -430,17 +462,32 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
 
     const pSwayX = Math.sin(time * 0.5) * 0.8;
     const pSwayY = Math.cos(time * 0.3) * 0.3;
+    const activeSelfCameraHit = isSplitMode
+        ? ((turnOwner === 'PLAYER' && animState.playerHit) || (turnOwner === 'DEALER' && animState.dealerHit))
+        : animState.playerHit;
 
-    if (animState.playerHit) {
-        targetCamPos.set(2.8, 0.8, 10.5);
+    if (activeSelfCameraHit) {
+        if (isSplitSeatB) {
+            targetCamPos.set(-2.8, 0.8, -10.5);
+        } else {
+            targetCamPos.set(2.8, 0.8, 10.5);
+        }
     } else if (cameraView === 'TABLE') {
-        targetCamPos.set(0, 10, 4);
-    } else if (cameraView === 'DEALER_GUN') {
+        targetCamPos.set(0, 10, isSplitSeatB ? -4 : 4);
+    } else if (cameraView === 'DEALER_GUN' && !isSplitMode) {
         // Look at the dealer holding the gun
         targetCamPos.set(pSwayX * 0.5 - 4, 3 + pSwayY * 0.2, 5);
     } else if (phase === 'LOAD' || phase === 'LOOTING') {
-        // Force player's default POV during load/looting
-        targetCamPos.set(pSwayX * 0.5, 3.8 + pSwayY, 12);
+        // Force active player's default POV during load/looting
+        targetCamPos.set(pSwayX * 0.5, 3.8 + pSwayY, isSplitSeatB ? -12 : 12);
+    } else if (isSplitSeatB) {
+        if (aimTarget === 'SELF') {
+            targetCamPos.set(0, 2.3, -10.2 + heartbeatPulse * 0.25);
+        } else if (aimTarget === 'OPPONENT') {
+            targetCamPos.set(-2.5 + pSwayX * 0.1, 3.0 + pSwayY * 0.1, -9);
+        } else {
+            targetCamPos.set(-pSwayX * 0.5, 3.8 + pSwayY, -12);
+        }
     } else if (turnOwner === 'DEALER') {
         if (aimTarget === 'OPPONENT') {
             targetCamPos.set(pSwayX * 0.1, 1.0 + pSwayY * 0.1, 3.5); // Closer & lower
@@ -467,15 +514,29 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
         }
     }
 
-    camera.position.lerp(targetCamPos, 1 - Math.exp(-5.0 * dt));
+    // Cinematic swing arc when camera orbits between Seat A (+Z) and Seat B (-Z) in Split Mode
+    if (isSplitMode && !activeSelfCameraHit) {
+        const zDelta = Math.abs(camera.position.z - targetCamPos.z);
+        if (zDelta > 5) {
+            const arcStrength = Math.min(1, (zDelta - 5) / 14);
+            targetCamPos.x += 5.2 * arcStrength;
+            targetCamPos.y += 1.8 * arcStrength;
+        }
+    }
+
+    camera.position.lerp(targetCamPos, 1 - Math.exp(-(isSplitMode ? 3.2 : 5.0) * dt));
     // Dynamic lookAt with sway
     if (!scene.userData._lookAtPosTemp) scene.userData._lookAtPosTemp = new THREE.Vector3(0, 2, -5);
-    const lookAtPos = scene.userData._lookAtPosTemp.set(0, 2, -5);
-    if (animState.playerHit) {
-        lookAtPos.set(-0.5, 3.8, -8);
+    const lookAtPos = scene.userData._lookAtPosTemp.set(0, 2, isSplitSeatB ? 5 : -5);
+    if (activeSelfCameraHit) {
+        if (isSplitSeatB) {
+            lookAtPos.set(0.5, 3.8, 8);
+        } else {
+            lookAtPos.set(-0.5, 3.8, -8);
+        }
     } else if (cameraView === 'TABLE') {
         lookAtPos.set(0, 0, 0);
-    } else if (cameraView === 'DEALER_GUN') {
+    } else if (cameraView === 'DEALER_GUN' && !isSplitMode) {
         lookAtPos.set(-0.5, 2, -6); // Look at dealer's chest/gun area
     } else if (cameraView === 'PLAYER3_GUN') {
         const sidePos = scene.userData.player3Side || 'left';
@@ -484,8 +545,18 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
     } else if (cameraView === 'PLAYER4_GUN') {
         lookAtPos.set(8, 2, -2);
     } else if (phase === 'LOAD' || phase === 'LOOTING') {
-        // Force player's lookAt target during load/looting
-        lookAtPos.set(0, 1.5, -2);
+        // Force active player's lookAt target during load/looting
+        lookAtPos.set(0, 1.5, isSplitSeatB ? 2 : -2);
+    } else if (isSplitSeatB) {
+        if (aimTarget === 'SELF') {
+            const shakeX = (Math.sin(time * 45) * 0.015) * (1.0 + heartbeatPulse * 3.0);
+            const shakeY = (Math.cos(time * 50) * 0.015) * (1.0 + heartbeatPulse * 3.0);
+            lookAtPos.set(shakeX, 1.8 + shakeY, -8.5);
+        } else if (aimTarget === 'OPPONENT') {
+            lookAtPos.set(0, 1.5, 14);
+        } else {
+            lookAtPos.set(0, 1.5, 2);
+        }
     } else if (turnOwner === 'DEALER') {
         if (aimTarget === 'OPPONENT') {
             lookAtPos.set(-0.5, 2.5, -8); // Look closer at dealer face
@@ -516,11 +587,11 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
 
     // Smoothly interpolate where the camera is looking
     if (!scene.userData._curLookAt) scene.userData._curLookAt = new THREE.Vector3(0, 2, 0);
-    scene.userData._curLookAt.lerp(lookAtPos, 1 - Math.exp(-3.7 * dt));
+    scene.userData._curLookAt.lerp(lookAtPos, 1 - Math.exp(-(isSplitMode ? 3.6 : 3.7) * dt));
     camera.lookAt(scene.userData._curLookAt);
 
 
-    if (animState.playerHit) {
+    if (activeSelfCameraHit) {
         // Falling over - Dramatic Instant Drop
         if (!scene.userData.hasPlayedDrop) {
             audioManager.playSound('dropping');
@@ -528,11 +599,11 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
             scene.userData.hasPlayedStand = false;
             scene.userData.recoveryStartTime = null;
         }
-        targetCamPos.set(2.8, 0.8, 10.5); // Hit floor (slumped above table)
-        camera.rotation.z = -0.7 + (Math.random() * 0.1);
+        targetCamPos.set(isSplitSeatB ? -2.8 : 2.8, 0.8, isSplitSeatB ? -10.5 : 10.5); // Hit floor (slumped above table)
+        camera.rotation.z = (isSplitSeatB ? 0.7 : -0.7) + (Math.random() * 0.1);
         scene.userData.cameraShake = 0.5;
         scene.userData.needsRecovery = true;
-    } else if (animState.playerRecovering || (scene.userData.needsRecovery && !animState.playerHit)) {
+    } else if ((!isSplitMode && animState.playerRecovering) || (isSplitMode && ((turnOwner === 'PLAYER' && animState.playerRecovering) || (turnOwner === 'DEALER' && animState.dealerRecovering))) || (scene.userData.needsRecovery && !activeSelfCameraHit)) {
         // Recovering (Stand up slowly) - Groggy effect
         if (!scene.userData.hasPlayedStand) {
             audioManager.playSound('standing');
@@ -610,13 +681,14 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
     // Dealer Animation - Enhanced with better drop/recovery
     // --- SPAWN PARTICLES ---
     // Dealer Animation - Enhanced with better drop/recovery
-    const baseY = gameState.isMultiplayer ? -4.5 : 3.0;
+    const usesPlayerAvatar = Boolean(gameState.isMultiplayer || gameState.isLocalSplit);
+    const baseY = usesPlayerAvatar ? -4.5 : 3.0;
     let dealerTargetY = dealerGroup.userData.targetY ?? (baseY + Math.sin(time) * 0.05);
 
-    // Sync Health Bar if it's a Player Model (Multiplayer)
+    // Sync Health Bar if it's a Player Model (Multiplayer or Local Split)
     if (dealerGroup.userData.hpFill) {
         const hpFill = dealerGroup.userData.hpFill as THREE.Mesh;
-        const maxHp = dealerGroup.userData.maxHp || 4;
+        const maxHp = props.dealer.maxHp || dealerGroup.userData.maxHp || 4;
         const currentHp = props.dealer.hp;
         const targetScaleX = Math.max(0, currentHp / maxHp);
         hpFill.scale.x = THREE.MathUtils.lerp(hpFill.scale.x, targetScaleX, 1 - Math.exp(-6.3 * dt));
@@ -641,6 +713,47 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
     const dealerSpeed = animState.dealerRecovering ? 4.0 : 12.0;
     const dealerDamping = 1 - Math.exp(-dealerSpeed * dt);
     dealerGroup.position.y += (dealerTargetY - dealerGroup.position.y) * dealerDamping;
+
+    // Local Split Seat A Avatar (Player 1 sitting at +Z) + Seat Visibility Toggle
+    const localPlayer1Group = scene.userData.cachedLocalPlayer1Group || scene.getObjectByName('LOCAL_PLAYER1');
+    if (localPlayer1Group) {
+        scene.userData.cachedLocalPlayer1Group = localPlayer1Group;
+        if (isSplitMode) {
+            dealerGroup.visible = camera.position.z > 2.5;
+            localPlayer1Group.visible = camera.position.z < -2.5;
+
+            if (localPlayer1Group.userData.hpFill) {
+                const p1HpFill = localPlayer1Group.userData.hpFill as THREE.Mesh;
+                const p1MaxHp = props.player.maxHp || localPlayer1Group.userData.maxHp || 4;
+                const p1ScaleX = Math.max(0, props.player.hp / p1MaxHp);
+                p1HpFill.scale.x = THREE.MathUtils.lerp(p1HpFill.scale.x, p1ScaleX, 1 - Math.exp(-6.3 * dt));
+                const hpWidth = p1HpFill.scale.x * 3.8;
+                p1HpFill.position.x = (hpWidth - 3.8) / 2;
+            }
+
+            const p1BaseY = -4.5;
+            let p1TargetY = p1BaseY + Math.sin(time * 0.95) * 0.05;
+            if (animState.playerHit) {
+                p1TargetY = -12.0;
+            } else if (animState.playerRecovering) {
+                const wobble = Math.sin(time * 4) * 0.15;
+                if (!scene.userData.localP1RecoveryStart) scene.userData.localP1RecoveryStart = time;
+                const progress = Math.min(1, (time - scene.userData.localP1RecoveryStart) / 1.5);
+                p1TargetY = p1BaseY + wobble * (1 - progress);
+            } else {
+                scene.userData.localP1RecoveryStart = null;
+            }
+            const p1Speed = animState.playerRecovering ? 4.0 : 12.0;
+            localPlayer1Group.position.y += (p1TargetY - localPlayer1Group.position.y) * (1 - Math.exp(-p1Speed * dt));
+
+            const p1Head = scene.userData.cachedLocalPlayer1Head || localPlayer1Group.getObjectByName('HEAD');
+            if (!scene.userData.cachedLocalPlayer1Head) scene.userData.cachedLocalPlayer1Head = p1Head;
+            if (p1Head) {
+                p1Head.rotation.y = THREE.MathUtils.lerp(p1Head.rotation.y, -mouse.x * 0.08, 1 - Math.exp(-3.1 * dt));
+                p1Head.rotation.x = THREE.MathUtils.lerp(p1Head.rotation.x, mouse.y * 0.01, 1 - Math.exp(-3.1 * dt));
+            }
+        }
+    }
 
     const player3Group = scene.userData.cachedPlayer3Group || scene.getObjectByName('PLAYER3');
     if (!scene.userData.cachedPlayer3Group) scene.userData.cachedPlayer3Group = player3Group;
@@ -722,7 +835,7 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
 
         // ENHANCED RED EYES - Skip for Player Model
         // Cache eye lights and pupils once to avoid per-frame instanceof checks
-        if (!gameState.isMultiplayer) {
+        if (!usesPlayerAvatar) {
             if (!scene.userData._cachedEyeLights) {
                 const eyeLights: THREE.PointLight[] = [];
                 const pupils: THREE.Mesh[] = [];
@@ -750,7 +863,7 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
         }
     }
 
-    if (!gameState.isMultiplayer) {
+    if (!usesPlayerAvatar) {
         if (!scene.userData.cachedFaceLight) scene.userData.cachedFaceLight = dealerGroup.getObjectByName("FACE_LIGHT");
         const faceLight = scene.userData.cachedFaceLight as THREE.PointLight;
         if (faceLight) {
@@ -891,6 +1004,16 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
 
     // Track frame performance for debug monitoring
     performanceMonitor.updateFrame();
+
+    // Throttled shadow refresh for Balanced preset (cuts shadow pass GPU cost in half)
+    const graphicsProfile = scene.userData.graphicsProfile;
+    if (renderer.shadowMap.enabled && !renderer.shadowMap.autoUpdate && graphicsProfile?.shadowRefreshInterval > 1) {
+        const nextTick = ((scene.userData._shadowFrameTick as number) || 0) + 1;
+        scene.userData._shadowFrameTick = nextTick;
+        if (nextTick % graphicsProfile.shadowRefreshInterval === 0) {
+            renderer.shadowMap.needsUpdate = true;
+        }
+    }
 
     renderer.render(scene, camera);
 }

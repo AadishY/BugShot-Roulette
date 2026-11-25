@@ -1,11 +1,20 @@
 import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { getDeviceType } from '../../utils/gameUtils';
+import { detectSoftwareWebGL } from '../../utils/three/graphicsConfig';
 
-interface ShellData {
-    mesh: THREE.Group;
+interface ShellInstanceData {
+    x: number;
+    y: number;
+    z: number;
+    rx: number;
+    ry: number;
+    rz: number;
+    scale: number;
     speed: number;
-    rotationSpeed: THREE.Vector3;
+    rotX: number;
+    rotY: number;
+    rotZ: number;
     drift: number;
     driftSpeed: number;
     driftOffset: number;
@@ -36,12 +45,13 @@ const isLowPerfDeviceOrSetting = (): boolean => {
 
 const ShellBackground: React.FC<ShellBackgroundProps> = React.memo(({ active = true }) => {
     const activeRef = useRef(active);
+    const modalPausedRef = useRef(false);
     const isRunningRef = useRef(false);
     const startAnimateRef = useRef<(() => void) | null>(null);
 
     useEffect(() => {
         activeRef.current = active;
-        if (active && !document.hidden && !isRunningRef.current && startAnimateRef.current) {
+        if (active && !modalPausedRef.current && !document.hidden && !isRunningRef.current && startAnimateRef.current) {
             startAnimateRef.current();
         }
     }, [active]);
@@ -51,7 +61,6 @@ const ShellBackground: React.FC<ShellBackgroundProps> = React.memo(({ active = t
         scene: THREE.Scene;
         camera: THREE.PerspectiveCamera;
         renderer: THREE.WebGLRenderer;
-        shells: ShellData[];
         disposables: { dispose: () => void }[];
     } | null>(null);
 
@@ -60,6 +69,7 @@ const ShellBackground: React.FC<ShellBackgroundProps> = React.memo(({ active = t
 
         const container = containerRef.current;
         let frameId: number | null = null;
+        let timeoutId: ReturnType<typeof setTimeout> | null = null;
         let resizeRafId: number | null = null;
         let resizeObserver: ResizeObserver | null = null;
 
@@ -73,119 +83,132 @@ const ShellBackground: React.FC<ShellBackgroundProps> = React.memo(({ active = t
             const device = getDeviceType();
             const isMob = device === 'mobile';
             const isTab = device === 'tablet';
-            const isTouch = isMob || isTab || ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
             const isLowPerf = isLowPerfDeviceOrSetting();
             const isLowEnd = isLowPerf || (isMob && (width < 600 || (window.devicePixelRatio || 1) < 2));
             const reducedMotion = isReducedMotionPreferred();
 
-            const shellCount = isLowPerf ? 6 : (isMob ? 8 : (isTab ? 14 : 28));
-
             const scene = new THREE.Scene();
             scene.background = new THREE.Color(0x000000);
-            scene.fog = new THREE.Fog(0x000000, 5, 30);
+            scene.fog = new THREE.Fog(0x000000, 7, 28);
 
-            const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 100);
+            const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 80);
             camera.position.set(0, 0, 15);
 
-            // alpha: false eliminates full-screen WebGL alpha blending in the browser compositor on Android
+            // alpha: false & depth: true, stencil: false for minimal mobile GPU bandwidth
             const renderer = new THREE.WebGLRenderer({
                 antialias: false,
-                powerPreference: isMob ? 'default' : 'high-performance',
+                powerPreference: isMob ? 'low-power' : 'default',
                 precision: isLowEnd ? 'lowp' : 'mediump',
                 alpha: false,
                 stencil: false
             });
 
-            const pixelScale = isMob ? 4.0 : (isTab ? 3.5 : 4.0);
-            renderer.setSize(Math.max(1, Math.floor(width / pixelScale)), Math.max(1, Math.floor(height / pixelScale)), false);
+            const isSoftwareGl = detectSoftwareWebGL(renderer.getContext());
+            const shellCount = isSoftwareGl
+                ? 8
+                : isLowPerf
+                    ? 6
+                    : isMob
+                        ? 10
+                        : isTab
+                            ? 14
+                            : 22;
+
+            const pixelScale = isSoftwareGl ? 6.0 : isMob ? 4.5 : isTab ? 4.0 : 4.0;
+            renderer.setSize(
+                Math.max(1, Math.floor(width / pixelScale)),
+                Math.max(1, Math.floor(height / pixelScale)),
+                false
+            );
             renderer.domElement.style.position = 'absolute';
             renderer.domElement.style.left = '0';
             renderer.domElement.style.top = '0';
             renderer.domElement.style.width = '100.5%';
             renderer.domElement.style.height = '100.5%';
             renderer.domElement.style.imageRendering = 'pixelated';
-            // Skip expensive CSS filter pass on mobile/touch/low-perf devices (handled by light intensity instead)
-            if (!isTouch && !isLowEnd) {
-                renderer.domElement.style.filter = 'contrast(1.2) brightness(1.2)';
-            }
             renderer.setPixelRatio(1);
             container.appendChild(renderer.domElement);
 
-            // Enhanced Lighting - Compensate for omitted CSS brightness filter on touch/low-end
-            const lightBoost = (isTouch || isLowEnd) ? 1.25 : 1.0;
-            const ambientLight = new THREE.AmbientLight(0x1a1a1a, (isMob ? 10.0 : 8.0) * lightBoost);
+            // Ultra-light 2-light rig paired with MeshLambertMaterial (10x cheaper than PBR + 5 lights)
+            const ambientLight = new THREE.AmbientLight(0x2a1a1a, 2.2);
             scene.add(ambientLight);
 
-            const topLight = new THREE.DirectionalLight(0xffffff, (isMob ? 20.0 : 15.0) * lightBoost);
-            topLight.position.set(0, 20, 10);
-            scene.add(topLight);
+            const keyLight = new THREE.DirectionalLight(0xfff0dd, 3.2);
+            keyLight.position.set(4, 18, 12);
+            scene.add(keyLight);
 
-            if (device !== 'mobile' && !isLowPerf) {
-                const redLight = new THREE.PointLight(0xcc0000, 100.0, 100);
-                redLight.position.set(-10, 5, 10);
-                scene.add(redLight);
+            // Two InstancedMeshes total => 2 draw calls regardless of shellCount
+            const radialSegments = isLowEnd || isSoftwareGl ? 6 : 8;
+            const bodyGeo = new THREE.CylinderGeometry(0.12, 0.12, 0.45, radialSegments, 1);
+            const baseGeo = new THREE.CylinderGeometry(0.13, 0.13, 0.1, radialSegments, 1);
+            // Bake brass cap offset directly into geometry so both instances share one transform matrix
+            baseGeo.translate(0, -0.22, 0);
 
-                if (device === 'pc') {
-                    const blueLight = new THREE.PointLight(0x0044ff, 120.0, 100);
-                    blueLight.position.set(10, -5, 10);
-                    scene.add(blueLight);
+            const bodyMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+            const baseMat = new THREE.MeshLambertMaterial({ color: 0xd4a428 });
 
-                    const amberLight = new THREE.PointLight(0xffaa00, 150.0, 120);
-                    amberLight.position.set(0, 5, 15);
-                    scene.add(amberLight);
-                }
-            }
+            const bodyInstanced = new THREE.InstancedMesh(bodyGeo, bodyMat, shellCount);
+            const baseInstanced = new THREE.InstancedMesh(baseGeo, baseMat, shellCount);
+            bodyInstanced.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+            baseInstanced.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+            bodyInstanced.frustumCulled = false;
+            baseInstanced.frustumCulled = false;
 
-            const bodyGeo = new THREE.CylinderGeometry(0.12, 0.12, 0.45, isLowEnd ? 6 : 8);
-            const baseGeo = new THREE.CylinderGeometry(0.13, 0.13, 0.1, isLowEnd ? 6 : 8);
+            const liveColor = new THREE.Color(0xc81e1e);
+            const blankColor = new THREE.Color(0x3b4860);
 
-            const liveMat = new THREE.MeshStandardMaterial({ color: 0xaa1111, roughness: 0.3, metalness: 0.6 });
-            const blankMat = new THREE.MeshStandardMaterial({ color: 0x333344, roughness: 0.3, metalness: 0.5 });
-            const baseMat = new THREE.MeshStandardMaterial({ color: 0xaa8800, roughness: 0.2, metalness: 0.9 });
+            const shells: ShellInstanceData[] = [];
+            const spawnWidth = isMob ? 14 : 46;
+            const dummy = new THREE.Object3D();
 
-            const disposables = [bodyGeo, baseGeo, liveMat, blankMat, baseMat];
-
-            const shells: ShellData[] = [];
-            const spawnWidth = isMob ? 12 : 70;
             for (let i = 0; i < shellCount; i++) {
                 const isLive = Math.random() > 0.4;
-                const group = new THREE.Group();
+                bodyInstanced.setColorAt(i, isLive ? liveColor : blankColor);
 
-                const body = new THREE.Mesh(bodyGeo, isLive ? liveMat : blankMat);
-                group.add(body);
+                const x = (Math.random() - 0.5) * spawnWidth;
+                const y = Math.random() * 40 - 20;
+                const z = Math.random() * 18 - 10;
+                const depthFactor = (z + 10) / 18;
+                const scale = (isMob ? 2.4 : 1.7) + depthFactor * 2.2 + Math.random() * 1.2;
+                const rotMult = device === 'pc' ? 0.24 : 0.14;
 
-                const base = new THREE.Mesh(baseGeo, baseMat);
-                base.position.y = -0.22;
-                group.add(base);
-
-                group.position.set(
-                    (Math.random() - 0.5) * spawnWidth,
-                    (Math.random() * 40) - 20,
-                    (Math.random() * 20) - 10
-                );
-                group.rotation.set(Math.random() * 6, Math.random() * 6, Math.random() * 6);
-                const depthFactor = (group.position.z + 10) / 20;
-                const size = (isMob ? 2.5 : 1.5) + (depthFactor * 2.5) + Math.random() * 1.5;
-                group.scale.setScalar(size);
-
-                scene.add(group);
-
-                const rotMult = device === 'pc' ? 0.3 : 0.15;
-                shells.push({
-                    mesh: group,
-                    speed: 0.04 + Math.random() * 0.12,
-                    rotationSpeed: new THREE.Vector3(
-                        (Math.random() - 0.5) * rotMult,
-                        (Math.random() - 0.5) * rotMult,
-                        (Math.random() - 0.5) * rotMult
-                    ),
-                    drift: Math.random() * 4,
-                    driftSpeed: 0.5 + Math.random() * 1.5,
+                const s: ShellInstanceData = {
+                    x,
+                    y,
+                    z,
+                    rx: Math.random() * 6.28,
+                    ry: Math.random() * 6.28,
+                    rz: Math.random() * 6.28,
+                    scale,
+                    speed: 0.04 + Math.random() * 0.1,
+                    rotX: (Math.random() - 0.5) * rotMult,
+                    rotY: (Math.random() - 0.5) * rotMult,
+                    rotZ: (Math.random() - 0.5) * rotMult,
+                    drift: Math.random() * 3.5,
+                    driftSpeed: 0.5 + Math.random() * 1.3,
                     driftOffset: Math.random() * 10
-                });
+                };
+                shells.push(s);
+
+                dummy.position.set(s.x, s.y, s.z);
+                dummy.rotation.set(s.rx, s.ry, s.rz);
+                dummy.scale.setScalar(s.scale);
+                dummy.updateMatrix();
+                bodyInstanced.setMatrixAt(i, dummy.matrix);
+                baseInstanced.setMatrixAt(i, dummy.matrix);
             }
 
-            sceneRef.current = { scene, camera, renderer, shells, disposables };
+            if (bodyInstanced.instanceColor) {
+                bodyInstanced.instanceColor.needsUpdate = true;
+            }
+            bodyInstanced.instanceMatrix.needsUpdate = true;
+            baseInstanced.instanceMatrix.needsUpdate = true;
+
+            scene.add(bodyInstanced);
+            scene.add(baseInstanced);
+
+            const disposables = [bodyGeo, baseGeo, bodyMat, baseMat, bodyInstanced, baseInstanced];
+            sceneRef.current = { scene, camera, renderer, disposables };
 
             if (reducedMotion) {
                 camera.lookAt(0, 0, 0);
@@ -193,48 +216,79 @@ const ShellBackground: React.FC<ShellBackgroundProps> = React.memo(({ active = t
                 return;
             }
 
-            let lastTime = performance.now();
+            // Cap FPS cleanly for buttery menu responsiveness & minimal battery/GPU heat
+            const targetFps = isSoftwareGl ? 12 : isMob || isLowPerf ? 24 : 30;
+            const frameIntervalMs = 1000 / targetFps;
+            let lastRenderTime = performance.now();
 
-            const animate = (time: number) => {
+            const scheduleNext = () => {
                 if (!activeRef.current || document.hidden) {
                     isRunningRef.current = false;
-                    frameId = null;
                     return;
                 }
-                isRunningRef.current = true;
-                frameId = requestAnimationFrame(animate);
+                if (isSoftwareGl) {
+                    timeoutId = setTimeout(() => {
+                        timeoutId = null;
+                        frameId = requestAnimationFrame(animate);
+                    }, Math.round(frameIntervalMs));
+                } else {
+                    frameId = requestAnimationFrame(animate);
+                }
+            };
 
-                const dt = Math.min((time - lastTime) / 1000, 0.1);
-                lastTime = time;
+            const animate = (time: number) => {
+                frameId = null;
+                if (!activeRef.current || document.hidden) {
+                    isRunningRef.current = false;
+                    return;
+                }
+
+                const elapsed = time - lastRenderTime;
+                if (!isSoftwareGl && elapsed < frameIntervalMs) {
+                    scheduleNext();
+                    return;
+                }
+
+                const dt = Math.min(elapsed / 1000, 0.1);
+                lastRenderTime = time;
                 const t = time * 0.001;
                 const dt60 = dt * 60;
 
-                camera.position.x = Math.sin(t * 0.5) * 1.5;
-                camera.position.y = Math.cos(t * 0.3) * 1.0;
+                camera.position.x = Math.sin(t * 0.45) * 1.2;
+                camera.position.y = Math.cos(t * 0.28) * 0.8;
                 camera.lookAt(0, 0, 0);
 
-                const numShells = shells.length;
-                for (let i = 0; i < numShells; i++) {
-                    const shell = shells[i];
-                    shell.mesh.position.y -= shell.speed * dt60;
-                    shell.mesh.position.x += Math.sin(t * shell.driftSpeed + shell.driftOffset) * (shell.drift * 0.01);
+                for (let i = 0; i < shellCount; i++) {
+                    const s = shells[i];
+                    s.y -= s.speed * dt60;
+                    s.x += Math.sin(t * s.driftSpeed + s.driftOffset) * (s.drift * 0.009) * dt60;
+                    s.rx += s.rotX * dt60;
+                    s.ry += s.rotY * dt60;
+                    s.rz += s.rotZ * dt60;
 
-                    shell.mesh.rotation.x += shell.rotationSpeed.x * dt60;
-                    shell.mesh.rotation.y += shell.rotationSpeed.y * dt60;
-                    shell.mesh.rotation.z += shell.rotationSpeed.z * dt60;
-
-                    if (shell.mesh.position.y < -25) {
-                        shell.mesh.position.y = 25;
-                        shell.mesh.position.x = (Math.random() - 0.5) * spawnWidth;
-                        shell.mesh.position.z = (Math.random() * 20) - 10;
+                    if (s.y < -24) {
+                        s.y = 24;
+                        s.x = (Math.random() - 0.5) * spawnWidth;
+                        s.z = Math.random() * 18 - 10;
                     }
+
+                    dummy.position.set(s.x, s.y, s.z);
+                    dummy.rotation.set(s.rx, s.ry, s.rz);
+                    dummy.scale.setScalar(s.scale);
+                    dummy.updateMatrix();
+                    bodyInstanced.setMatrixAt(i, dummy.matrix);
+                    baseInstanced.setMatrixAt(i, dummy.matrix);
                 }
 
+                bodyInstanced.instanceMatrix.needsUpdate = true;
+                baseInstanced.instanceMatrix.needsUpdate = true;
+
                 renderer.render(scene, camera);
+                scheduleNext();
             };
 
             startAnimateRef.current = () => {
-                lastTime = performance.now();
+                lastRenderTime = performance.now();
                 if (!isRunningRef.current && activeRef.current && !document.hidden) {
                     isRunningRef.current = true;
                     frameId = requestAnimationFrame(animate);
@@ -259,7 +313,7 @@ const ShellBackground: React.FC<ShellBackgroundProps> = React.memo(({ active = t
 
             sceneRef.current.camera.aspect = w / h;
             sceneRef.current.camera.updateProjectionMatrix();
-            const pxScale = isMob ? 4.0 : (isTab ? 3.5 : 4.0);
+            const pxScale = isMob ? 4.5 : isTab ? 4.0 : 4.0;
             sceneRef.current.renderer.setSize(
                 Math.max(1, Math.floor(w / pxScale)),
                 Math.max(1, Math.floor(h / pxScale)),
@@ -274,20 +328,42 @@ const ShellBackground: React.FC<ShellBackgroundProps> = React.memo(({ active = t
             resizeRafId = requestAnimationFrame(applyResize);
         };
 
+        const stopLoop = () => {
+            if (frameId !== null) {
+                cancelAnimationFrame(frameId);
+                frameId = null;
+            }
+            if (timeoutId !== null) {
+                clearTimeout(timeoutId);
+                timeoutId = null;
+            }
+            isRunningRef.current = false;
+        };
+
         const handleVisibilityChange = () => {
-            if (document.hidden) {
-                if (frameId !== null) {
-                    cancelAnimationFrame(frameId);
-                    frameId = null;
-                }
-                isRunningRef.current = false;
+            if (document.hidden || modalPausedRef.current) {
+                stopLoop();
             } else if (activeRef.current && startAnimateRef.current && !isRunningRef.current) {
                 startAnimateRef.current();
             }
         };
 
+        const handleMenuModalState = (e: Event) => {
+            const isOpen = Boolean((e as CustomEvent<{ open?: boolean }>).detail?.open);
+            modalPausedRef.current = isOpen;
+            if (isOpen) {
+                stopLoop();
+            } else if (activeRef.current && !document.hidden && startAnimateRef.current && !isRunningRef.current) {
+                startAnimateRef.current();
+            }
+        };
+
+        let initRafId: number | null = null;
         if (container.clientWidth > 0 && container.clientHeight > 0) {
-            initThree();
+            initRafId = requestAnimationFrame(() => {
+                initRafId = null;
+                initThree();
+            });
         }
 
         resizeObserver = new ResizeObserver(() => {
@@ -300,14 +376,16 @@ const ShellBackground: React.FC<ShellBackgroundProps> = React.memo(({ active = t
         resizeObserver.observe(container);
 
         window.addEventListener('resize', handleResize);
+        window.addEventListener('bugshot_menu_modal_state', handleMenuModalState);
         document.addEventListener('visibilitychange', handleVisibilityChange);
 
         return () => {
-            if (frameId !== null) cancelAnimationFrame(frameId);
+            if (initRafId !== null) cancelAnimationFrame(initRafId);
+            stopLoop();
             if (resizeRafId !== null) cancelAnimationFrame(resizeRafId);
             startAnimateRef.current = null;
-            isRunningRef.current = false;
             window.removeEventListener('resize', handleResize);
+            window.removeEventListener('bugshot_menu_modal_state', handleMenuModalState);
             document.removeEventListener('visibilitychange', handleVisibilityChange);
             if (resizeObserver) resizeObserver.disconnect();
             if (sceneRef.current) {

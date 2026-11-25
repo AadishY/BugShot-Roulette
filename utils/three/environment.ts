@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { getDeviceType } from '../gameUtils';
 import { getGraphicsPreset } from '../../types';
+import { getGraphicsPresetConfig, GraphicsPresetProfile } from './graphicsConfig';
 
 let _cachedGlowTexture: THREE.CanvasTexture | null = null;
 let _cachedBrickTexture: THREE.CanvasTexture | null = null;
@@ -141,51 +142,42 @@ function createBrickTexture() {
 function createTableTexture() {
     if (_cachedTableTexture) return _cachedTableTexture;
     const canvas = document.createElement('canvas');
-    canvas.width = 1024; canvas.height = 1024; // Optimized resolution for fast compilation
+    // 512x512 compiles 4x faster on startup while preserving crisp felt & glowing amber slot lines
+    canvas.width = 512; canvas.height = 512;
     const ctx = canvas.getContext('2d');
     if (!ctx) return new THREE.CanvasTexture(canvas);
 
-    // ═══════════════════════════════════════════════════════════════
-    // BUCKSHOT ROULETTE STYLE TABLE - Dark worn green with amber lines
-    // ═══════════════════════════════════════════════════════════════
-
     // Base - Very dark olive/military green
     ctx.fillStyle = '#1a2a1a';
-    ctx.fillRect(0, 0, 1024, 1024);
+    ctx.fillRect(0, 0, 512, 512);
 
-    // Felt texture layer - subtle variation
-    for (let i = 0; i < 15000; i++) {
+    // Felt texture layer - fast 2,400-speckle pass (eliminates startup UI freeze)
+    for (let i = 0; i < 2400; i++) {
         const shade = Math.random();
-        if (shade > 0.7) {
-            ctx.fillStyle = '#253525';
-        } else if (shade > 0.4) {
-            ctx.fillStyle = '#1e2e1e';
-        } else {
-            ctx.fillStyle = '#142014';
-        }
+        ctx.fillStyle = shade > 0.7 ? '#253525' : (shade > 0.4 ? '#1e2e1e' : '#142014');
         const size = 1 + Math.random() * 2;
-        ctx.fillRect(Math.random() * 1024, Math.random() * 1024, size, size);
+        ctx.fillRect(Math.random() * 512, Math.random() * 512, size, size);
     }
 
-    // Add wear patterns / scratches
-    ctx.strokeStyle = 'rgba(10, 15, 10, 0.6)';
+    // Wear scratches
+    ctx.strokeStyle = 'rgba(10, 15, 10, 0.55)';
     ctx.lineWidth = 1;
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < 24; i++) {
         ctx.beginPath();
-        const x1 = Math.random() * 1024;
-        const y1 = Math.random() * 1024;
-        const len = 10 + Math.random() * 50;
+        const x1 = Math.random() * 512;
+        const y1 = Math.random() * 512;
+        const len = 6 + Math.random() * 28;
         const angle = Math.random() * Math.PI * 2;
         ctx.moveTo(x1, y1);
         ctx.lineTo(x1 + Math.cos(angle) * len, y1 + Math.sin(angle) * len);
         ctx.stroke();
     }
 
-    // Coffee/liquid stains
-    for (let i = 0; i < 6; i++) {
-        const x = 150 + Math.random() * 724;
-        const y = 150 + Math.random() * 724;
-        const r = 15 + Math.random() * 40;
+    // Liquid stains
+    for (let i = 0; i < 5; i++) {
+        const x = 75 + Math.random() * 362;
+        const y = 75 + Math.random() * 362;
+        const r = 10 + Math.random() * 22;
         const grad = ctx.createRadialGradient(x, y, 0, x, y, r);
         grad.addColorStop(0, 'rgba(25, 15, 10, 0.3)');
         grad.addColorStop(0.6, 'rgba(20, 12, 8, 0.15)');
@@ -194,38 +186,38 @@ function createTableTexture() {
         ctx.fillRect(x - r, y - r, r * 2, r * 2);
     }
 
-    const drawGlowRect = (x: number, y: number, w: number, h: number, width: number = 2) => {
-        const sX = x * 0.5;
-        const sY = y * 0.5;
-        const sW = w * 0.5;
-        const sH = h * 0.5;
-        ctx.strokeStyle = 'rgba(180, 150, 80, 0.15)';
-        ctx.lineWidth = width + 6;
+    const drawGlowRect = (x: number, y: number, w: number, h: number, width: number = 1.5) => {
+        const sX = x * 0.25;
+        const sY = y * 0.25;
+        const sW = w * 0.25;
+        const sH = h * 0.25;
+        ctx.strokeStyle = 'rgba(180, 150, 80, 0.16)';
+        ctx.lineWidth = width + 3.5;
         ctx.strokeRect(sX, sY, sW, sH);
-        ctx.strokeStyle = 'rgba(220, 180, 90, 0.7)';
+        ctx.strokeStyle = 'rgba(220, 180, 90, 0.72)';
         ctx.lineWidth = width;
         ctx.strokeRect(sX, sY, sW, sH);
     };
 
-    drawGlowRect(150, 300, 350, 250, 2);
-    drawGlowRect(150, 600, 350, 250, 2);
-    drawGlowRect(1548, 300, 350, 250, 2);
-    drawGlowRect(1548, 600, 350, 250, 2);
+    drawGlowRect(150, 300, 350, 250, 1.5);
+    drawGlowRect(150, 600, 350, 250, 1.5);
+    drawGlowRect(1548, 300, 350, 250, 1.5);
+    drawGlowRect(1548, 600, 350, 250, 1.5);
 
     for (let i = 0; i < 4; i++) {
-        drawGlowRect(1200 + i * 100, 1700, 80, 80, 2);
-        drawGlowRect(648 + i * 100, 250, 80, 80, 2);
+        drawGlowRect(1200 + i * 100, 1700, 80, 80, 1.5);
+        drawGlowRect(648 + i * 100, 250, 80, 80, 1.5);
     }
-    drawGlowRect(874, 900, 300, 150, 3);
+    drawGlowRect(874, 900, 300, 150, 2);
 
-    const vignette = ctx.createRadialGradient(512, 512, 200, 512, 512, 700);
+    const vignette = ctx.createRadialGradient(256, 256, 100, 256, 256, 350);
     vignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
     vignette.addColorStop(1, 'rgba(0, 0, 0, 0.5)');
     ctx.fillStyle = vignette;
-    ctx.fillRect(0, 0, 1024, 1024);
+    ctx.fillRect(0, 0, 512, 512);
 
     const tex = new THREE.CanvasTexture(canvas);
-    tex.anisotropy = (getDeviceType() === 'pc') ? 8 : 1;
+    tex.anisotropy = (getDeviceType() === 'pc') ? 4 : 1;
     tex.minFilter = THREE.LinearFilter;
     tex.magFilter = THREE.LinearFilter;
     tex.generateMipmaps = false;
@@ -238,64 +230,91 @@ function createTableTexture() {
 export const createEnvironment = (scene: THREE.Scene, isMobile: boolean = false, ultraPerformance: boolean = false) => {
     const settings = scene.userData.settings || {};
     const preset = getGraphicsPreset(settings);
-    const isPotato = ultraPerformance || preset === 'potato';
+    const isAndroid = !!scene.userData.isAndroid;
+    const profile: GraphicsPresetProfile = scene.userData.graphicsProfile || getGraphicsPresetConfig(preset, {
+        isMobile,
+        isAndroid,
+        nativeDpr: typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1,
+        isSoftwareGl: !!scene.userData.isSoftwareGl
+    });
+    const isPotato = ultraPerformance || profile.useBasicEnv;
     const isLow = preset === 'low';
     const isBalanced = preset === 'balanced';
     const isHigh = preset === 'high';
-    const isAndroid = !!scene.userData.isAndroid;
-    const useLambertEnv = isLow || isBalanced;
-    const allowEnvShadows = isHigh && !isMobile;
-    // ═══════════════════════════════════════════════════════════════
-    // BUCKSHOT ROULETTE BUNKER ENVIRONMENT
-    // Dark industrial underground aesthetic
-    // ═══════════════════════════════════════════════════════════════
+    const useLambertEnv = profile.useLambertEnv;
+    const allowEnvShadows = profile.allowEnvShadows;
 
-    // Create procedural concrete texture for floor
+    // Shared material factory: ensures Low & Balanced use zero-PBR Lambert shaders on all background props
+    const makeEnvMat = (opts: {
+        color: number;
+        roughness?: number;
+        metalness?: number;
+        emissive?: number;
+        emissiveIntensity?: number;
+        side?: THREE.Side;
+        toneMapped?: boolean;
+    }): THREE.Material => {
+        if (isPotato) {
+            return new THREE.MeshBasicMaterial({
+                color: opts.emissive ?? opts.color,
+                side: opts.side
+            });
+        }
+        if (useLambertEnv) {
+            return new THREE.MeshLambertMaterial({
+                color: opts.color,
+                emissive: opts.emissive ?? 0x000000,
+                emissiveIntensity: opts.emissive ? Math.min(opts.emissiveIntensity ?? 1, 1.5) : 0,
+                side: opts.side
+            });
+        }
+        return new THREE.MeshStandardMaterial({
+            color: opts.color,
+            roughness: opts.roughness ?? 0.75,
+            metalness: opts.metalness ?? 0.1,
+            emissive: opts.emissive ?? 0x000000,
+            emissiveIntensity: opts.emissive ? (opts.emissiveIntensity ?? 1) : 0,
+            side: opts.side,
+            toneMapped: opts.toneMapped ?? true
+        });
+    };
+
+    // Create procedural concrete texture for floor (512x512, fast startup)
     const createConcreteTexture = () => {
         if (_cachedConcreteTexture) return _cachedConcreteTexture;
         const canvas = document.createElement('canvas');
-        canvas.width = 1024; canvas.height = 1024;
+        canvas.width = 512; canvas.height = 512;
         const ctx = canvas.getContext('2d');
         if (!ctx) return new THREE.CanvasTexture(canvas);
 
-        // Brighter base concrete
         ctx.fillStyle = '#1a1816';
-        ctx.fillRect(0, 0, 1024, 1024);
+        ctx.fillRect(0, 0, 512, 512);
 
-        // Concrete variation - brighter
-        for (let i = 0; i < 15000; i++) {
+        for (let i = 0; i < 2200; i++) {
             const shade = Math.random();
-            if (shade > 0.7) {
-                ctx.fillStyle = '#252220';
-            } else if (shade > 0.4) {
-                ctx.fillStyle = '#1e1c1a';
-            } else {
-                ctx.fillStyle = '#161412';
-            }
-            ctx.fillRect(Math.random() * 1024, Math.random() * 1024, 2 + Math.random() * 6, 2 + Math.random() * 6);
+            ctx.fillStyle = shade > 0.7 ? '#252220' : (shade > 0.4 ? '#1e1c1a' : '#161412');
+            ctx.fillRect(Math.random() * 512, Math.random() * 512, 1.5 + Math.random() * 4, 1.5 + Math.random() * 4);
         }
 
-        // Cracks
         ctx.strokeStyle = 'rgba(10, 8, 6, 0.8)';
         ctx.lineWidth = 1;
-        for (let i = 0; i < 20; i++) {
+        for (let i = 0; i < 14; i++) {
             ctx.beginPath();
-            let x = Math.random() * 1024;
-            let y = Math.random() * 1024;
+            let x = Math.random() * 512;
+            let y = Math.random() * 512;
             ctx.moveTo(x, y);
-            for (let j = 0; j < 5; j++) {
-                x += (Math.random() - 0.5) * 80;
-                y += (Math.random() - 0.5) * 80;
+            for (let j = 0; j < 4; j++) {
+                x += (Math.random() - 0.5) * 44;
+                y += (Math.random() - 0.5) * 44;
                 ctx.lineTo(x, y);
             }
             ctx.stroke();
         }
 
-        // Oil/grime stains
-        for (let i = 0; i < 12; i++) {
-            const x = Math.random() * 1024;
-            const y = Math.random() * 1024;
-            const r = 20 + Math.random() * 60;
+        for (let i = 0; i < 8; i++) {
+            const x = Math.random() * 512;
+            const y = Math.random() * 512;
+            const r = 12 + Math.random() * 30;
             const grad = ctx.createRadialGradient(x, y, 0, x, y, r);
             grad.addColorStop(0, 'rgba(25, 20, 15, 0.4)');
             grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
@@ -310,7 +329,7 @@ export const createEnvironment = (scene: THREE.Scene, isMobile: boolean = false,
         tex.magFilter = THREE.LinearFilter;
         tex.minFilter = THREE.LinearFilter;
         tex.generateMipmaps = false;
-        tex.anisotropy = (getDeviceType() === 'pc') ? 8 : 1;
+        tex.anisotropy = (getDeviceType() === 'pc') ? 4 : 1;
         tex.userData = { isCachedAsset: true };
         _cachedConcreteTexture = tex;
         return tex;
@@ -331,7 +350,7 @@ export const createEnvironment = (scene: THREE.Scene, isMobile: boolean = false,
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), floorMat);
     floor.rotation.x = -Math.PI / 2;
     floor.position.y = -9;
-    floor.receiveShadow = !isPotato && (isHigh || isBalanced || !isAndroid);
+    floor.receiveShadow = profile.shadowMapEnabled && (isHigh || (isBalanced && !isAndroid));
     scene.add(floor);
 
     // Ceiling - Very dark with void feel
@@ -440,24 +459,18 @@ export const createEnvironment = (scene: THREE.Scene, isMobile: boolean = false,
         cartGroup.position.set(-10, -5, 6);
         cartGroup.rotation.y = 0.4;
 
-        const cartMat = isLow
-            ? new THREE.MeshLambertMaterial({ color: 0x252220 })
-            : new THREE.MeshStandardMaterial({ color: 0x252220, metalness: 0.6, roughness: 0.65 });
+        const cartMat = makeEnvMat({ color: 0x252220, metalness: 0.6, roughness: 0.65 });
         const cartFrame = new THREE.Mesh(new THREE.BoxGeometry(3.5, 4.5, 2.5), cartMat);
         cartGroup.add(cartFrame);
 
         // Tray top
-        const trayMat = isLow
-            ? new THREE.MeshLambertMaterial({ color: 0x3a3530 })
-            : new THREE.MeshStandardMaterial({ color: 0x3a3530, metalness: 0.5, roughness: 0.55 });
+        const trayMat = makeEnvMat({ color: 0x3a3530, metalness: 0.5, roughness: 0.55 });
         const cartTray = new THREE.Mesh(new THREE.BoxGeometry(3.8, 0.15, 2.8), trayMat);
         cartTray.position.y = 2.3;
         cartGroup.add(cartTray);
 
         // Wheels
-        const wheelMat = useLambertEnv
-            ? new THREE.MeshLambertMaterial({ color: 0x151210 })
-            : new THREE.MeshStandardMaterial({ color: 0x151210 });
+        const wheelMat = makeEnvMat({ color: 0x151210 });
         const wheelGeo = new THREE.CylinderGeometry(0.3, 0.3, 0.2, 8);
         [[-1.2, -2, -0.8], [1.2, -2, -0.8], [-1.2, -2, 0.8], [1.2, -2, 0.8]].forEach(pos => {
             const wheel = new THREE.Mesh(wheelGeo, wheelMat);
@@ -467,8 +480,8 @@ export const createEnvironment = (scene: THREE.Scene, isMobile: boolean = false,
         });
         scene.add(cartGroup);
 
-        // Cart light (PC Balanced & High only to conserve mobile shader light budget)
-        if (isHigh || (isBalanced && !isMobile)) {
+        // Cart light (Desktop High only)
+        if (profile.enableExtraEnvLights) {
             const cartLight = new THREE.PointLight(0x4a4540, 8.0, 20);
             cartLight.position.set(-8, -2, 6);
             scene.add(cartLight);
@@ -479,14 +492,12 @@ export const createEnvironment = (scene: THREE.Scene, isMobile: boolean = false,
         cabinetGroup.position.set(11, -4.5, 5);
         cabinetGroup.rotation.y = -0.35;
 
-        const cabMat = isLow
-            ? new THREE.MeshLambertMaterial({ color: 0x1a1815 })
-            : new THREE.MeshStandardMaterial({ color: 0x1a1815, roughness: 0.75, metalness: 0.2 });
+        const cabMat = makeEnvMat({ color: 0x1a1815, roughness: 0.75, metalness: 0.2 });
         const cabinet = new THREE.Mesh(new THREE.BoxGeometry(4, 6, 3), cabMat);
         cabinetGroup.add(cabinet);
 
         // LED display panel (green glow like reference)
-        const displayMat = new THREE.MeshStandardMaterial({
+        const displayMat = makeEnvMat({
             color: 0x001500,
             emissive: 0x00ff00,
             emissiveIntensity: 0.3
@@ -514,32 +525,33 @@ export const createEnvironment = (scene: THREE.Scene, isMobile: boolean = false,
     scene.add(bulbGroup);
 
     // === HANGING WIRES (Procedural) ===
+    const wireTubeMat = makeEnvMat({ color: 0x111111, roughness: 0.8 });
     const createWire = (start: THREE.Vector3, end: THREE.Vector3, slack: number, segments: number) => {
         const points = [];
         for (let i = 0; i <= segments; i++) {
             const t = i / segments;
             const x = THREE.MathUtils.lerp(start.x, end.x, t);
             const z = THREE.MathUtils.lerp(start.z, end.z, t);
-            // Parabola for slack
             const y = THREE.MathUtils.lerp(start.y, end.y, t) - (Math.sin(t * Math.PI) * slack);
             points.push(new THREE.Vector3(x, y, z));
         }
         const curve = new THREE.CatmullRomCurve3(points);
-        const geo = new THREE.TubeGeometry(curve, segments, 0.05, 6, false);
-        const mat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.8 });
-        return new THREE.Mesh(geo, mat);
+        const geo = new THREE.TubeGeometry(curve, isLow ? Math.max(5, segments - 3) : segments, 0.05, 5, false);
+        return new THREE.Mesh(geo, wireTubeMat);
     };
 
     // Add multiple wires hanging from ceiling
     if (!isPotato) {
         scene.add(createWire(new THREE.Vector3(-10, 12, -5), new THREE.Vector3(10, 12, -5), 2.5, 10));
         scene.add(createWire(new THREE.Vector3(-15, 12, -10), new THREE.Vector3(5, 14, -15), 3.0, 10));
-        scene.add(createWire(new THREE.Vector3(-5, 14, -20), new THREE.Vector3(15, 12, -18), 2.0, 10));
-        scene.add(createWire(new THREE.Vector3(0, 14, 5), new THREE.Vector3(0, 10, 0), 1.0, 8)); // Near bulb
+        if (!isLow) {
+            scene.add(createWire(new THREE.Vector3(-5, 14, -20), new THREE.Vector3(15, 12, -18), 2.0, 10));
+        }
+        scene.add(createWire(new THREE.Vector3(0, 14, 5), new THREE.Vector3(0, 10, 0), 1.0, 8));
     }
 
     // Wire Geometry (Simple straight one for bulb group)
-    const wireGeo = new THREE.CylinderGeometry(0.03, 0.03, 6);
+    const wireGeo = new THREE.CylinderGeometry(0.03, 0.03, 6, 6);
     const wire = new THREE.Mesh(wireGeo, new THREE.MeshBasicMaterial({ color: 0x111111 }));
     wire.position.set(0, -3, 0);
 
@@ -552,7 +564,7 @@ export const createEnvironment = (scene: THREE.Scene, isMobile: boolean = false,
     hangingLight.add(wire);
 
     // Bulb Mesh
-    const bulbMat = isPotato
+    const bulbMat = isPotato || isLow
         ? new THREE.MeshBasicMaterial({ color: 0xffcc66 })
         : new THREE.MeshStandardMaterial({
             color: 0xffffff,
@@ -561,15 +573,15 @@ export const createEnvironment = (scene: THREE.Scene, isMobile: boolean = false,
             toneMapped: false
         });
     const bulb = new THREE.Mesh(
-        new THREE.SphereGeometry(0.35, isPotato ? 12 : 24, isPotato ? 12 : 24),
+        new THREE.SphereGeometry(0.35, isPotato || isLow ? 10 : 18, isPotato || isLow ? 10 : 18),
         bulbMat
     );
-    bulb.position.set(0, -6, 0); // End of wire
-    if (!isMobile) bulb.castShadow = false; // Fix artifact
+    bulb.position.set(0, -6, 0);
+    bulb.castShadow = false;
     hangingLight.add(bulb);
 
-    // Volumetric Bulb Halo Sprite (Balanced & High)
-    if (!isPotato && (!isMobile || isHigh)) {
+    // Volumetric Bulb Halo Sprite (PC Balanced & High)
+    if (profile.enableBulbHalo) {
         const spriteMat = new THREE.SpriteMaterial({
             map: generateGlowTexture(),
             color: 0xffaa00,
@@ -583,29 +595,25 @@ export const createEnvironment = (scene: THREE.Scene, isMobile: boolean = false,
         bulb.add(glowSprite);
     }
 
-    // --- INDUSTRIAL PIPES & VENTS --- (Brighter materials)
-    const pipeMat = useLambertEnv
-        ? new THREE.MeshLambertMaterial({ color: 0x3a3535 })
-        : new THREE.MeshStandardMaterial({ color: 0x3a3535, roughness: 0.55, metalness: 0.72 });
-    const rustMat = useLambertEnv
-        ? new THREE.MeshLambertMaterial({ color: 0x5d4638 })
-        : new THREE.MeshStandardMaterial({ color: 0x5d4638, roughness: 0.85 });
+    // --- INDUSTRIAL PIPES & VENTS ---
+    const pipeMat = makeEnvMat({ color: 0x3a3535, roughness: 0.55, metalness: 0.72 });
+    const rustMat = makeEnvMat({ color: 0x5d4638, roughness: 0.85 });
 
-    // --- ENHANCED BACKGROUND PROPS --- (Brighter)
+    // --- ENHANCED BACKGROUND PROPS ---
     if (!isPotato) {
         const boxGeo = new THREE.BoxGeometry(3, 3, 3);
-        const boxMat = new THREE.MeshStandardMaterial({ color: 0x5a4a3a, roughness: 0.85 });
+        const boxMat = makeEnvMat({ color: 0x5a4a3a, roughness: 0.85 });
 
         // === AMP RACK (Left Side - visible) ===
         const rackGroup = new THREE.Group();
-        rackGroup.position.set(-10, -1, -12); // Moved closer (was -18)
+        rackGroup.position.set(-10, -1, -12);
         rackGroup.rotation.y = 0.5;
 
-        const rackFrame = new THREE.Mesh(new THREE.BoxGeometry(5, 8, 4), new THREE.MeshStandardMaterial({ color: 0x353030 }));
+        const rackFrame = new THREE.Mesh(new THREE.BoxGeometry(5, 8, 4), makeEnvMat({ color: 0x353030 }));
         rackGroup.add(rackFrame);
 
-        // Amp faces - brighter
-        const ampMat = new THREE.MeshStandardMaterial({ color: 0x252222 });
+        const ampMat = makeEnvMat({ color: 0x252222 });
+        const dialMat = makeEnvMat({ color: 0x777777 });
         const lightMat = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
 
         for (let i = 0; i < 3; i++) {
@@ -613,49 +621,44 @@ export const createEnvironment = (scene: THREE.Scene, isMobile: boolean = false,
             amp.position.set(0, 2 - i * 2.5, 2.0);
             rackGroup.add(amp);
 
-            // Blinking lights row
             for (let j = 0; j < 5; j++) {
                 const l = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.1), lightMat);
                 l.position.set(-1.5 + j * 0.5, 0, 0.2);
                 amp.add(l);
             }
 
-            // Dials - brighter
-            const dial = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.2), new THREE.MeshStandardMaterial({ color: 0x777777 }));
+            const dial = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.2, 8), dialMat);
             dial.rotation.x = Math.PI / 2;
             dial.position.set(1.5, 0, 0.2);
             amp.add(dial);
         }
 
-        // Big Speaker at bottom - brighter
-        const sub = new THREE.Mesh(new THREE.CircleGeometry(1.5, 32), new THREE.MeshStandardMaterial({ color: 0x1a1818 }));
+        const sub = new THREE.Mesh(new THREE.CircleGeometry(1.5, 16), makeEnvMat({ color: 0x1a1818 }));
         sub.position.set(0, -2.5, 2.05);
         rackGroup.add(sub);
         scene.add(rackGroup);
 
         // === EXTRA LEFT PROPS (Visible) ===
         const leftStack = new THREE.Group();
-        leftStack.position.set(-14, -4, -8); // Moved closer (was -22)
+        leftStack.position.set(-14, -4, -8);
         leftStack.rotation.y = 0.8;
-        const box1 = new THREE.Mesh(new THREE.BoxGeometry(3, 4, 3), new THREE.MeshStandardMaterial({ color: 0x4a3a2a }));
-        const box2 = new THREE.Mesh(new THREE.BoxGeometry(2.5, 2.5, 2.5), new THREE.MeshStandardMaterial({ color: 0x3a2a1a }));
+        const box1 = new THREE.Mesh(new THREE.BoxGeometry(3, 4, 3), makeEnvMat({ color: 0x4a3a2a }));
+        const box2 = new THREE.Mesh(new THREE.BoxGeometry(2.5, 2.5, 2.5), makeEnvMat({ color: 0x3a2a1a }));
         box2.position.y = 3.2; box2.rotation.y = 0.5;
         leftStack.add(box1); leftStack.add(box2);
         scene.add(leftStack);
 
-
         // === RIGHT GENERATOR STACK (Visible) ===
         const genGroup = new THREE.Group();
-        genGroup.position.set(12, -3, -10); // Moved closer (was 20)
+        genGroup.position.set(12, -3, -10);
         genGroup.rotation.y = -0.6;
 
-        const genBase = new THREE.Mesh(new THREE.BoxGeometry(5, 6, 4), new THREE.MeshStandardMaterial({ color: 0x334433 }));
+        const genBase = new THREE.Mesh(new THREE.BoxGeometry(5, 6, 4), makeEnvMat({ color: 0x334433 }));
         genGroup.add(genBase);
 
-        // Coils / Vents
-        const ventMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
+        const ventMat = makeEnvMat({ color: 0x111111 });
         for (let i = 0; i < 3; i++) {
-            const vent = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 0.5, 16), ventMat);
+            const vent = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 0.5, 12), ventMat);
             vent.rotation.x = Math.PI / 2;
             vent.position.set(0, 1.5 - i * 1.5, 2.1);
             genGroup.add(vent);
@@ -695,19 +698,19 @@ export const createEnvironment = (scene: THREE.Scene, isMobile: boolean = false,
         const clutter2 = new THREE.Mesh(boxGeo, boxMat); clutter2.position.set(12, -6.5, -18); clutter2.rotation.y = -0.3; scene.add(clutter2);
         const clutter3 = new THREE.Mesh(new THREE.BoxGeometry(2, 5, 2), boxMat); clutter3.position.set(10, -5, -19); clutter3.rotation.y = 0.4; scene.add(clutter3);
 
-        // === DEALER LAIR FOG (Low, Balanced, and High) ===
-        if (!isPotato) {
+        // === DEALER LAIR FOG (Only when fogSpriteCount > 0; disabled on Low & mobile Balanced to eliminate overdraw) ===
+        if (profile.fogSpriteCount > 0) {
             const createDirtySkinTexture = () => {
                 if (_cachedDirtySkinTexture) return _cachedDirtySkinTexture;
                 const canvas = document.createElement('canvas');
-                canvas.width = 256; canvas.height = 256;
+                canvas.width = 128; canvas.height = 128;
                 const ctx = canvas.getContext('2d');
                 if (!ctx) return null;
                 ctx.fillStyle = '#e0c0b0';
-                ctx.fillRect(0, 0, 256, 256);
-                for (let i = 0; i < 300; i++) {
+                ctx.fillRect(0, 0, 128, 128);
+                for (let i = 0; i < 120; i++) {
                     ctx.fillStyle = 'rgba(50, 40, 30, 0.2)';
-                    ctx.fillRect(Math.random() * 256, Math.random() * 256, 4, 4);
+                    ctx.fillRect(Math.random() * 128, Math.random() * 128, 3, 3);
                 }
                 const tex = new THREE.CanvasTexture(canvas);
                 tex.minFilter = THREE.LinearFilter;
@@ -723,59 +726,47 @@ export const createEnvironment = (scene: THREE.Scene, isMobile: boolean = false,
                         map: createDirtySkinTexture(),
                         color: 0x121212,
                         transparent: true,
-                        opacity: 0.25,
-                        blending: THREE.NormalBlending
+                        opacity: 0.22,
+                        blending: THREE.NormalBlending,
+                        depthWrite: false
                     });
                     _cachedFogSpriteMaterial.userData = { isCachedAsset: true };
                 }
                 return _cachedFogSpriteMaterial;
-            };
-            const createFogFogSprite = () => {
-                const sprite = new THREE.Sprite(getFogSpriteMaterial());
-                sprite.scale.set(8, 8, 1);
-                return sprite;
             };
 
             const envFogGroup = new THREE.Group();
             envFogGroup.name = 'ENV_DEALER_FOG';
             envFogGroup.position.set(0, 3, -8);
 
-            const fogSpriteCount = isLow ? 8 : ((isBalanced && isMobile) ? 12 : 16);
-            for (let i = 0; i < fogSpriteCount; i++) {
-                const spr = createFogFogSprite();
+            for (let i = 0; i < profile.fogSpriteCount; i++) {
+                const spr = new THREE.Sprite(getFogSpriteMaterial());
                 spr.position.set(
                     (Math.random() - 0.5) * 8,
                     -2 + (Math.random() - 0.5) * 6,
                     (Math.random() - 0.5) * 6
                 );
-                spr.scale.setScalar(8 + Math.random() * 5);
+                spr.scale.setScalar(8 + Math.random() * 4);
                 envFogGroup.add(spr);
             }
             scene.add(envFogGroup);
         }
 
-        // === LEFT CUPBOARD PROPS ===
-        // === LEFT SIDE - ROD CUPBOARD / SHELF ===
-        // === LEFT SIDE - ROD CUPBOARD / SHELF ===
         // === LEFT SIDE - ROD CUPBOARD / SHELF ===
         const leftShelfGroup = new THREE.Group();
-        // Positioned on the floor, larger and more visible
         leftShelfGroup.position.set(-14, -8, 4);
         leftShelfGroup.rotation.y = 0.4;
-        leftShelfGroup.scale.set(2.0, 2.0, 2.0); // HUGE
+        leftShelfGroup.scale.set(2.0, 2.0, 2.0);
 
-        // Metal Frame (Rods)
-        const rodMat = new THREE.MeshStandardMaterial({ color: 0x444444, metalness: 0.8, roughness: 0.4 });
-        const shelfMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.8 });
+        const rodMat = makeEnvMat({ color: 0x444444, metalness: 0.8, roughness: 0.4 });
+        const shelfMat = makeEnvMat({ color: 0x222222, roughness: 0.8 });
 
-        // Vertical Rods - Taller
-        const rodGeo = new THREE.CylinderGeometry(0.1, 0.1, 14, 8);
+        const rodGeo = new THREE.CylinderGeometry(0.1, 0.1, 14, 6);
         const rod1 = new THREE.Mesh(rodGeo, rodMat); rod1.position.set(-1.8, 0, 1); leftShelfGroup.add(rod1);
         const rod2 = new THREE.Mesh(rodGeo, rodMat); rod2.position.set(1.8, 0, 1); leftShelfGroup.add(rod2);
         const rod3 = new THREE.Mesh(rodGeo, rodMat); rod3.position.set(-1.8, 0, -1); leftShelfGroup.add(rod3);
         const rod4 = new THREE.Mesh(rodGeo, rodMat); rod4.position.set(1.8, 0, -1); leftShelfGroup.add(rod4);
 
-        // Shelves - More floors
         const shelfGeo = new THREE.BoxGeometry(3.8, 0.1, 2.2);
         for (let y = -6; y <= 6; y += 3) {
             const shelf = new THREE.Mesh(shelfGeo, shelfMat);
@@ -783,100 +774,74 @@ export const createEnvironment = (scene: THREE.Scene, isMobile: boolean = false,
             leftShelfGroup.add(shelf);
         }
 
-        // Boxes on top - SCALED UP
-        const boxPropMat = new THREE.MeshStandardMaterial({ color: 0x8d6e63 });
-        const shelfBox1 = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.0, 1.6), boxPropMat); // Larger box
-        shelfBox1.position.set(-0.5, 6.7, 0); // Adjusted height
+        const boxPropMat = makeEnvMat({ color: 0x8d6e63 });
+        const shelfBox1 = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.0, 1.6), boxPropMat);
+        shelfBox1.position.set(-0.5, 6.7, 0);
         shelfBox1.rotation.y = 0.2;
         leftShelfGroup.add(shelfBox1);
 
-        const shelfBox2 = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.8, 1.0), boxPropMat); // Larger box
+        const shelfBox2 = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.8, 1.0), boxPropMat);
         shelfBox2.position.set(0.6, 6.6, 0.2);
         shelfBox2.rotation.y = -0.4;
         leftShelfGroup.add(shelfBox2);
 
         scene.add(leftShelfGroup);
 
-        // Light for left shelf (High or PC Balanced)
-        if (isHigh || (isBalanced && !isMobile)) {
-            const shelfLight = new THREE.PointLight(0x5a4a3a, 10.0, 30);
-            shelfLight.position.set(-10, 0, 5);
-            scene.add(shelfLight);
-        }
-
-        // === RIGHT SIDE - INDUSTRIAL RACK (Reference Image Style) ===
+        // === RIGHT SIDE - INDUSTRIAL RACK ===
         const rightRackGroup = new THREE.Group();
-        // Positioned higher up and larger
         rightRackGroup.position.set(13, -1, 4);
         rightRackGroup.rotation.y = -0.5;
         rightRackGroup.scale.set(1.5, 1.5, 1.5);
 
-        // Main Console Body
-        const rackMat = new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.6, roughness: 0.5 });
+        const rackMat = makeEnvMat({ color: 0x333333, metalness: 0.6, roughness: 0.5 });
         const rackBody = new THREE.Mesh(new THREE.BoxGeometry(3, 2.5, 1.5), rackMat);
         rightRackGroup.add(rackBody);
 
-        // Side Speaker/Vent
         const ventBody = new THREE.Mesh(new THREE.BoxGeometry(1.5, 2.2, 1.2), rackMat);
         ventBody.position.set(-2.2, -0.15, 0.2);
-        ventBody.rotation.z = 0.1; // Tilted slightly like image
+        ventBody.rotation.z = 0.1;
         rightRackGroup.add(ventBody);
 
-        // Vent Circle
         const ventCircle = new THREE.Mesh(
-            new THREE.CircleGeometry(0.5, 16),
-            new THREE.MeshStandardMaterial({ color: 0x111111, side: THREE.DoubleSide })
+            new THREE.CircleGeometry(0.5, 12),
+            makeEnvMat({ color: 0x111111, side: THREE.DoubleSide })
         );
         ventCircle.position.set(-2.2, -0.2, 0.81);
         rightRackGroup.add(ventCircle);
 
-        // Glowing Panels
         const panelGeo = new THREE.PlaneGeometry(0.8, 0.3);
-        const panelMat = new THREE.MeshBasicMaterial({ color: 0x00ff00 }); // Green lights
+        const panelMat = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
         const panel = new THREE.Mesh(panelGeo, panelMat);
         panel.position.set(0.5, 0.6, 0.76);
         rightRackGroup.add(panel);
 
-        // Wires (Curves)
         const curve = new THREE.CatmullRomCurve3([
             new THREE.Vector3(1, 0, 0.8),
             new THREE.Vector3(1.5, -1, 1.5),
             new THREE.Vector3(1.2, -3, 2),
             new THREE.Vector3(2, -5, 1)
         ]);
-        const rackWireGeo = new THREE.TubeGeometry(curve, 8, 0.05, 4, false);
-        const rackWireMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
-        const rackWires = new THREE.Mesh(rackWireGeo, rackWireMat);
+        const rackWireGeo = new THREE.TubeGeometry(curve, 6, 0.05, 4, false);
+        const rackWires = new THREE.Mesh(rackWireGeo, wireTubeMat);
         rightRackGroup.add(rackWires);
 
-        // Prop on top: Mug (White Cylinder with Handle)
+        const mugMat = makeEnvMat({ color: 0xeeeeee });
         const mugGroup = new THREE.Group();
         mugGroup.position.set(0.5, 1.25, 0);
         mugGroup.rotation.y = 0.5;
-
-        const mugBody = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.5, 12), new THREE.MeshStandardMaterial({ color: 0xeeeeee }));
+        const mugBody = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.5, 10), mugMat);
         mugBody.position.y = 0.25;
         mugGroup.add(mugBody);
-
-        // Handle
-        const handle = new THREE.Mesh(new THREE.TorusGeometry(0.15, 0.04, 8, 12), new THREE.MeshStandardMaterial({ color: 0xeeeeee }));
+        const handle = new THREE.Mesh(new THREE.TorusGeometry(0.15, 0.04, 6, 10), mugMat);
         handle.position.set(0.25, 0.25, 0);
         mugGroup.add(handle);
-
         rightRackGroup.add(mugGroup);
 
         scene.add(rightRackGroup);
 
-        // Light for right rack (Greenish — High or PC Balanced)
-        if (isHigh || (isBalanced && !isMobile)) {
-            const rackLight = new THREE.PointLight(0x22ff22, 8.0, 25);
-            rackLight.position.set(10, 2, 5);
-            scene.add(rackLight);
-        }
-
-        // Center Back - Metal Drum / Barrel - brighter
-        const drumGeo = new THREE.CylinderGeometry(1.5, 1.5, 4, 16);
-        const drumMat = new THREE.MeshStandardMaterial({ color: 0x445566, roughness: 0.65, metalness: 0.5 });
+        // Center Back - Metal Drum / Barrel
+        const drumGeo = new THREE.CylinderGeometry(1.5, 1.5, 4, 12);
+        const drumMat = makeEnvMat({ color: 0x445566, roughness: 0.65, metalness: 0.5 });
         const drum = new THREE.Mesh(drumGeo, drumMat);
         drum.position.set(2, -6, -22);
         scene.add(drum);
@@ -887,7 +852,7 @@ export const createEnvironment = (scene: THREE.Scene, isMobile: boolean = false,
         leftTvGroup.rotation.y = 0.8;
         leftTvGroup.scale.set(1.2, 1.2, 1.2);
 
-        const tvCaseMat = new THREE.MeshStandardMaterial({ color: 0x2d302e, metalness: 0.5, roughness: 0.5 });
+        const tvCaseMat = makeEnvMat({ color: 0x2d302e, metalness: 0.5, roughness: 0.5 });
         const leftTvCase = new THREE.Mesh(new THREE.BoxGeometry(2.0, 1.8, 1.8), tvCaseMat);
         leftTvGroup.add(leftTvCase);
 
@@ -895,20 +860,19 @@ export const createEnvironment = (scene: THREE.Scene, isMobile: boolean = false,
         leftTvBevel.position.set(0, 0, 0.9);
         leftTvGroup.add(leftTvBevel);
 
-        const leftTvScreenMat = new THREE.MeshStandardMaterial({
+        const leftTvScreenMat = makeEnvMat({
             color: 0x113322,
-            emissive: 0x00cc55, // Glowing Green Screen
-            emissiveIntensity: 3.0,
-            roughness: 0.1,
-            metalness: 0.9
+            emissive: 0x00cc55,
+            emissiveIntensity: 2.2,
+            roughness: 0.15,
+            metalness: 0.8
         });
         const leftTvScreen = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.3, 0.05), leftTvScreenMat);
         leftTvScreen.position.set(-0.1, 0, 0.95);
         leftTvGroup.add(leftTvScreen);
 
-        // TV Knobs
-        const knobMat = new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.8, roughness: 0.2 });
-        const leftDial1 = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.1, 8), knobMat);
+        const knobMat = makeEnvMat({ color: 0x111111, metalness: 0.8, roughness: 0.2 });
+        const leftDial1 = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.1, 6), knobMat);
         leftDial1.rotation.x = Math.PI / 2;
         leftDial1.position.set(0.7, 0.4, 0.95);
         leftTvGroup.add(leftDial1);
@@ -917,16 +881,15 @@ export const createEnvironment = (scene: THREE.Scene, isMobile: boolean = false,
         leftDial2.position.set(0.7, 0.0, 0.95);
         leftTvGroup.add(leftDial2);
 
-        if (isHigh || (isBalanced && !isMobile)) {
-            const leftTvLight = new THREE.SpotLight(0x00ff88, 25.0, 20);
+        if (profile.enableExtraEnvLights) {
+            const leftTvLight = new THREE.SpotLight(0x00ff88, 22.0, 20);
             leftTvLight.position.set(0, 0, 1.0);
-            leftTvLight.target.position.set(5, -1, 3); // Aim towards table center
+            leftTvLight.target.position.set(5, -1, 3);
             leftTvGroup.add(leftTvLight);
             leftTvGroup.add(leftTvLight.target);
         }
 
         scene.add(leftTvGroup);
-
 
         // === TERMINAL SCREEN (Right Side) ===
         const rightTvGroup = new THREE.Group();
@@ -941,19 +904,18 @@ export const createEnvironment = (scene: THREE.Scene, isMobile: boolean = false,
         rightTvBevel.position.set(0, 0, 0.8);
         rightTvGroup.add(rightTvBevel);
 
-        const rightTvScreenMat = new THREE.MeshStandardMaterial({
+        const rightTvScreenMat = makeEnvMat({
             color: 0x331111,
-            emissive: 0xff3300, // Glowing Amber/Red terminal screen
-            emissiveIntensity: 2.5,
-            roughness: 0.1,
-            metalness: 0.9
+            emissive: 0xff3300,
+            emissiveIntensity: 2.0,
+            roughness: 0.15,
+            metalness: 0.8
         });
         const rightTvScreen = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.1, 0.05), rightTvScreenMat);
         rightTvScreen.position.set(-0.1, 0, 0.85);
         rightTvGroup.add(rightTvScreen);
 
-        // TV Knobs
-        const rightDial1 = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.1, 8), knobMat);
+        const rightDial1 = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.1, 6), knobMat);
         rightDial1.rotation.x = Math.PI / 2;
         rightDial1.position.set(0.8, 0.3, 0.85);
         rightTvGroup.add(rightDial1);
@@ -962,21 +924,21 @@ export const createEnvironment = (scene: THREE.Scene, isMobile: boolean = false,
         rightDial2.position.set(0.8, -0.1, 0.85);
         rightTvGroup.add(rightDial2);
 
-        if (isHigh || (isBalanced && !isMobile)) {
-            const rightTvLight = new THREE.SpotLight(0xff4400, 20.0, 20);
+        if (profile.enableExtraEnvLights) {
+            const rightTvLight = new THREE.SpotLight(0xff4400, 18.0, 20);
             rightTvLight.position.set(0, 0, 0.9);
-            rightTvLight.target.position.set(-5, -1, 3); // Aim towards table center
+            rightTvLight.target.position.set(-5, -1, 3);
             rightTvGroup.add(rightTvLight);
             rightTvGroup.add(rightTvLight.target);
         }
 
         scene.add(rightTvGroup);
 
-        // Floor Debris (Random papers/scraps)
-        if (!isMobile && !isLow) {
+        // Floor Debris (Desktop High only)
+        if (profile.enableFloorDebris) {
             const debrisGeo = new THREE.PlaneGeometry(0.3, 0.4);
-            const debrisMat = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, side: THREE.DoubleSide });
-            for (let i = 0; i < 15; i++) {
+            const debrisMat = makeEnvMat({ color: 0xaaaaaa, side: THREE.DoubleSide });
+            for (let i = 0; i < 12; i++) {
                 const debris = new THREE.Mesh(debrisGeo, debrisMat);
                 debris.position.set((Math.random() - 0.5) * 15, -7.95, (Math.random() - 0.5) * 15 - 5);
                 debris.rotation.x = -Math.PI / 2;
@@ -985,65 +947,41 @@ export const createEnvironment = (scene: THREE.Scene, isMobile: boolean = false,
             }
         }
 
-        // Background point lights for ominous depth
-        const clutterLight = new THREE.PointLight(0x778899, isLow ? 22 : 30, 60);
-        clutterLight.position.set(0, 10, -20);
-        scene.add(clutterLight);
-
-        if (isHigh || (isBalanced && !isMobile)) {
-            // Extra Fill for far corners
-            const bgFill = new THREE.PointLight(0x443322, 10, 40);
-            bgFill.position.set(-20, 0, -25);
-            scene.add(bgFill);
-            const bgFill2 = new THREE.PointLight(0x223344, 10, 40);
-            bgFill2.position.set(20, 0, -25);
-            scene.add(bgFill2);
+        // Single background point light on PC Balanced & High (skipped on Low and mobile Balanced)
+        if (profile.enableBgRimLights) {
+            const clutterLight = new THREE.PointLight(0x778899, isHigh ? 28 : 22, 58);
+            clutterLight.position.set(0, 10, -20);
+            scene.add(clutterLight);
         }
 
-        if (!isLow) {
-            // Central Blue Rim for Back Wall depth
-            const bgBlueRim = new THREE.SpotLight(0x445566, 15.0);
-            bgBlueRim.position.set(0, -5, -20);
-            bgBlueRim.target.position.set(0, 5, -28);
-            bgBlueRim.angle = 1.0;
-            bgBlueRim.penumbra = 0.5;
-            scene.add(bgBlueRim);
-            scene.add(bgBlueRim.target);
-        }
-
-        // --- INDUSTRIAL PIPES & VENTS --- (Using materials defined above)
-
-        // Ceiling Piping
-        const pipe1 = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 40), pipeMat);
+        // --- INDUSTRIAL PIPES & VENTS ---
+        const pipe1 = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 40, 8), pipeMat);
         pipe1.rotation.z = Math.PI / 2; pipe1.position.set(0, 12, -15);
         scene.add(pipe1);
 
-        const pipe2 = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 40), rustMat);
+        const pipe2 = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 40, 8), rustMat);
         pipe2.rotation.z = Math.PI / 2; pipe2.position.set(0, 13, -12);
         scene.add(pipe2);
 
-        // Vertical pipes in background
-        const vPipe1 = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 20), pipeMat);
+        const vPipe1 = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 20, 8), pipeMat);
         vPipe1.position.set(-18, 5, -22);
         scene.add(vPipe1);
 
-        const vPipe2 = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 20), rustMat);
+        const vPipe2 = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 20, 8), rustMat);
         vPipe2.position.set(15, 5, -22);
         scene.add(vPipe2);
 
-        // Vent Fan (brighter materials)
-        const fanHousing = new THREE.Mesh(new THREE.BoxGeometry(6, 6, 2), new THREE.MeshStandardMaterial({ color: 0x2a2828 }));
+        const fanHousing = new THREE.Mesh(new THREE.BoxGeometry(6, 6, 2), makeEnvMat({ color: 0x2a2828 }));
         fanHousing.position.set(8, 5, -25);
         scene.add(fanHousing);
-        const fanBlades = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 2.5, 0.2, 8), new THREE.MeshStandardMaterial({ color: 0x1a1818 }));
+        const fanBlades = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 2.5, 0.2, 8), makeEnvMat({ color: 0x1a1818 }));
         fanBlades.rotation.x = Math.PI / 2; fanBlades.position.set(8, 5, -24);
         scene.add(fanBlades);
 
-        // Grimy Monitor/Terminal (brighter)
-        const terminal = new THREE.Mesh(new THREE.BoxGeometry(3, 2.5, 2), new THREE.MeshStandardMaterial({ color: 0x252222 }));
+        const terminal = new THREE.Mesh(new THREE.BoxGeometry(3, 2.5, 2), makeEnvMat({ color: 0x252222 }));
         terminal.position.set(-10, -5, -20); terminal.rotation.y = 0.4;
         scene.add(terminal);
-        const screen = new THREE.Mesh(new THREE.PlaneGeometry(2.5, 1.8), new THREE.MeshStandardMaterial({ color: 0x004400, emissive: 0x00ff00, emissiveIntensity: 0.4 }));
+        const screen = new THREE.Mesh(new THREE.PlaneGeometry(2.5, 1.8), makeEnvMat({ color: 0x004400, emissive: 0x00ff00, emissiveIntensity: 0.4 }));
         screen.position.set(-10, -5, -18.9); screen.rotation.y = 0.4;
         scene.add(screen);
     }
@@ -1106,43 +1044,39 @@ export const createEnvironment = (scene: THREE.Scene, isMobile: boolean = false,
     behindVPipe2.position.set(15, 5, 17.3);
     scene.add(behindVPipe2);
 
-    // === STAGE LIGHTS (Barn Doors) - ENHANCED WITH GLOW ===
+    // === STAGE LIGHTS (Barn Doors) ===
+    const housingMat = makeEnvMat({ color: 0x111111, metalness: 0.5, roughness: 0.7 });
+    const lensMat = makeEnvMat({
+        color: 0xffcc88,
+        emissive: 0xffaa66,
+        emissiveIntensity: 2.2,
+        toneMapped: false
+    });
+    const coreMat = new THREE.MeshBasicMaterial({
+        color: 0xffffee,
+        transparent: true,
+        opacity: 0.9
+    });
+    const doorGeo = new THREE.BoxGeometry(2.5, 2.5, 0.1);
+
     const createStageLight = (x: number, y: number, z: number, targetX: number, targetY: number, targetZ: number) => {
         const group = new THREE.Group();
         group.position.set(x, y, z);
         group.lookAt(targetX, targetY, targetZ);
 
-        const housingMat = new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.5, roughness: 0.7 });
-
-        // Main Can
-        const can = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.0, 3, 16), housingMat);
+        const can = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.0, 3, 10), housingMat);
         can.rotation.x = Math.PI / 2;
         group.add(can);
 
-        // Lens/Bulb - ENHANCED with brighter emissive
-        const lensMat = new THREE.MeshStandardMaterial({
-            color: 0xffcc88,
-            emissive: 0xffaa66,
-            emissiveIntensity: 2.5,
-            toneMapped: false
-        });
-        const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 0.3, 32), lensMat);
+        const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 0.3, 14), lensMat);
         lens.rotation.x = Math.PI / 2;
         lens.position.z = 1.6;
         group.add(lens);
 
-        // Inner bright core
-        const coreMat = new THREE.MeshBasicMaterial({
-            color: 0xffffee,
-            transparent: true,
-            opacity: 0.9
-        });
-        const core = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 16), coreMat);
+        const core = new THREE.Mesh(new THREE.SphereGeometry(0.5, 10, 10), coreMat);
         core.position.z = 1.5;
         group.add(core);
 
-        // Barn Doors
-        const doorGeo = new THREE.BoxGeometry(2.5, 2.5, 0.1);
         const topDoor = new THREE.Mesh(doorGeo, housingMat);
         topDoor.position.set(0, 1.6, 2.0);
         topDoor.rotation.x = Math.PI / 3;
@@ -1163,44 +1097,40 @@ export const createEnvironment = (scene: THREE.Scene, isMobile: boolean = false,
         rightDoor.rotation.y = Math.PI / 3;
         group.add(rightDoor);
 
-        // Hanging Yoke
-        const yoke = new THREE.Mesh(new THREE.TorusGeometry(1.6, 0.2, 4, 16, Math.PI), housingMat);
+        const yoke = new THREE.Mesh(new THREE.TorusGeometry(1.6, 0.2, 4, 12, Math.PI), housingMat);
         yoke.rotation.z = Math.PI / 2;
         yoke.rotation.x = Math.PI / 2;
-        yoke.position.y = 0;
         group.add(yoke);
 
-        // === ENHANCED GLOW EFFECTS ===
+        if (profile.enableBulbHalo) {
+            const innerGlowMat = new THREE.SpriteMaterial({
+                map: generateGlowTexture(),
+                color: 0xffffcc,
+                transparent: true,
+                opacity: 0.85,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false
+            });
+            const innerGlow = new THREE.Sprite(innerGlowMat);
+            innerGlow.position.set(0, 0, 1.7);
+            innerGlow.scale.set(3, 3, 1);
+            group.add(innerGlow);
 
-        // Inner bright glow sprite
-        const innerGlowMat = new THREE.SpriteMaterial({
-            map: generateGlowTexture(),
-            color: 0xffffcc,
-            transparent: true,
-            opacity: 0.9,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false
-        });
-        const innerGlow = new THREE.Sprite(innerGlowMat);
-        innerGlow.position.set(0, 0, 1.7);
-        innerGlow.scale.set(3, 3, 1);
-        group.add(innerGlow);
-
-        // Outer soft glow
-        const outerGlowMat = new THREE.SpriteMaterial({
-            map: generateGlowTexture(),
-            color: 0xffaa55,
-            transparent: true,
-            opacity: 0.5,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false
-        });
-        const outerGlow = new THREE.Sprite(outerGlowMat);
-        outerGlow.position.set(0, 0, 2.0);
-        outerGlow.scale.set(8, 8, 1);
-        group.add(outerGlow);
-
-
+            if (isHigh) {
+                const outerGlowMat = new THREE.SpriteMaterial({
+                    map: generateGlowTexture(),
+                    color: 0xffaa55,
+                    transparent: true,
+                    opacity: 0.45,
+                    blending: THREE.AdditiveBlending,
+                    depthWrite: false
+                });
+                const outerGlow = new THREE.Sprite(outerGlowMat);
+                outerGlow.position.set(0, 0, 2.0);
+                outerGlow.scale.set(7.5, 7.5, 1);
+                group.add(outerGlow);
+            }
+        }
 
         scene.add(group);
     };
@@ -1208,25 +1138,23 @@ export const createEnvironment = (scene: THREE.Scene, isMobile: boolean = false,
     createStageLight(-12, 10, -15, 0, 0, 0);
     createStageLight(12, 10, -15, 0, 0, 0);
 
-    // === BACK WALL SPEAKERS/TECH (From Reference) ===
+    // === BACK WALL SPEAKERS/TECH ===
+    const speakerCabMat = makeEnvMat({ color: 0x1a1a1a });
+    const speakerConeMat = makeEnvMat({ color: 0x050505 });
     const createSpeaker = (x: number, y: number, z: number, ry: number) => {
         const group = new THREE.Group();
         group.position.set(x, y, z);
         group.rotation.y = ry;
 
-        // Cabinet
-        const cab = new THREE.Mesh(new THREE.BoxGeometry(4, 6, 3), new THREE.MeshStandardMaterial({ color: 0x1a1a1a }));
+        const cab = new THREE.Mesh(new THREE.BoxGeometry(4, 6, 3), speakerCabMat);
         group.add(cab);
 
-        // Speaker Cone
-        const cone = new THREE.Mesh(new THREE.ConeGeometry(1.5, 0.5, 32, 1, true), new THREE.MeshStandardMaterial({ color: 0x050505 }));
+        const cone = new THREE.Mesh(new THREE.ConeGeometry(1.5, 0.5, 14, 1, true), speakerConeMat);
         cone.rotation.x = -Math.PI / 2;
-        cone.position.z = 1.5;
-        cone.position.y = -1;
+        cone.position.set(0, -1, 1.5);
         group.add(cone);
 
-        // Tweeter
-        const tweet = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.2), new THREE.MeshStandardMaterial({ color: 0x050505 }));
+        const tweet = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.2, 10), speakerConeMat);
         tweet.rotation.x = Math.PI / 2;
         tweet.position.set(0, 1.5, 1.5);
         group.add(tweet);
@@ -1237,21 +1165,21 @@ export const createEnvironment = (scene: THREE.Scene, isMobile: boolean = false,
     createSpeaker(-12, 1, -26, 0.4);
     createSpeaker(12, 1, -26, -0.4);
 
-
     // --- CAGE / FENCE BACKGROUND ---
     const fenceGroup = new THREE.Group();
-    const wireFMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.7, metalness: 0.5 });
+    const wireFMat = makeEnvMat({ color: 0x1a1a1a, roughness: 0.7, metalness: 0.5 });
+    const horizBarGeo = new THREE.CylinderGeometry(0.05, 0.05, 50, 5);
+    const vertBarGeo = new THREE.CylinderGeometry(0.05, 0.05, 14, 5);
 
-    // Horizontal Bars
     for (let i = 0; i < 6; i++) {
-        const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 50), wireFMat);
+        const bar = new THREE.Mesh(horizBarGeo, wireFMat);
         bar.rotation.z = Math.PI / 2;
         bar.position.set(0, -5 + i * 2, -18);
         fenceGroup.add(bar);
     }
-    // Vertical Bars
-    for (let i = -12; i <= 12; i += 2) {
-        const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 14), wireFMat);
+    const barStep = isLow ? 4 : 2;
+    for (let i = -12; i <= 12; i += barStep) {
+        const bar = new THREE.Mesh(vertBarGeo, wireFMat);
         bar.position.set(i * 2, 0, -18);
         fenceGroup.add(bar);
     }
@@ -1276,30 +1204,26 @@ export const createDust = (scene: THREE.Scene, isMobile: boolean = false, ultraP
     const isMobileDevice = isMobile || isAndroid;
     const settings = scene.userData.settings || {};
     const preset = getGraphicsPreset(settings);
-    // Preset 1 (Potato): particles disabled
-    if (ultraPerformance || preset === 'potato') return null;
+    const profile: GraphicsPresetProfile = scene.userData.graphicsProfile || getGraphicsPresetConfig(preset, {
+        isMobile: isMobileDevice,
+        isAndroid,
+        nativeDpr: typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1,
+        isSoftwareGl: !!scene.userData.isSoftwareGl
+    });
 
-    let particleCount = 40;
-    if (preset === 'high') {
-        particleCount = isMobileDevice ? 40 : 140;
-    } else if (preset === 'balanced') {
-        particleCount = isMobileDevice ? 18 : 60;
-    } else {
-        // Low: preserved subtle atmosphere
-        particleCount = isMobileDevice ? 10 : 28;
-    }
+    if (ultraPerformance || !profile.enableDust || profile.dustCount <= 0) return null;
+
+    const particleCount = profile.dustCount;
 
     const geometry = new THREE.BufferGeometry();
     const positions = new Float32Array(particleCount * 3);
     const velocities = new Float32Array(particleCount * 3);
 
     for (let i = 0; i < particleCount; i++) {
-        // Spread particles in the scene
         positions[i * 3] = (Math.random() - 0.5) * 30;
         positions[i * 3 + 1] = Math.random() * 15 + 2;
         positions[i * 3 + 2] = (Math.random() - 0.5) * 25;
 
-        // Slow, lazy drifting
         velocities[i * 3] = (Math.random() - 0.5) * 0.01;
         velocities[i * 3 + 1] = (Math.random() - 0.5) * 0.005;
         velocities[i * 3 + 2] = (Math.random() - 0.5) * 0.01;
@@ -1308,7 +1232,6 @@ export const createDust = (scene: THREE.Scene, isMobile: boolean = false, ultraP
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     geometry.setAttribute('velocity', new THREE.BufferAttribute(velocities, 3));
 
-    // Volumetric soft dust glow on High; lightweight dust points on Low/Balanced
     const material = new THREE.PointsMaterial({
         color: preset === 'high' ? 0xd8c39a : 0xbbaa88,
         map: preset === 'high' ? generateGlowTexture() : null,
@@ -1330,13 +1253,19 @@ export const createDust = (scene: THREE.Scene, isMobile: boolean = false, ultraP
 export const createTable = (scene: THREE.Scene, ultraPerformance: boolean = false) => {
     const settings = scene.userData.settings || {};
     const preset = getGraphicsPreset(settings);
-    const isPotato = ultraPerformance || preset === 'potato';
+    const isMobile = scene.userData.isMobile || false;
+    const isAndroid = !!scene.userData.isAndroid;
+    const profile: GraphicsPresetProfile = scene.userData.graphicsProfile || getGraphicsPresetConfig(preset, {
+        isMobile,
+        isAndroid,
+        nativeDpr: typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1,
+        isSoftwareGl: !!scene.userData.isSoftwareGl
+    });
+    const isPotato = ultraPerformance || profile.useBasicEnv;
     const isLow = preset === 'low';
     const isBalanced = preset === 'balanced';
     const isHigh = preset === 'high';
-    const isMobile = scene.userData.isMobile || false;
-    const isAndroid = !!scene.userData.isAndroid;
-    const allowTableShadows = isHigh || isBalanced || (isLow && !isAndroid);
+    const allowTableShadows = profile.shadowMapEnabled && (isHigh || isBalanced);
 
     const tableGroup = new THREE.Group();
     tableGroup.name = 'TABLE_GROUP';

@@ -354,7 +354,7 @@ export const useDealerAI = ({
     }, [gameState.phase, gameState.selectedCardIndex, gameState.deckCards, gameState.liveCount, gameState.currentShellIndex]);
 
     useEffect(() => {
-        if (isMultiplayer) return;
+        if (isMultiplayer || gameState.isLocalSplit) return;
         if (isProcessing) return;
 
         const isDealerCardSelect = gameState.phase === 'CARD_SELECT' && gameState.turnOwner === 'DEALER' && gameState.selectedCardIndex === null;

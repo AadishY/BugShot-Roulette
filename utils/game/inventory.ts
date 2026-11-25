@@ -2,6 +2,7 @@ import React from 'react';
 import { GameState, PlayerState, ItemType, RoomSettings } from '../../types';
 import { wait, randomInt } from '../gameUtils';
 import { MAX_ITEMS } from '../../constants';
+import { getSplitItemAmountForMatch } from '../splitMode';
 
 export const getCustomWeightedItem = (weights: Record<string, number>): ItemType => {
     const sanitizedWeights = { ...weights, REMOTE: 0 };
@@ -335,7 +336,8 @@ export const distributeItems = async (
     p3ItemsOverride?: ItemType[],
     p4ItemsOverride?: ItemType[],
     player3Items: ItemType[] = [],
-    player4Items: ItemType[] = []
+    player4Items: ItemType[] = [],
+    setOpponentReceivedItems?: StateSetter<ItemType[]>
 ) => {
     // If forceClear, ensure items are cleared FIRST before anything else
     if (forceClear) {
@@ -349,7 +351,10 @@ export const distributeItems = async (
     // Generate items based on round count
     let amount = 2;
 
-    if (gameState.isMultiplayer && gameState.roomSettings) {
+    if (gameState.isLocalSplit && gameState.localSplitConfig) {
+        const matchNumber = (gameState.multiModeState?.playerWins || 0) + (gameState.multiModeState?.opponentWins || 0) + 1;
+        amount = getSplitItemAmountForMatch(gameState.localSplitConfig, matchNumber);
+    } else if (gameState.isMultiplayer && gameState.roomSettings) {
         amount = gameState.roomSettings.itemsPerShipment || 4;
     } else if (gameState.isHardMode) {
         // HARD MODE LOGIC
@@ -389,6 +394,21 @@ export const distributeItems = async (
     }
 
     const generateLoot = (forDealer: boolean, currentItems: ItemType[]) => {
+        if (gameState.isLocalSplit) {
+            // Both human players receive equal fair multiplayer loot weights
+            return generateLootBatch(
+                amount,
+                false,
+                false,
+                dealerHp,
+                currentItems,
+                forDealer ? dealerLuckycharms : playerLuckycharms,
+                forDealer ? dealerHp : playerHp,
+                forDealer ? dealerMaxHp : playerMaxHp,
+                gameState.roomSettings,
+                2
+            );
+        }
         if (forDealer) {
             return generateLootBatch(amount, gameState.isHardMode, true, dealerHp, currentItems, dealerLuckycharms, dealerHp, dealerMaxHp);
         } else {
@@ -429,18 +449,22 @@ export const distributeItems = async (
     // SAFETY: Clear any previous overlay state explicitely before showing new
     setShowLootOverlay(false);
     setReceivedItems([]);
+    if (setOpponentReceivedItems) setOpponentReceivedItems([]);
     await wait(200); // Increased wait to ensure UI unmounts completely
 
-    // Show NEW items in overlay - ONLY SHOW PLAYER ITEMS
+    // Show NEW items in overlay — in Local Split mode, display both players' items simultaneously
     setGameState(prev => ({ ...prev, phase: 'LOOTING' }));
     setReceivedItems([...pNew]); // Use spread to ensure new array reference
+    if (setOpponentReceivedItems) {
+        setOpponentReceivedItems(gameState.isLocalSplit ? [...dNew] : []);
+    }
 
     // Tiny delay to allow React to render the items in state before showing overlay
     // preventing "empty" or "old" flash
     await wait(50);
 
     setShowLootOverlay(true);
-    await wait(4000); // Allow time to see items (increased for better pacing)
+    await wait(gameState.isLocalSplit ? 4500 : 4000); // Allow both split players time to inspect their drops
 
     // Apply items to inventories - player gets pNew, dealer gets dNew
     setPlayer(p => {
@@ -467,4 +491,5 @@ export const distributeItems = async (
     // Clean up overlay
     setShowLootOverlay(false);
     setReceivedItems([]);
+    if (setOpponentReceivedItems) setOpponentReceivedItems([]);
 };

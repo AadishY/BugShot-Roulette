@@ -39,11 +39,11 @@ const SYSTEM_PRINTS = [
 
 export const BootScreen: React.FC<BootScreenProps> = React.memo(({ onContinue }) => {
     const [bootLines, setBootLines] = useState<string[]>([]);
-    const [loadingProgress, setLoadingProgress] = useState(0);
     const [isExiting, setIsExiting] = useState(false);
     const hasSkippedRef = useRef(false);
     const skipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const progressRef = useRef(0);
+    const barFillRef = useRef<HTMLDivElement>(null);
     const onContinueRef = useRef(onContinue);
 
     useEffect(() => {
@@ -66,12 +66,14 @@ export const BootScreen: React.FC<BootScreenProps> = React.memo(({ onContinue })
 
     useEffect(() => {
         setBootLines([]);
-        setLoadingProgress(0);
         progressRef.current = 0;
+        if (barFillRef.current) {
+            barFillRef.current.style.transform = 'translate3d(-100%, 0, 0)';
+        }
 
         const startTime = Date.now();
-        const MAX_LOADING_TIME = 3500;
-        const tickRate = isMobileOrTablet ? 35 : 45;
+        const MAX_LOADING_TIME = 2400;
+        const tickRate = isMobileOrTablet ? 40 : 45;
         const deviceLine = `DETECTING CLIENT DEVICE... ${isMobileOrTablet ? 'PORTABLE HANDHELD' : 'STANDARD WORKSTATION'} OK`;
 
         const printedLines = new Set<string>();
@@ -89,16 +91,18 @@ export const BootScreen: React.FC<BootScreenProps> = React.memo(({ onContinue })
             let nextP = p;
 
             if (p < 88) {
-                nextP = Math.min(88, p + (isMobileOrTablet ? 4.2 : 2.2));
+                nextP = Math.min(88, p + (isMobileOrTablet ? 5.2 : 3.2));
             } else if (p < 100) {
                 if (audioProgress === 100 || timeElapsed >= MAX_LOADING_TIME) {
-                    nextP = Math.min(100, p + 4.5);
+                    nextP = Math.min(100, p + 6.0);
                 }
             }
 
             if (nextP !== p) {
                 progressRef.current = nextP;
-                setLoadingProgress(nextP);
+                if (barFillRef.current) {
+                    barFillRef.current.style.transform = `translate3d(${Math.min(100, Math.max(0, nextP)) - 100}%, 0, 0)`;
+                }
             }
 
             const newlyAdded: string[] = [];
@@ -157,8 +161,6 @@ export const BootScreen: React.FC<BootScreenProps> = React.memo(({ onContinue })
         };
     }, [isMobileOrTablet, handleSkip]);
 
-    const clampedPct = Math.min(100, Math.max(0, loadingProgress));
-
     return (
         <div
             onClick={handleSkip}
@@ -182,26 +184,21 @@ export const BootScreen: React.FC<BootScreenProps> = React.memo(({ onContinue })
                     {bootLines.map((line, i) => (
                         <div
                             key={`${i}-${line.slice(0, 12)}`}
-                            className={`typewriter truncate text-green-400 shrink-0 leading-normal tracking-wider ${
-                                isMobileOrTablet ? '' : 'drop-shadow-[0_0_4px_rgba(74,222,128,0.4)]'
-                            }`}
+                            className="typewriter truncate text-green-400 shrink-0 leading-normal tracking-wider"
                         >
                             {`> ${line}`}
                         </div>
                     ))}
-                    <div
-                        className={`text-green-400 animate-pulse shrink-0 leading-normal tracking-wider ${
-                            isMobileOrTablet ? '' : 'drop-shadow-[0_0_4px_rgba(74,222,128,0.4)]'
-                        }`}
-                    >
+                    <div className="text-green-400 animate-pulse shrink-0 leading-normal tracking-wider">
                         _
                     </div>
                 </div>
                 <div className="w-full h-2 bg-stone-900 border border-stone-850 p-0.5 relative rounded-sm overflow-hidden shadow-inner">
                     <div
+                        ref={barFillRef}
                         className="w-full h-full bg-green-700 rounded-sm will-change-transform"
                         style={{
-                            transform: `translate3d(${clampedPct - 100}%, 0, 0)`
+                            transform: 'translate3d(-100%, 0, 0)'
                         }}
                     />
                 </div>

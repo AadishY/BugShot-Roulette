@@ -89,14 +89,23 @@
 
     // PWA & Service Worker Lifecycle Manager
     if ('serviceWorker' in navigator) {
+      const hadInitialController = Boolean(navigator.serviceWorker.controller);
+      let swUpdateDispatched = false;
+
+      const emitSwUpdateOnce = (registration) => {
+        if (swUpdateDispatched) return;
+        swUpdateDispatched = true;
+        window.dispatchEvent(new CustomEvent('sw-update-available', { detail: registration }));
+      };
+
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('/sw.js')
           .then((registration) => {
             window.swRegistration = registration;
 
-            // Check if there is already a waiting worker
+            // Check if there is already a waiting worker on an existing controlled page
             if (registration.waiting && navigator.serviceWorker.controller) {
-              window.dispatchEvent(new CustomEvent('sw-update-available', { detail: registration }));
+              emitSwUpdateOnce(registration);
             }
 
             // Detect if a new worker is currently installing
@@ -105,7 +114,7 @@
               if (newWorker) {
                 newWorker.addEventListener('statechange', () => {
                   if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                    window.dispatchEvent(new CustomEvent('sw-update-available', { detail: registration }));
+                    emitSwUpdateOnce(registration);
                   }
                 });
               }
@@ -130,8 +139,9 @@
         }
       });
 
-      // Handle controller change (when new SW activates & claims clients)
+      // Only emit controller change if page already had a previous controller (ignore first-time SW claim)
       navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!hadInitialController) return;
         window.dispatchEvent(new CustomEvent('sw-controller-changed'));
       });
     }
@@ -617,12 +627,11 @@
       clip-path: polygon(5% 0, 100% 0, 100% 100%, 0% 100%);
     }
 
-    /* Orientation Warning */
+    /* Orientation Warning (strict horizontal enforcement from first paint) */
     #rotate-warning {
       display: none;
       position: fixed;
-      top: 0;
-      left: 0;
+      inset: 0;
       width: 100%;
       height: 100%;
       background: radial-gradient(circle at center, #1a0505 0%, #000 100%);
@@ -632,41 +641,21 @@
       justify-content: center;
       color: #fff;
       text-align: center;
-      padding: 2rem;
-      backdrop-filter: blur(20px);
+      padding: 1.5rem;
     }
 
     #rotate-warning.active {
-      display: flex;
+      display: flex !important;
+      opacity: 1 !important;
+      pointer-events: auto !important;
     }
 
-    #rotate-warning .warning-card {
-      background: rgba(0, 0, 0, 0.8);
-      border: 1px solid rgba(220, 38, 38, 0.3);
-      padding: 3rem;
-      border-radius: 2rem;
-      box-shadow: 0 0 100px rgba(220, 38, 38, 0.1);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 1.5rem;
-      max-width: 300px;
-    }
-
-    #rotate-warning h1 {
-      font-size: 1.5rem;
-      font-weight: 900;
-      letter-spacing: 0.5em;
-      color: #ef4444;
-      margin: 0;
-    }
-
-    #rotate-warning p {
-      font-size: 0.75rem;
-      color: #78716c;
-      letter-spacing: 0.2em;
-      margin: 0;
-      font-weight: bold;
+    @media (orientation: portrait) and (max-width: 1023px) {
+      #rotate-warning.portrait-guard {
+        display: flex !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+      }
     }
 
     .hardmode-scanline {

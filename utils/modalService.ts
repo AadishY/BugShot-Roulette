@@ -54,7 +54,6 @@ class ModalService {
                 icon: options.icon,
                 resolve: (val: boolean) => {
                     resolve(val);
-                    this.next();
                 }
             };
 
@@ -63,6 +62,15 @@ class ModalService {
                 this.emit();
             } else {
                 this.queue.push(req);
+            }
+
+            // Safety net: if no ConfirmModalHost is mounted at all, never hang permanently
+            if (this.listeners.size === 0 && typeof window !== 'undefined') {
+                setTimeout(() => {
+                    if (this.listeners.size === 0 && this.currentRequest?.id === req.id) {
+                        this.respond(true);
+                    }
+                }, 60);
             }
         });
     }
@@ -81,7 +89,6 @@ class ModalService {
         if (this.currentRequest) {
             const resolveFn = this.currentRequest.resolve;
             this.currentRequest = null;
-            this.emit();
             resolveFn(confirmed);
             this.next();
         }

@@ -321,7 +321,7 @@ export const handleGlass = async (
     const nextShell = gameState.chamber[gameState.currentShellIndex];
     if (!nextShell) return;
 
-    if (user === 'PLAYER') {
+    if (user === 'PLAYER' || gameState.isLocalSplit) {
         setKnownShell(nextShell);
         addLog(`IT IS ${nextShell}`, 'info');
         // Clear after 2.5 seconds only if still showing this inspected shell
@@ -355,8 +355,10 @@ export const handlePhone = async (
         available.push(i);
     }
 
+    const isHumanViewer = user === 'PLAYER' || Boolean(gameState.isLocalSplit);
+
     if (available.length === 0) {
-        if (user === 'PLAYER') {
+        if (isHumanViewer) {
             const msg = "YOU ARE ON YOUR OWN BUD";
             addLog("📞 NO INTEL AVAILABLE", 'neutral');
             showTimedOverlay(setOverlayText, msg, 2500);
@@ -370,8 +372,8 @@ export const handlePhone = async (
         const actualShell = gameState.chamber[randomIndex];
         const offset = randomIndex - current;
 
-        // 5% chance to LIE about the shell type (for player's burner phone)
-        const isLying = user === 'PLAYER' && Math.random() < 0.05;
+        // 5% chance to LIE about the shell type (for human burner phone)
+        const isLying = isHumanViewer && Math.random() < 0.05;
         const displayedShell = isLying ? (actualShell === 'LIVE' ? 'BLANK' : 'LIVE') : actualShell;
 
         let positionText = "";
@@ -381,7 +383,7 @@ export const handlePhone = async (
         else if (offset === 4) positionText = "5TH SHELL";
         else positionText = `${offset + 1}TH SHELL`;
 
-        if (user === 'PLAYER') {
+        if (isHumanViewer) {
             const displayText = `📞 ${positionText} IS ${displayedShell}`;
             addLog(`${positionText} IS ${displayedShell}`, 'info');
             showTimedOverlay(setOverlayText, displayText, 2500);
@@ -478,7 +480,8 @@ export const handleAdrenaline = async (
     setGameState: StateSetter<GameState>,
     addLog: (text: string, type: LogEntry['type']) => void,
     setOverlayText?: StateSetter<string | null>,
-    setOverlayColor?: StateSetter<'none' | 'red' | 'green' | 'scan'>
+    setOverlayColor?: StateSetter<'none' | 'red' | 'green' | 'scan'>,
+    isLocalSplit: boolean = false
 ) => {
     setTriggerAdrenaline(p => p + 1);
 
@@ -491,11 +494,15 @@ export const handleAdrenaline = async (
     if (setOverlayColor) setOverlayColor('none');
 
     // Show message AFTER animation plays
-    showTimedOverlay(setOverlayText, user === 'PLAYER' ? '⚡ ADRENALINE RUSH ⚡' : '💉 DEALER SURGE', 2000);
+    showTimedOverlay(
+        setOverlayText,
+        user === 'PLAYER' || isLocalSplit ? '⚡ ADRENALINE RUSH ⚡' : '💉 DEALER SURGE',
+        2000
+    );
 
     await wait(500); // Pause before phase change
 
-    if (user === 'PLAYER') {
+    if (user === 'PLAYER' || isLocalSplit) {
         addLog("TIME SLOWS DOWN... PICK AN ITEM TO STEAL", 'danger');
         setGameState(prev => ({ ...prev, phase: 'STEALING' }));
     } else {

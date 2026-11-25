@@ -274,7 +274,8 @@ const InventoryComponent: React.FC<InventoryProps> = ({ player, dealer, gameStat
                 {player.items.map((item, idx) => {
                     const isCuffDisabled = item === 'CUFFS' && dealer.isHandcuffed;
                     const isTotem = item === 'TOTEM';
-                    const isUsageDisabled = disabled || gameState.phase !== 'PLAYER_TURN' || isGunHeld || isCuffDisabled || isProcessing || player.isFlashbanged || isTotem;
+                    const isActiveTurnPhase = gameState.phase === 'PLAYER_TURN' || (Boolean(gameState.isLocalSplit) && gameState.phase === 'DEALER_TURN');
+                    const isUsageDisabled = disabled || !isActiveTurnPhase || isGunHeld || isCuffDisabled || isProcessing || player.isFlashbanged || isTotem;
                     const isSelected = selectedIdx === idx;
                     const isMouseHovered = hoveredIdx === idx;
                     const isHovered = ((isMouseHovered && (!isUsageDisabled || isTotem)) || (isLongPressing && hoveredIdx === idx) || (isMobileView && isSelected));

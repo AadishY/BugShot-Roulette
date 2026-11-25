@@ -23,7 +23,17 @@ interface ShootingContext {
     setShowBlood: StateSetter<boolean>;
     addLog: (text: string, type: LogEntry['type']) => void;
     playerName: string;
-    startRound: (resetItems?: boolean) => Promise<void> | void;
+    startRound: (
+        resetItems?: boolean,
+        hardModeOverride?: boolean,
+        hardModeStateOverride?: any,
+        chamberOverride?: ShellType[],
+        pItemsOverride?: any[],
+        dItemsOverride?: any[],
+        turnOwnerOverride?: TurnOwner,
+        hpOverride?: number,
+        multiWinsOverride?: { playerWins: number; opponentWins: number }
+    ) => Promise<void> | void;
     setIsProcessing: StateSetter<boolean>;
     matchStats?: React.MutableRefObject<MatchStats>; // Added
     handleHardModeRoundEnd?: (winner: TurnOwner) => Promise<void> | void;
@@ -162,7 +172,14 @@ export const performShot = async (
 
     // Update Match Stats (only count damage if not absorbed by Jackpot shield)
     if (matchStats && matchStats.current && damage > 0 && !targetHasJackpot) {
-        if (target === 'PLAYER') {
+        if (gameState.isLocalSplit) {
+            if (target !== shooter) {
+                matchStats.current.damageDealt += damage;
+                matchStats.current.shotsHit++;
+            } else {
+                matchStats.current.damageTaken += damage;
+            }
+        } else if (target === 'PLAYER') {
             matchStats.current.damageTaken += damage;
         } else if (target === 'DEALER' && shooter === 'PLAYER') {
             matchStats.current.damageDealt += damage;
@@ -325,13 +342,14 @@ export const performShot = async (
                         setIsProcessing(false);
                         return;
                     }
-                    if (gameState.isMultiplayer && handleMPRoundEnd) {
-                        addLog(isPlayerTarget ? 'ROUND LOST' : 'ROUND WON', isPlayerTarget ? 'danger' : 'safe');
+                    if ((gameState.isMultiplayer || gameState.isLocalSplit) && handleMPRoundEnd) {
+                        const loserName = isPlayerTarget ? playerName.toUpperCase() : opponentName.toUpperCase();
+                        addLog(`${loserName} ELIMINATED`, isPlayerTarget ? 'danger' : 'safe');
                         await handleMPRoundEnd(winnerOnDeath);
                         setIsProcessing(false);
                         return;
                     }
-                    if (!gameState.isMultiplayer && !gameState.isHardMode && handleNormalModeRoundEnd) {
+                    if (!gameState.isMultiplayer && !gameState.isLocalSplit && !gameState.isHardMode && handleNormalModeRoundEnd) {
                         addLog(isPlayerTarget ? 'ROUND LOST' : 'ROUND WON', isPlayerTarget ? 'danger' : 'safe');
                         await handleNormalModeRoundEnd(winnerOnDeath);
                         setIsProcessing(false);
@@ -386,6 +404,11 @@ export const performShot = async (
                 addLog("WAITING FOR REPLENISHMENT...", 'info');
                 setOverlayText("WAITING FOR HOST...");
             }
+        } else if (gameState.isLocalSplit) {
+            const nextTurnAfterBatch: TurnOwner = lastShotKeepsTurn
+                ? shooter
+                : (shooter === 'PLAYER' ? 'DEALER' : 'PLAYER');
+            await startRound(false, false, undefined, undefined, undefined, undefined, nextTurnAfterBatch);
         } else {
             await startRound();
         }
@@ -421,7 +444,7 @@ export const performShot = async (
         if (nextPersonState.isHandcuffed) {
             const message = `${nextPersonName} CUFFED. SKIPPING.`;
             addLog(message, 'info');
-            setOverlayText(`${nextOwner} CUFFED`);
+            setOverlayText(`${nextPersonName} CUFFED`);
             audioManager.playSound('checkhandcuffs');
 
             await wait(2800); // Slower
@@ -458,11 +481,23 @@ export const performShot = async (
         }
     } else {
         setCameraView(nextOwner === 'PLAYER' ? 'PLAYER' : 'DEALER');
+        if (gameState.isLocalSplit) {
+            setAimTarget('IDLE');
+        }
     }
 
     if (turnChanged) {
         if (shooter === 'PLAYER') setPlayer(p => ({ ...p, isFlashbanged: false }));
         else setDealer(d => ({ ...d, isFlashbanged: false }));
+    }
+
+    // Local Split Mode: display clear handoff banner while camera smoothly orbits to the other player
+    if (gameState.isLocalSplit && turnChanged && !skipped) {
+        const nextTurnLabel = nextOwner === 'PLAYER' ? playerName.toUpperCase() : opponentName.toUpperCase();
+        addLog(`${nextTurnLabel}'S TURN.`, 'info');
+        setOverlayText(`${nextTurnLabel}'S TURN\nTAKE CONTROL`);
+        await wait(1650);
+        setOverlayText(null);
     }
 
     setIsProcessing(false);

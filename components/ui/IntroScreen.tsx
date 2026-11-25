@@ -27,15 +27,17 @@ import {
     MessageSquare,
     Download,
     ChevronDown,
-    ChevronUp
+    ChevronUp,
+    Users
 } from 'lucide-react';
+import { SplitSetupModal } from '../SplitSetupModal';
+import type { LocalSplitConfig } from '../../types';
 import { audioManager } from '../../utils/audioManager';
 import {
     UserProfile,
     LeaderboardEntry,
     loginUserWithFirebase,
     registerUserWithFirebase,
-    signInWithGoogle,
     sendPasswordReset,
     getLeaderboard,
     getCurrentUserProfile,
@@ -101,6 +103,7 @@ interface IntroScreenProps {
     onOpenGuide: () => void;
     onOpenScoreboard: () => void;
     onStartMultiplayer: (name: string, roomId?: string) => void;
+    onStartLocalSplit?: (config: LocalSplitConfig) => void;
 }
 
 interface BindSoulOverlayProps {
@@ -229,7 +232,7 @@ const DesktopCommsPanel: React.FC<DesktopCommsPanelProps> = React.memo(({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [currentUser, friends, lastSigRef.current]);
 
-    const blurXl = reduceEffects ? '' : 'backdrop-blur-xl';
+    const blurXl = '';
 
     return (
         <div className="absolute top-4 left-4 sm:top-6 sm:left-6 z-[60] hidden sm:flex flex-col items-start gap-2.5 pointer-events-auto">
@@ -398,8 +401,8 @@ const DesktopProfileBadge: React.FC<DesktopProfileBadgeProps> = React.memo(({
     onOpenProfile,
     onOpenLogin
 }) => {
-    const blurXl = reduceEffects ? '' : 'backdrop-blur-xl';
-    const blurMd = reduceEffects ? '' : 'backdrop-blur-md';
+    const blurXl = '';
+    const blurMd = '';
 
     return (
         <div className="absolute top-4 right-4 sm:top-6 sm:right-6 z-[60] hidden sm:flex items-center gap-2.5">
@@ -659,12 +662,14 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
     onOpenSettings,
     onOpenGuide,
     onOpenScoreboard,
-    onStartMultiplayer
+    onStartMultiplayer,
+    onStartLocalSplit
 }) => {
     const nameInputRef = useRef<HTMLInputElement>(null);
     const isOnline = useOnlineStatus();
     const [scale, setScale] = useState(1);
     const [showHardModeWarning, setShowHardModeWarning] = useState(false);
+    const [showSplitSetup, setShowSplitSetup] = useState(false);
     const [hasBoundSoul, setHasBoundSoul] = useState(false);
     const [isBindingSoul, setIsBindingSoul] = useState(false);
     const [isTouchDevice, setIsTouchDevice] = useState(false);
@@ -845,7 +850,8 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
         showAnnouncement: false,
         showMessagesModal: false,
         showAdminModal: false,
-        showHardModeWarning: false
+        showHardModeWarning: false,
+        showSplitSetup: false
     });
     escapeStateRef.current = {
         selectedMPMatch,
@@ -860,14 +866,41 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
         showAnnouncement,
         showMessagesModal,
         showAdminModal,
-        showHardModeWarning
+        showHardModeWarning,
+        showSplitSetup
     };
+
+    // Pause background WebGL shell animation whenever any full-screen menu modal is open
+    const hasAnyMenuModalOpen = Boolean(
+        showSplitSetup ||
+        showHardModeWarning ||
+        showLoginModal ||
+        showLeaderboard ||
+        showChangelog ||
+        showAnnouncement ||
+        showMessagesModal ||
+        showProfileModal ||
+        showAdminModal ||
+        showMigrationModal ||
+        showForgotPasswordModal ||
+        showResetSpamModal ||
+        selectedPublicProfile ||
+        selectedMPMatch
+    );
+
+    useEffect(() => {
+        window.dispatchEvent(new CustomEvent('bugshot_menu_modal_state', { detail: { open: hasAnyMenuModalOpen } }));
+        return () => {
+            window.dispatchEvent(new CustomEvent('bugshot_menu_modal_state', { detail: { open: false } }));
+        };
+    }, [hasAnyMenuModalOpen]);
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key !== 'Escape') return;
             const s = escapeStateRef.current;
             if (s.selectedMPMatch) setSelectedMPMatch(null);
+            else if (s.showSplitSetup) setShowSplitSetup(false);
             else if (s.showResetSpamModal) setShowResetSpamModal(false);
             else if (s.showForgotPasswordModal) setShowForgotPasswordModal(false);
             else if (s.selectedPublicProfile) {
@@ -975,14 +1008,16 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
             const h = window.innerHeight;
             const w = window.innerWidth;
             let nextScale = 1;
-            if (w < 500) {
+            if (h < 560) {
+                nextScale = Math.max(0.58, Math.min(0.92, (h - 16) / 565));
+            } else if (w < 500) {
                 const hScale = Math.min(1.0, Math.max(0.82, (h - 20) / 680));
                 const wScale = Math.min(1.0, Math.max(0.82, (w - 16) / 380));
                 nextScale = Math.min(hScale, wScale);
             } else if (w >= 1024) {
-                nextScale = Math.max(1.0, Math.min(1.2, h / 860));
+                nextScale = Math.max(0.82, Math.min(1.18, h / 840));
             } else {
-                nextScale = Math.max(0.9, Math.min(1.05, Math.min(h / 720, w / 520)));
+                nextScale = Math.max(0.75, Math.min(1.05, Math.min(h / 680, w / 520)));
             }
             setScale((prev) => (Math.abs(prev - nextScale) > 0.005 ? nextScale : prev));
         };
@@ -1290,36 +1325,6 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
         }
     };
 
-    const handleGoogleSignIn = async () => {
-        setLoginError('');
-        setLoginSuccess('');
-        setIsLoadingAuth(true);
-        audioManager.playSound('click');
-        try {
-            const res = await signInWithGoogle();
-            if (res.success && res.user) {
-                setLoginSuccess('GOOGLE IDENTITY VERIFIED');
-                await syncStatsToAccount(res.user.username, res.user.stats);
-                setCurrentUser(res.user);
-                setInputName((res.user.displayName || res.user.username).toUpperCase());
-                try {
-                    localStorage.setItem('aadish_roulette_name', res.user.username);
-                } catch {}
-                setTimeout(() => {
-                    setShowLoginModal(false);
-                    setLoginSuccess('');
-                    setLoginError('');
-                }, 700);
-            } else {
-                setLoginError(res.error || 'Google sign-in could not be completed.');
-            }
-        } catch (err: any) {
-            setLoginError(err.message || 'Google Auth Error');
-        } finally {
-            setIsLoadingAuth(false);
-        }
-    };
-
     const handleBindSoul = useCallback(async () => {
         if (isBindingSoul || hasBoundSoul) return;
         setIsBindingSoul(true);
@@ -1386,16 +1391,15 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
         );
     }
 
-    const blurMd = reduceEffects ? '' : 'backdrop-blur-md';
-    const blurXl = reduceEffects ? '' : 'backdrop-blur-xl';
-    const blur2xl = reduceEffects ? '' : 'backdrop-blur-2xl';
-    const blur3xl = reduceEffects ? '' : 'backdrop-blur-3xl';
+    // Avoid expensive full-screen backdrop-blur compositing over the live WebGL ShellBackground canvas
+    const blurMd = '';
+    const blurXl = '';
+    const blur2xl = '';
+    const blur3xl = '';
 
     return (
         <div
-            className={`absolute inset-0 z-50 flex flex-col items-center justify-start sm:justify-center overflow-y-auto sm:overflow-hidden custom-scrollbar pointer-events-auto ${
-                reduceEffects ? 'bg-black/55' : 'bg-black/40 backdrop-blur-[2px]'
-            } p-2 sm:p-4 select-none`}
+            className="absolute inset-0 z-50 flex flex-col items-center justify-start sm:justify-center overflow-y-auto sm:overflow-hidden custom-scrollbar pointer-events-auto bg-black/55 p-2 sm:p-4 select-none"
             style={{
                 paddingTop: 'max(env(safe-area-inset-top, 0px), 8px)',
                 paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 8px)',
@@ -1478,75 +1482,91 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                 </button>
             </div>
 
-            {/* Hard Mode Warning Modal */}
+            {/* Hard Mode Confirmation Modal (Clean & Minimal) */}
             {showHardModeWarning && (
-                <div className={`fixed inset-0 z-[160] flex items-center justify-center p-3 sm:p-4 bg-black/90 ${blurMd} animate-in fade-in duration-200`}>
-                    <div
-                        className="relative bg-stone-950/95 border-2 border-red-600/70 p-4 sm:p-6 max-w-md w-full text-center shadow-[0_0_60px_rgba(220,38,38,0.35)] rounded-2xl group overflow-hidden font-mono"
-                        style={{ transform: `scale(${scale})` }}
-                    >
-                        <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-red-600 via-red-400 to-red-600 ${reduceEffects ? '' : 'animate-pulse'}`} />
-
-                        <button
-                            onClick={() => {
-                                audioManager.playSound('click');
-                                setShowHardModeWarning(false);
-                            }}
-                            className="absolute top-3 right-3 text-stone-400 hover:text-white w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg transition-colors cursor-pointer"
-                            title="Abort"
-                            aria-label="Abort"
-                        >
-                            <X size={16} />
-                        </button>
-
-                        <div className="relative z-10 flex flex-col items-center">
-                            <div className="w-11 h-11 rounded-2xl bg-red-955/60 border border-red-600/60 flex items-center justify-center text-red-500 mb-2.5 shadow-[0_0_20px_rgba(220,38,38,0.4)]">
-                                <ShieldAlert size={26} className={reduceEffects ? '' : 'animate-pulse'} />
-                            </div>
-
-                            <h2 className={`text-xl sm:text-2xl font-black text-red-500 tracking-wider uppercase mb-0.5 ${reduceEffects ? '' : 'drop-shadow-[0_0_15px_rgba(220,38,38,0.4)]'}`}>
-                                HARD MODE PROTOCOL
-                            </h2>
-                            <p className="text-stone-400 text-[9px] sm:text-[10px] font-bold tracking-[0.3em] uppercase mb-3">
-                                MAXIMUM COMBAT DIFFICULTY
-                            </p>
-
-                            <div className="bg-black/70 p-2.5 sm:p-3 border border-red-900/40 mb-3.5 w-full rounded-xl space-y-1.5 text-left">
-                                <div className="text-red-400 font-mono text-[9.5px] sm:text-[10px] font-bold tracking-wider flex items-center gap-2">
-                                    <span className="w-1.5 h-1.5 bg-red-500 rounded-full shrink-0" />
-                                    <span>DEALER AI: ZERO MISS LOGIC & AGGRESSIVE ITEMS</span>
+                <div
+                    className="fixed inset-0 z-[160] flex items-center justify-center p-4 bg-black/85 overflow-y-auto"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label="Hard Mode Confirmation"
+                    onClick={(e) => {
+                        if (e.target === e.currentTarget) {
+                            audioManager.playSound('click');
+                            setShowHardModeWarning(false);
+                        }
+                    }}
+                >
+                    <div className="relative bg-stone-950 border border-red-600/70 max-w-md w-full rounded-2xl p-5 sm:p-6 shadow-[0_0_50px_rgba(220,38,38,0.28)] font-mono text-left">
+                        <div className="flex items-center justify-between gap-3 mb-3">
+                            <div className="flex items-center gap-2.5">
+                                <div className="w-9 h-9 rounded-xl bg-red-950/80 border border-red-600/60 flex items-center justify-center text-red-500 shrink-0">
+                                    <Skull size={18} />
                                 </div>
-                                <div className="text-red-400 font-mono text-[9.5px] sm:text-[10px] font-bold tracking-wider flex items-center gap-2">
-                                    <span className="w-1.5 h-1.5 bg-red-500 rounded-full shrink-0" />
-                                    <span>STAKES: FASTER TURNS & AMPED DAMAGE</span>
-                                </div>
-                                <div className="text-red-400 font-mono text-[9.5px] sm:text-[10px] font-bold tracking-wider flex items-center gap-2">
-                                    <span className="w-1.5 h-1.5 bg-red-500 rounded-full shrink-0" />
-                                    <span>PERMANENCE: LOSSES RECORDED ON GLOBAL BOARD</span>
+                                <div>
+                                    <h2 className="text-base sm:text-lg font-black text-white tracking-[0.14em] uppercase leading-tight">
+                                        HARD MODE
+                                    </h2>
+                                    <p className="text-[10px] text-red-400 font-bold tracking-wider uppercase">
+                                        2× Score • High Lethality
+                                    </p>
                                 </div>
                             </div>
 
-                            <div className="flex flex-col sm:flex-row gap-2 w-full">
-                                <button
-                                    onClick={() => {
-                                        audioManager.playSound('click');
-                                        setShowHardModeWarning(false);
-                                    }}
-                                    className="flex-1 py-2 sm:py-2.5 bg-stone-900 hover:bg-stone-850 border border-stone-800 text-stone-400 hover:text-white font-bold tracking-wider text-[10px] sm:text-xs uppercase cursor-pointer rounded-xl transition-all order-2 sm:order-1"
-                                >
-                                    Abort
-                                </button>
-                                <button
-                                    onClick={() => {
-                                        audioManager.playSound('click');
-                                        onStartGame(true);
-                                    }}
-                                    className="flex-1 py-2 sm:py-2.5 bg-red-650 hover:bg-red-600 text-white font-black text-xs sm:text-sm tracking-wider border border-red-500 transition-all hover:scale-[1.01] hover:shadow-[0_0_25px_rgba(220,38,38,0.5)] active:scale-95 group cursor-pointer rounded-xl uppercase flex items-center justify-center gap-1.5 order-1 sm:order-2 shadow-lg"
-                                >
-                                    <Skull size={14} className="text-white" />
-                                    <span>Accept Fate</span>
-                                </button>
-                            </div>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    audioManager.playSound('click');
+                                    setShowHardModeWarning(false);
+                                }}
+                                className="text-stone-400 hover:text-white hover:bg-stone-900 w-8 h-8 flex items-center justify-center rounded-lg transition-colors cursor-pointer shrink-0"
+                                aria-label="Close Hard Mode confirmation"
+                            >
+                                <X size={16} />
+                            </button>
+                        </div>
+
+                        <p className="text-xs text-stone-300 leading-relaxed mb-4">
+                            Face a ruthless Dealer who counts shells, chains items, and punishes every mistake.
+                        </p>
+
+                        <ul className="space-y-1.5 mb-5 text-[11px] text-stone-300">
+                            <li className="flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
+                                <span>Smarter AI &amp; aggressive item combos</span>
+                            </li>
+                            <li className="flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
+                                <span>3-round showdown with higher damage stakes</span>
+                            </li>
+                            <li className="flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                                <span>Separate Hard Mode win tracking &amp; 2× score</span>
+                            </li>
+                        </ul>
+
+                        <div className="flex items-center gap-2.5">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    audioManager.playSound('click');
+                                    setShowHardModeWarning(false);
+                                }}
+                                className="px-4 py-2.5 min-h-[42px] bg-stone-900 hover:bg-stone-800 border border-stone-700 text-stone-300 hover:text-white font-bold tracking-[0.14em] text-[11px] uppercase cursor-pointer rounded-xl transition-colors active:scale-95 whitespace-nowrap"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    audioManager.playSound('confirm');
+                                    setShowHardModeWarning(false);
+                                    onStartGame(true);
+                                }}
+                                className="flex-1 py-2.5 px-4 min-h-[42px] bg-red-700 hover:bg-red-600 text-white font-black text-xs tracking-[0.16em] border border-red-400/70 transition-all hover:shadow-[0_0_24px_rgba(220,38,38,0.45)] active:scale-[0.98] cursor-pointer rounded-xl uppercase flex items-center justify-center gap-2 whitespace-nowrap"
+                            >
+                                <Skull size={14} className="shrink-0" />
+                                <span>Accept &amp; Play</span>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -1853,31 +1873,6 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                                         </span>
                                     </button>
 
-                                    <div className="relative flex py-1 items-center">
-                                        <div className="flex-grow border-t border-stone-800" />
-                                        <span className="flex-shrink mx-3 text-[8.5px] font-mono font-bold tracking-[0.2em] text-stone-500 uppercase">
-                                            OR GMAIL 1-CLICK AUTH
-                                        </span>
-                                        <div className="flex-grow border-t border-stone-800" />
-                                    </div>
-
-                                    <button
-                                        type="button"
-                                        onClick={handleGoogleSignIn}
-                                        disabled={isLoadingAuth}
-                                        className="w-full min-h-[46px] py-2.5 px-4 bg-stone-900/90 hover:bg-stone-850 active:bg-stone-800 border-2 border-stone-700/80 hover:border-red-500/80 text-stone-200 hover:text-white font-mono font-black text-xs tracking-[0.16em] transition-all rounded-xl cursor-pointer flex items-center justify-center gap-3 shadow-[0_0_20px_rgba(0,0,0,0.6)] hover:shadow-[0_0_25px_rgba(220,38,38,0.25)] touch-manipulation active:scale-[0.98] disabled:opacity-50"
-                                        title="Instant Sign-In with Google / Gmail"
-                                        aria-label="Instant Sign-In with Google / Gmail"
-                                    >
-                                        <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
-                                            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                                            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                                            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
-                                            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
-                                        </svg>
-                                        <span className="uppercase tracking-wider">CONTINUE WITH GOOGLE / GMAIL</span>
-                                    </button>
-
                                     <button
                                         type="button"
                                         onClick={() => {
@@ -2125,8 +2120,8 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-12 gap-2 sm:gap-2.5">
-                        {/* Start Game Button */}
+                    <div className="grid grid-cols-3 gap-2 sm:gap-2.5">
+                        {/* Row 1: Start Game (2/3) + Hard Mode (1/3) */}
                         <button
                             onClick={() => {
                                 audioManager.playSound('click');
@@ -2138,18 +2133,36 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                                 onStartGame(false);
                             }}
                             disabled={!inputName.trim()}
-                            className="col-span-6 min-h-[46px] px-3 py-2.5 sm:py-3.5 bg-gradient-to-b from-white to-stone-200 hover:from-white hover:to-white text-stone-950 font-black text-xs sm:text-sm active:scale-[0.97] transition-all duration-200 disabled:opacity-25 disabled:grayscale tracking-[0.2em] rounded-xl shadow-[0_4px_25px_rgba(255,255,255,0.15)] hover:shadow-[0_0_30px_rgba(255,255,255,0.35)] hover:scale-[1.02] relative overflow-hidden group/btn uppercase leading-none cursor-pointer border-2 border-white/90 touch-manipulation flex items-center justify-center"
+                            className="col-span-2 min-h-[48px] px-3 py-3 sm:py-3.5 bg-gradient-to-b from-white to-stone-200 hover:from-white hover:to-white text-stone-950 font-black text-xs sm:text-sm active:scale-[0.98] transition-all duration-200 disabled:opacity-25 disabled:grayscale tracking-[0.18em] rounded-xl shadow-[0_4px_25px_rgba(255,255,255,0.15)] hover:shadow-[0_0_30px_rgba(255,255,255,0.35)] hover:scale-[1.015] relative overflow-hidden group/btn uppercase leading-none cursor-pointer border-2 border-white/90 touch-manipulation flex items-center justify-center whitespace-nowrap"
                         >
                             {!reduceEffects && (
                                 <div className="absolute inset-0 bg-gradient-to-r from-transparent via-black/10 to-transparent -translate-x-full group-hover/btn:translate-x-full transition-transform duration-700" />
                             )}
-                            <span className="flex items-center justify-center gap-1.5 relative z-10">
+                            <span className="flex items-center justify-center gap-2 relative z-10">
                                 <Crosshair size={14} className="text-stone-950 group-hover/btn:rotate-90 transition-transform duration-300 shrink-0" />
                                 <span>START GAME</span>
                             </span>
                         </button>
 
-                        {/* Multiplayer Button */}
+                        <button
+                            onClick={() => {
+                                audioManager.playSound('click');
+                                if (currentUser && isLegacyUpstashUser(currentUser)) {
+                                    setLegacyUserToMigrate(currentUser);
+                                    setShowMigrationModal(true);
+                                    return;
+                                }
+                                setShowHardModeWarning(true);
+                            }}
+                            disabled={!inputName.trim()}
+                            className="col-span-1 min-h-[48px] px-2.5 py-3 sm:py-3.5 bg-gradient-to-b from-red-950/90 to-stone-950 border-2 border-red-800 hover:border-red-500 text-red-400 font-black text-[10px] sm:text-xs hover:text-white hover:bg-red-950 hover:shadow-[0_0_28px_rgba(220,38,38,0.45)] hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 disabled:opacity-25 flex items-center justify-center gap-1.5 group rounded-xl shadow-[0_4px_20px_rgba(220,38,38,0.18)] uppercase tracking-[0.12em] leading-none cursor-pointer touch-manipulation whitespace-nowrap"
+                            title="Hard Mode Protocol"
+                        >
+                            <Skull size={13} className={`text-red-500 group-hover:text-red-300 transition-colors ${reduceEffects ? '' : 'animate-pulse'} shrink-0`} />
+                            <span>HARD MODE</span>
+                        </button>
+
+                        {/* Row 2: Multiplayer (2/3) + Split Multiplayer (1/3) */}
                         <button
                             onClick={() => {
                                 audioManager.playSound('click');
@@ -2171,39 +2184,33 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                                 onStartMultiplayer(inputName.trim());
                             }}
                             disabled={!inputName.trim() || !isOnline}
-                            className={`col-span-6 min-h-[46px] px-3 py-2.5 sm:py-3.5 border-2 font-black text-xs sm:text-sm flex items-center justify-center gap-1.5 group rounded-xl uppercase tracking-[0.2em] leading-none cursor-pointer relative transition-all duration-200 touch-manipulation ${
+                            className={`col-span-2 min-h-[48px] px-3 py-3 sm:py-3.5 border-2 font-black text-xs sm:text-sm flex items-center justify-center gap-2 group rounded-xl uppercase tracking-[0.16em] leading-none cursor-pointer relative transition-all duration-200 touch-manipulation whitespace-nowrap ${
                                 !isOnline
                                     ? 'bg-stone-950/40 border-stone-850 text-stone-600 opacity-40 cursor-not-allowed shadow-none'
-                                    : 'bg-stone-950/90 border-cyan-500/70 text-cyan-400 hover:text-white hover:border-cyan-400 hover:bg-cyan-950/40 hover:shadow-[0_0_30px_rgba(6,182,212,0.45)] hover:scale-[1.02] active:scale-[0.97] disabled:opacity-25 shadow-[0_4px_25px_rgba(6,182,212,0.15)]'
+                                    : 'bg-stone-950/90 border-cyan-500/70 text-cyan-400 hover:text-white hover:border-cyan-400 hover:bg-cyan-950/40 hover:shadow-[0_0_30px_rgba(6,182,212,0.45)] hover:scale-[1.015] active:scale-[0.98] disabled:opacity-25 shadow-[0_4px_25px_rgba(6,182,212,0.15)]'
                             }`}
-                            title={!isOnline ? 'Offline Protocol: Network connection required' : 'Enter Multiplayer Bunker'}
+                            title={!isOnline ? 'Offline Protocol: Network connection required' : 'Enter Online Multiplayer Bunker'}
                         >
                             <Swords size={14} className={!isOnline ? 'text-stone-600' : 'text-cyan-400 group-hover:rotate-12 transition-transform duration-300 shrink-0'} />
                             <span>MULTIPLAYER</span>
                             {!isOnline ? (
-                                <span className="text-[6.5px] bg-red-955/90 text-red-400 px-1 py-0.2 rounded border border-red-900 font-black tracking-widest uppercase ml-1">OFFLINE</span>
+                                <span className="text-[7px] bg-red-950/90 text-red-400 px-1 py-0.5 rounded border border-red-900 font-black tracking-widest uppercase ml-0.5">OFF</span>
                             ) : !loggedInUser ? (
-                                <Lock size={9} className="absolute top-2 right-2 text-red-400" />
+                                <Lock size={10} className="absolute top-1.5 right-2 text-red-400" />
                             ) : null}
                         </button>
 
-                        {/* Hard Mode Button */}
                         <button
+                            type="button"
                             onClick={() => {
                                 audioManager.playSound('click');
-                                if (currentUser && isLegacyUpstashUser(currentUser)) {
-                                    setLegacyUserToMigrate(currentUser);
-                                    setShowMigrationModal(true);
-                                    return;
-                                }
-                                setShowHardModeWarning(true);
+                                setShowSplitSetup(true);
                             }}
-                            disabled={!inputName.trim()}
-                            className="col-span-12 min-h-[46px] py-3 sm:py-3.5 bg-gradient-to-r from-stone-950 via-red-955/60 to-stone-950 border-2 border-red-900 hover:border-red-500 text-red-400 font-black text-xs sm:text-sm hover:text-white hover:bg-red-955/80 hover:shadow-[0_0_35px_rgba(220,38,38,0.5)] hover:scale-[1.015] active:scale-[0.97] transition-all duration-200 disabled:opacity-25 flex items-center justify-center gap-2 group rounded-xl shadow-[0_4px_25px_rgba(220,38,38,0.2)] uppercase tracking-[0.25em] leading-none cursor-pointer touch-manipulation"
+                            className="col-span-1 min-h-[48px] px-2.5 py-3 sm:py-3.5 border-2 bg-stone-950/90 border-amber-500/70 text-amber-400 hover:text-white hover:border-amber-400 hover:bg-amber-950/40 hover:shadow-[0_0_28px_rgba(245,158,11,0.4)] hover:scale-[1.02] active:scale-[0.98] font-black text-[10px] sm:text-xs flex items-center justify-center gap-1.5 group rounded-xl uppercase tracking-[0.12em] leading-none cursor-pointer relative transition-all duration-200 touch-manipulation shadow-[0_4px_20px_rgba(245,158,11,0.15)] whitespace-nowrap"
+                            title="Split Multiplayer (2 Players on 1 Device)"
                         >
-                            <Skull size={14} className={`text-red-500 group-hover:text-red-300 group-hover:scale-110 transition-all duration-300 ${reduceEffects ? '' : 'animate-pulse'} shrink-0`} />
-                            <span>HARD MODE PROTOCOL</span>
-                            <Skull size={14} className={`text-red-500 group-hover:text-red-300 group-hover:scale-110 transition-all duration-300 ${reduceEffects ? '' : 'animate-pulse'} shrink-0`} />
+                            <Users size={13} className="text-amber-400 group-hover:scale-110 transition-transform duration-300 shrink-0" />
+                            <span>SPLIT MP</span>
                         </button>
                     </div>
 
@@ -2582,6 +2589,16 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                         setMessagesTargetUser(null);
                         const name = currentUser?.username || inputName?.trim() || 'Player';
                         onStartMultiplayer(name, roomId);
+                    }}
+                />
+            )}
+            {showSplitSetup && (
+                <SplitSetupModal
+                    defaultPlayer1Name={inputName.trim() || currentUser?.displayName || currentUser?.username || 'PLAYER 1'}
+                    onClose={() => setShowSplitSetup(false)}
+                    onStart={(config) => {
+                        setShowSplitSetup(false);
+                        onStartLocalSplit?.(config);
                     }}
                 />
             )}

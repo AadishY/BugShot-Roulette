@@ -22,7 +22,7 @@ import { ChatBox } from './components/ChatBox';
 import { MultiplayerSelection } from './components/MultiplayerSelection';
 import { generateLootBatch, resolveJackpotOutcome } from './utils/game/inventory';
 import { randomInt } from './utils/gameUtils';
-import { ShellType, ItemType, TurnOwner, AimTarget } from './types';
+import { ShellType, ItemType, TurnOwner, AimTarget, LocalSplitConfig } from './types';
 import { getCurrentUserProfile, UserProfile } from './utils/firebaseService';
 
 const urlParams = new URLSearchParams(window.location.search);
@@ -191,9 +191,60 @@ export default function App() {
     }
   }, []);
 
-  // --- ORIENTATION CHECK ---
-  const [showRotateWarning, setShowRotateWarning] = useState(false);
+  // --- ORIENTATION CHECK (strict horizontal enforcement from first paint) ---
+  const checkIsPortraitLocked = useCallback(() => {
+    if (typeof window === 'undefined') return false;
+    const params = new URLSearchParams(window.location.search);
+    const isDiscord =
+      params.has('frame_id') ||
+      params.has('instance_id') ||
+      window.location.search.includes('platform=') ||
+      window.location.hostname.includes('discordsays.com');
+    if (isDiscord) return false;
+    const isPortrait = window.innerHeight > window.innerWidth;
+    const hasTouch =
+      (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) ||
+      'ontouchstart' in window ||
+      (navigator.maxTouchPoints || 0) > 0;
+    const isCompactViewport = window.innerWidth < 1024;
+    return isPortrait && (hasTouch || isCompactViewport);
+  }, []);
+
+  const [showRotateWarning, setShowRotateWarning] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    const params = new URLSearchParams(window.location.search);
+    const isDiscord =
+      params.has('frame_id') ||
+      params.has('instance_id') ||
+      window.location.search.includes('platform=') ||
+      window.location.hostname.includes('discordsays.com');
+    if (isDiscord) return false;
+    const isPortrait = window.innerHeight > window.innerWidth;
+    const hasTouch =
+      (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) ||
+      'ontouchstart' in window ||
+      (navigator.maxTouchPoints || 0) > 0;
+    return isPortrait && (hasTouch || window.innerWidth < 1024);
+  });
   const [isMobileNameTag, setIsMobileNameTag] = useState(false);
+
+  const lockLandscapeFullscreen = useCallback(async () => {
+    try {
+      const docEl = document.documentElement as any;
+      if (!document.fullscreenElement && docEl?.requestFullscreen) {
+        await docEl.requestFullscreen().catch(() => {});
+      } else if (!(document as any).webkitFullscreenElement && docEl?.webkitRequestFullscreen) {
+        docEl.webkitRequestFullscreen();
+      }
+    } catch {}
+    try {
+      const orientation = (screen as any)?.orientation;
+      if (orientation && typeof orientation.lock === 'function') {
+        await orientation.lock('landscape').catch(() => {});
+      }
+    } catch {}
+    setShowRotateWarning(checkIsPortraitLocked());
+  }, [checkIsPortraitLocked]);
 
   useEffect(() => {
     const updateMobileTagState = () => {
@@ -302,49 +353,37 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    let timeoutId: NodeJS.Timeout;
-
-    const checkOrientation = () => {
-      clearTimeout(timeoutId);
-      timeoutId = setTimeout(() => {
-        const params = new URLSearchParams(window.location.search);
-        const isDiscord = params.has('frame_id') || params.has('instance_id') || window.location.search.includes('platform=') || window.location.hostname.includes('discordsays.com');
-        if (isDiscord) {
-          setShowRotateWarning(false);
-          return;
-        }
-
-        let isPortrait = false;
-        if (window.matchMedia) {
-          isPortrait = window.matchMedia("(orientation: portrait)").matches;
-        } else {
-          isPortrait = window.innerHeight > window.innerWidth;
-        }
-        const isMobile = window.innerWidth < 950;
-        setShowRotateWarning(isPortrait && isMobile);
-      }, 200);
+    const syncOrientation = () => {
+      setShowRotateWarning(checkIsPortraitLocked());
     };
 
-    const initTimeout = setTimeout(checkOrientation, 100);
+    syncOrientation();
 
-    const mql = typeof window !== 'undefined' && window.matchMedia ? window.matchMedia("(orientation: portrait)") : null;
-    const handleMqlChange = () => checkOrientation();
-    window.addEventListener('resize', checkOrientation);
+    // Attempt immediate passive landscape lock when supported (installed PWA / fullscreen)
+    try {
+      const orientation = (screen as any)?.orientation;
+      if (orientation && typeof orientation.lock === 'function') {
+        orientation.lock('landscape').catch(() => {});
+      }
+    } catch {}
+
+    const mql = typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(orientation: portrait)') : null;
+    window.addEventListener('resize', syncOrientation);
+    window.addEventListener('orientationchange', syncOrientation);
     if (mql) {
-      if (mql.addEventListener) mql.addEventListener("change", handleMqlChange);
-      else if ((mql as any).addListener) (mql as any).addListener(handleMqlChange);
+      if (mql.addEventListener) mql.addEventListener('change', syncOrientation);
+      else if ((mql as any).addListener) (mql as any).addListener(syncOrientation);
     }
 
     return () => {
-      window.removeEventListener('resize', checkOrientation);
+      window.removeEventListener('resize', syncOrientation);
+      window.removeEventListener('orientationchange', syncOrientation);
       if (mql) {
-        if (mql.removeEventListener) mql.removeEventListener("change", handleMqlChange);
-        else if ((mql as any).removeListener) (mql as any).removeListener(handleMqlChange);
+        if (mql.removeEventListener) mql.removeEventListener('change', syncOrientation);
+        else if ((mql as any).removeListener) (mql as any).removeListener(syncOrientation);
       }
-      clearTimeout(timeoutId);
-      clearTimeout(initTimeout);
     };
-  }, []);
+  }, [checkIsPortraitLocked]);
 
   // For loot overlay
   const effectiveShowLootOverlay = spGame.showLootOverlay;
@@ -399,6 +438,8 @@ export default function App() {
   }, [appState, spGame.gameState.phase, spGame.gameState.winner, spGame.gameState.isThreePlayer, spGame.gameState.isFourPlayer]);
 
   const [isHardModeSelected, setIsHardModeSelected] = useState(false);
+  const pendingSplitConfigRef = useRef<LocalSplitConfig | null>(null);
+  const lastSplitConfigRef = useRef<LocalSplitConfig | null>(null);
 
   // Verified tactical stickers list (preloaded lazily without blind HTTP HEAD probing)
   const stickersList = useMemo(() => [...TACTICAL_STICKERS], []);
@@ -415,7 +456,7 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [appState]);
 
-  // Dealer AI only for singleplayer
+  // Dealer AI only for singleplayer (disabled in Multiplayer & Local Split)
   useDealerAI({
     gameState: spGame.gameState,
     dealer: spGame.dealer,
@@ -429,7 +470,7 @@ export default function App() {
     setTargetAim: spGame.setAimTarget,
     setCameraView: spGame.setCameraView,
     setOverlayText: spGame.setOverlayText,
-    isMultiplayer: spGame.gameState.isMultiplayer,
+    isMultiplayer: Boolean(spGame.gameState.isMultiplayer || spGame.gameState.isLocalSplit),
     isProcessing: spGame.isProcessing,
     setIsProcessing: spGame.setIsProcessing,
     selectTarotCard: spGame.selectTarotCard
@@ -443,6 +484,7 @@ export default function App() {
   }, []);
 
   const handleStartSP = useCallback((name: string, hardMode: boolean = false) => {
+    pendingSplitConfigRef.current = null;
     setIsHardModeSelected(hardMode);
     if (name) spGameRef.current.setPlayerName(name);
 
@@ -450,7 +492,28 @@ export default function App() {
     setAppState('LOADING_SP');
   }, []);
 
+  const handleStartLocalSplit = useCallback((config: LocalSplitConfig) => {
+    pendingSplitConfigRef.current = config;
+    lastSplitConfigRef.current = config;
+    setIsHardModeSelected(false);
+    spGameRef.current.setPlayerName(config.player1Name);
+    // Pre-flag isLocalSplit before ThreeScene mounts during LOADING_SP so dual dealer.glb avatars spawn immediately
+    spGameRef.current.setGameState(prev => ({
+      ...prev,
+      isLocalSplit: true,
+      isMultiplayer: false,
+      isThreePlayer: false,
+      isFourPlayer: false,
+      player1Name: config.player1Name,
+      opponentName: config.player2Name,
+      localSplitConfig: config,
+    }));
+    audioManager.stopMusic();
+    setAppState('LOADING_SP');
+  }, []);
+
   const handleStartMP = useCallback((name: string) => {
+    pendingSplitConfigRef.current = null;
     spGameRef.current.setPlayerName(name);
     setAppState('LOADING_MP');
     mp.connect(name);
@@ -462,9 +525,11 @@ export default function App() {
     const currentRoom = mpRoomRef.current;
     const currentPlayerId = mpPlayerIdRef.current;
     if (game.gameState.phase !== 'PLAYER_TURN' && game.gameState.phase !== 'DEALER_TURN' && game.gameState.phase !== 'PLAYER3_TURN' && game.gameState.phase !== 'RESOLVING') return;
-    if (game.gameState.turnOwner !== 'PLAYER') return;
+    const isSplitHumanDealer = Boolean(game.gameState.isLocalSplit) && game.gameState.turnOwner === 'DEALER';
+    if (game.gameState.turnOwner !== 'PLAYER' && !isSplitHumanDealer) return;
     if (game.isProcessing) return;
 
+    const activeShooter: TurnOwner = isSplitHumanDealer ? 'DEALER' : 'PLAYER';
     const isMobile = window.matchMedia('(pointer: coarse)').matches;
     const isMultiPlayerGame = game.gameState.isThreePlayer || game.gameState.isFourPlayer;
     const playersList = currentRoom?.players || [];
@@ -499,7 +564,7 @@ export default function App() {
       return;
     }
 
-    const intendedAim = target === 'DEALER' ? 'OPPONENT' : 'SELF';
+    const intendedAim: AimTarget = target === activeShooter ? 'SELF' : 'OPPONENT';
     const hoverTargetId = target === 'PLAYER' ? myId : opponentId;
 
     if (isMobile && game.aimTarget !== intendedAim) {
@@ -515,7 +580,7 @@ export default function App() {
     if (appStateRef.current === 'GAME' && game.gameState.isMultiplayer && currentRoom) {
       mp.sendImmediateAction(currentRoom.id, { type: 'SHOOT', shooter: 'PLAYER', target, targetId: hoverTargetId });
     }
-    await game.fireShot('PLAYER', target);
+    await game.fireShot(activeShooter, target);
   }, [mp.sendImmediateAction]);
 
   const handleUseItem = useCallback(async (index: number, targetPlayerId?: string) => {
@@ -695,11 +760,12 @@ export default function App() {
   const handlePickupGun = useCallback(() => {
     const game = spGameRef.current;
     const currentRoom = mpRoomRef.current;
+    const activeOwner: TurnOwner = (game.gameState.isLocalSplit && game.gameState.turnOwner === 'DEALER') ? 'DEALER' : 'PLAYER';
     if (appStateRef.current === 'GAME' && game.gameState.isMultiplayer && currentRoom) {
       if (game.gameState.turnOwner !== 'PLAYER') return;
       mp.sendAction(currentRoom.id, { type: 'PICKUP_GUN' });
     }
-    game.pickupGun('PLAYER');
+    game.pickupGun(activeOwner);
   }, [mp.sendAction]);
 
   const handleStealItem = useCallback((index: number) => {
@@ -708,11 +774,12 @@ export default function App() {
     if (game.isProcessing) return;
     if (game.gameState.phase !== 'STEALING') return;
 
+    const activeOwner: TurnOwner = (game.gameState.isLocalSplit && game.gameState.turnOwner === 'DEALER') ? 'DEALER' : 'PLAYER';
     if (appStateRef.current === 'GAME' && game.gameState.isMultiplayer && currentRoom) {
       if (game.gameState.turnOwner !== 'PLAYER') return;
       mp.sendAction(currentRoom.id, { type: 'STEAL_ITEM', index });
     }
-    game.stealItem(index, 'PLAYER');
+    game.stealItem(index, activeOwner);
   }, [mp.sendAction]);
 
   const handleHoverTarget = useCallback((target: AimTarget, targetId?: string) => {
@@ -1685,14 +1752,24 @@ export default function App() {
   const onLoadingComplete = useCallback(() => {
     const currentAppState = appStateRef.current;
     if (currentAppState === 'LOADING_SP') {
-      // For singleplayer, force-reset any debug model overrides from the previous session.
-      setSettings(prev => ({ ...prev, debugHeadModel: 'DEFAULT' }));
-      spGameRef.current.startGame(spGameRef.current.playerName, isHardModeSelected);
+      // Only mutate settings if a debug head model override was actually active (avoids re-initing ThreeScene)
+      setSettings(prev => (prev.debugHeadModel === 'DEFAULT' ? prev : { ...prev, debugHeadModel: 'DEFAULT' }));
+      if (pendingSplitConfigRef.current) {
+        const splitConfig = pendingSplitConfigRef.current;
+        pendingSplitConfigRef.current = null;
+        spGameRef.current.startLocalSplitGame(splitConfig);
+      } else {
+        spGameRef.current.startGame(spGameRef.current.playerName, isHardModeSelected);
+      }
       setAppState('GAME');
     } else if (currentAppState === 'LOADING_GAME') {
       setAppState('GAME');
     }
   }, [isHardModeSelected]);
+
+  const getAssetLoadProgress = useCallback(() => {
+    return Math.round((audioManager.getAudioLoadingProgress() + getGLBLoadingProgress()) / 2);
+  }, []);
 
   const handleBackToMenu = useCallback(() => {
     if (gameStartTimeoutRef.current) {
@@ -1916,7 +1993,7 @@ export default function App() {
   }, []);
 
   const handleUpdateNameTags = useCallback((tags: NameTagItem[]) => {
-    if (appStateRef.current === 'GAME' && spGameRef.current.gameState.isMultiplayer) {
+    if (appStateRef.current === 'GAME' && (spGameRef.current.gameState.isMultiplayer || spGameRef.current.gameState.isLocalSplit)) {
       setNameTags(tags.map(t => ({ ...t })));
     }
   }, []);
@@ -1946,8 +2023,23 @@ export default function App() {
       } else if (currentRoom && myId === currentRoom.hostId) {
         mp.resetRoomState(currentRoom.id);
       }
+    } else if (game.gameState.isLocalSplit) {
+      if (toMenu) {
+        pendingSplitConfigRef.current = null;
+        setNameTags([]);
+        setAppState('MENU');
+        game.resetGame(true);
+      } else if (lastSplitConfigRef.current) {
+        pendingSplitConfigRef.current = lastSplitConfigRef.current;
+        setAppState('LOADING_SP');
+      } else {
+        setNameTags([]);
+        setAppState('MENU');
+        game.resetGame(true);
+      }
     } else {
       if (toMenu) {
+        pendingSplitConfigRef.current = null;
         setNameTags([]);
         setAppState('MENU');
         game.resetGame(true);
@@ -2046,6 +2138,33 @@ export default function App() {
   }, [mp.sendImmediateAction]);
 
   const matchData = useMemo(() => {
+    if (spGame.gameState.isLocalSplit) {
+      const p1Name = spGame.gameState.player1Name || spGame.playerName || 'PLAYER 1';
+      const p2Name = spGame.gameState.opponentName || 'PLAYER 2';
+      const p1Won = spGame.gameState.winner === 'PLAYER';
+      return {
+        ...spGame.matchStats,
+        isMultiplayer: true,
+        isLocalSplit: true,
+        result: p1Won ? 'WIN' : 'LOSS',
+        mpPlayers: [
+          {
+            name: p1Name,
+            id: 'local-split-p1',
+            isHost: true,
+            isMe: true,
+            result: p1Won ? ('WIN' as const) : ('LOSS' as const),
+          },
+          {
+            name: p2Name,
+            id: 'local-split-p2',
+            isHost: false,
+            isMe: false,
+            result: p1Won ? ('LOSS' as const) : ('WIN' as const),
+          }
+        ]
+      };
+    }
     if (spGame.gameState.isMultiplayer && mp.room) {
       return {
         ...spGame.matchStats,
@@ -2078,7 +2197,7 @@ export default function App() {
       };
     }
     return spGame.matchStats;
-  }, [spGame.gameState.isMultiplayer, spGame.gameState.winner, spGame.gameState.turnOwner, spGame.matchStats, mp.room, mp.playerId]);
+  }, [spGame.gameState.isLocalSplit, spGame.gameState.player1Name, spGame.gameState.opponentName, spGame.playerName, spGame.gameState.isMultiplayer, spGame.gameState.winner, spGame.gameState.turnOwner, spGame.matchStats, mp.room, mp.playerId]);
 
   const isPotatoMode = isUltraPerf(settings);
 
@@ -2103,17 +2222,28 @@ export default function App() {
       {/* PWA Update & Seamless Refresh HUD */}
       <UpdateNotification isGameActive={appState === 'GAME'} />
 
-      <div id="rotate-warning" className={`fixed inset-0 z-[99999] flex flex-col items-center justify-center transition-opacity duration-500 ${showRotateWarning ? 'opacity-100 pointer-events-auto flex' : 'opacity-0 pointer-events-none'}`}>
-        <div className="warning-card">
-          <div className="relative">
+      <div
+        id="rotate-warning"
+        className={`fixed inset-0 z-[99999] flex-col items-center justify-center bg-black ${!isDiscordPlatform ? 'portrait-guard' : ''} ${showRotateWarning ? 'active flex opacity-100 pointer-events-auto' : 'hidden opacity-0 pointer-events-none'}`}
+      >
+        <div className="warning-card max-w-xs w-[88vw] p-6 rounded-2xl border-2 border-red-700/70 bg-stone-950 text-center space-y-5 shadow-[0_0_50px_rgba(220,38,38,0.25)]">
+          <div className="relative inline-flex items-center justify-center">
             <RotateCw size={48} className="text-red-500 animate-[spin_3s_linear_infinite]" />
-            <div className="absolute inset-0 blur-xl bg-red-500/20 animate-pulse" />
           </div>
           <div className="space-y-2">
-            <h1>ROTATE</h1>
-            <p>ORIENTATION ERROR</p>
+            <h1 className="text-2xl font-black tracking-[0.25em] text-red-500 uppercase">ROTATE DEVICE</h1>
+            <p className="text-[11px] font-mono font-bold tracking-[0.2em] text-stone-400 uppercase leading-relaxed">
+              STRICT HORIZONTAL (LANDSCAPE) MODE REQUIRED
+            </p>
           </div>
-          <div className="w-16 h-1 bg-gradient-to-r from-transparent via-red-900/50 to-transparent" />
+          <div className="w-16 h-1 mx-auto bg-gradient-to-r from-transparent via-red-700/70 to-transparent" />
+          <button
+            type="button"
+            onClick={lockLandscapeFullscreen}
+            className="w-full min-h-[44px] py-3 px-4 bg-red-900/40 hover:bg-red-800/60 border border-red-600/80 text-red-200 hover:text-white font-mono font-black text-[10px] tracking-[0.22em] uppercase rounded-xl active:scale-95 transition-all cursor-pointer"
+          >
+            LOCK LANDSCAPE & FULLSCREEN
+          </button>
         </div>
       </div>
 
@@ -2158,6 +2288,7 @@ export default function App() {
         showFlashbang={spGame.showFlashbang}
         showLootOverlay={spGame.showLootOverlay}
         receivedItems={spGame.receivedItems as any}
+        opponentReceivedItems={spGame.opponentReceivedItems as any}
         triggerHeal={spGame.animState.triggerHeal}
         triggerDrink={spGame.animState.triggerDrink}
         knownShell={spGame.knownShell}
@@ -2180,12 +2311,14 @@ export default function App() {
         onBootComplete={handleBootComplete}
         matchData={matchData}
         onStartMultiplayer={handleStartMP}
+        onStartLocalSplit={handleStartLocalSplit}
         isMultiplayer={spGame.gameState.isMultiplayer}
         messages={mp.messages}
         onSendMessage={handleSendChatMessage}
         mpGameState={mp.room}
         mpMyPlayerId={mp.playerId}
         stickers={stickersList}
+        hideIntro={appState !== 'MENU'}
       />
 
       {appState === 'LOBBY' && mp.room && (
@@ -2241,13 +2374,13 @@ export default function App() {
         <div className="absolute inset-0 z-[100]">
           <LoadingScreen
             onComplete={onLoadingComplete}
-            text={appState === 'LOADING_GAME' ? "INITIALIZING TABLE..." : appState === 'LOADING_MP' ? (mp.connectionStatus || "CONNECTING TO SERVER...") : "LOADING..."}
-            duration={appState === 'LOADING_GAME' ? 800 : appState === 'LOADING_MP' ? 800 : 1200}
+            text={appState === 'LOADING_GAME' ? "BREACHING BUNKER TABLE..." : appState === 'LOADING_MP' ? (mp.connectionStatus || "HIJACKING ENCLAVE RELAY...") : (pendingSplitConfigRef.current ? "INITIALIZING LOCAL SPLIT DUEL..." : "HACKING YOUR DEVICE...")}
+            duration={appState === 'LOADING_GAME' ? 850 : appState === 'LOADING_MP' ? 850 : 1100}
             onBack={handleBackToMenu}
             error={appState === 'LOADING_MP' ? mp.error : null}
             onRetry={handleRetryLoadingMP}
             showClose={appState === 'LOADING_MP'}
-            progress={(appState === 'LOADING_GAME' || appState === 'LOADING_SP') ? Math.round((audioManager.getAudioLoadingProgress() + getGLBLoadingProgress()) / 2) : undefined}
+            getProgress={(appState === 'LOADING_GAME' || appState === 'LOADING_SP') ? getAssetLoadProgress : undefined}
           />
         </div>
       )}
@@ -2479,8 +2612,8 @@ export default function App() {
         <TutorialGuide onClose={handleCloseGuide} />
       )}
 
-      {/* Crisp HTML Player Name Tags (Multiplayer only) */}
-      {appState === 'GAME' && spGame.gameState.isMultiplayer && nameTags.length > 0 && (
+      {/* Crisp HTML Player Name Tags (Multiplayer & Local Split) */}
+      {appState === 'GAME' && (spGame.gameState.isMultiplayer || spGame.gameState.isLocalSplit) && nameTags.length > 0 && (
         <NameTagsOverlay nameTags={nameTags} isMobileNameTag={isMobileNameTag} />
       )}
     </div>

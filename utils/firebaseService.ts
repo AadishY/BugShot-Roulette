@@ -807,13 +807,13 @@ export const signInWithGoogle = async (): Promise<{
         }
 
         if (!profile) {
-            const randomAvatar = generateRandomAvatar(baseName);
+            const randomAvatar = generateRandomAvatar(cleanUsername);
             profile = {
                 uid: fbUser.uid,
                 username: cleanUsername,
                 displayName: baseName,
                 email,
-                avatarUrl: fbUser.photoURL || randomAvatar.url,
+                avatarUrl: randomAvatar.url,
                 avatarStyle: randomAvatar.style,
                 avatarSeed: randomAvatar.seed,
                 isDeveloper,

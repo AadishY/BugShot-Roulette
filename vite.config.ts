@@ -46,10 +46,8 @@ export default defineConfig({
   },
   server: {
     host: true,
-    port: 5173,
-    hmr: {
-      clientPort: 5173
-    }
+    port: 3000,
+    hmr: false
   },
   build: {
     target: 'es2020',

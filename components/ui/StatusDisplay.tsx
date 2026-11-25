@@ -111,30 +111,52 @@ const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, 
         </div>
     );
 
-    const turnLabel = gameState.turnOwner === 'PLAYER'
-        ? 'YOUR TURN'
-        : (gameState.turnOwner === 'PLAYER3'
-            ? `${getPlayer3Name().toUpperCase()}'S TURN`
-            : (gameState.turnOwner === 'PLAYER4'
-                ? `${getPlayer4Name().toUpperCase()}'S TURN`
-                : `${(gameState.opponentName?.toUpperCase() || 'DEALER')}'S TURN`));
+    const isSplitMode = Boolean(gameState.isLocalSplit);
+    const p1DisplayName = isSplitMode ? (gameState.player1Name || playerName || 'PLAYER 1') : (playerName || 'OPERATOR');
+    const p2DisplayName = (gameState.isMultiplayer || isSplitMode) ? (gameState.opponentName || 'OPPONENT') : 'DEALER';
+    const isP1Turn = gameState.turnOwner === 'PLAYER';
+    const isP2Turn = gameState.turnOwner === 'DEALER';
+    const splitTotalMatches = gameState.localSplitConfig?.totalMatches ?? 1;
+    const splitScore = gameState.multiModeState;
+    const splitCurrentMatch = splitScore
+        ? Math.min(splitTotalMatches, splitScore.playerWins + splitScore.opponentWins + 1)
+        : 1;
+
+    const turnLabel = isSplitMode
+        ? `${(isP1Turn ? p1DisplayName : p2DisplayName).toUpperCase()}'S TURN`
+        : (gameState.turnOwner === 'PLAYER'
+            ? 'YOUR TURN'
+            : (gameState.turnOwner === 'PLAYER3'
+                ? `${getPlayer3Name().toUpperCase()}'S TURN`
+                : (gameState.turnOwner === 'PLAYER4'
+                    ? `${getPlayer4Name().toUpperCase()}'S TURN`
+                    : `${(gameState.opponentName?.toUpperCase() || 'DEALER')}'S TURN`)));
 
     if (isCompact) {
         return (
             <div className="flex justify-between items-start gap-1.5 w-full pointer-events-none px-0.5 py-0.5 min-w-0">
                 {/* Player Side (Ultra-Compact) */}
-                <div className="flex flex-col items-start min-w-0 max-w-[34%] bg-black/45 border border-white/10 rounded-lg px-2 py-1">
+                <div className={`flex flex-col items-start min-w-0 max-w-[34%] bg-black/50 border rounded-lg px-2 py-1 transition-all ${
+                    isSplitMode && isP1Turn
+                        ? 'border-emerald-400/80 ring-1 ring-emerald-500/40'
+                        : isSplitMode
+                            ? 'border-white/10 opacity-75'
+                            : 'border-white/10'
+                }`}>
                     <div className="flex items-center gap-1 min-w-0 w-full">
                         <span className="text-[9px] sm:text-[10px] font-black tracking-wider text-stone-200 uppercase truncate">
-                            {playerName || 'OPERATOR'}
+                            {p1DisplayName}
                         </span>
+                        {isSplitMode && isP1Turn && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                        )}
                         {player.isFlashbanged && <span className="text-red-500 text-[9px] font-black shrink-0" title="Blinded">⚡</span>}
                         {gameState.isHardMode && gameState.hardModeState && (
                             <span className="text-[8px] font-black text-red-400 bg-red-950/60 border border-red-800/50 px-1 rounded leading-tight shrink-0">
                                 P{gameState.hardModeState.round}/3
                             </span>
                         )}
-                        {!gameState.isMultiplayer && !gameState.isHardMode && gameState.normalModeState && (
+                        {!gameState.isMultiplayer && !isSplitMode && !gameState.isHardMode && gameState.normalModeState && (
                             <span className="text-[8px] font-black text-stone-300 bg-stone-800/80 border border-white/10 px-1 rounded leading-tight shrink-0">
                                 R{gameState.normalModeState.round}/2
                             </span>
@@ -162,17 +184,25 @@ const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, 
                             </span>
                         )}
                     </div>
+                    {isSplitMode && isP2Turn && renderItems(player.items)}
                 </div>
 
                 {/* Center Turn & Shell Pill */}
                 <div className="flex flex-wrap items-center justify-center gap-1 pt-0.5 min-w-0 shrink">
-                    <div className={`px-2 py-0.5 rounded-full border text-[9px] sm:text-[10px] font-black tracking-wider uppercase italic whitespace-nowrap max-w-[130px] truncate ${
-                        gameState.turnOwner === 'PLAYER'
-                            ? 'bg-green-950/60 border-green-500/40 text-green-400'
-                            : 'bg-red-950/60 border-red-500/40 text-red-400'
+                    <div className={`px-2 py-0.5 rounded-full border text-[9px] sm:text-[10px] font-black tracking-wider uppercase italic whitespace-nowrap max-w-[140px] truncate ${
+                        isP1Turn
+                            ? 'bg-green-950/60 border-green-500/50 text-green-400'
+                            : isSplitMode
+                                ? 'bg-amber-950/60 border-amber-500/50 text-amber-300'
+                                : 'bg-red-950/60 border-red-500/40 text-red-400'
                     }`}>
                         {turnLabel}
                     </div>
+                    {isSplitMode && splitScore && splitTotalMatches > 1 && (
+                        <div className="px-1.5 py-0.5 rounded-full bg-black/60 border border-amber-500/30 text-[8px] font-mono font-black text-amber-300 tabular-nums whitespace-nowrap">
+                            M{splitCurrentMatch}/{splitTotalMatches} • {splitScore.playerWins}-{splitScore.opponentWins}
+                        </div>
+                    )}
                     <div className="flex items-center gap-1 bg-black/55 px-2 py-0.5 rounded-full border border-white/10">
                         <Icons.Shell size={11} className="text-stone-300 shrink-0" />
                         <span className="text-stone-100 font-black text-[9px] sm:text-[10px] tabular-nums leading-none">
@@ -183,11 +213,20 @@ const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, 
 
                 {/* Dealer / Opponents Side (Compact) */}
                 <div className="flex flex-col items-end min-w-0 max-w-[36%]">
-                    <div className="flex flex-col items-end bg-black/45 border border-white/10 rounded-lg px-2 py-1 max-w-full">
+                    <div className={`flex flex-col items-end bg-black/50 border rounded-lg px-2 py-1 max-w-full transition-all ${
+                        isSplitMode && isP2Turn
+                            ? 'border-amber-400/80 ring-1 ring-amber-500/40'
+                            : isSplitMode
+                                ? 'border-white/10 opacity-75'
+                                : 'border-white/10'
+                    }`}>
                         <div className="flex items-center gap-1 max-w-full">
+                            {isSplitMode && isP2Turn && (
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse shrink-0" />
+                            )}
                             {dealer.isFlashbanged && <span className="text-red-500 text-[9px] font-black shrink-0" title="Blinded">⚡</span>}
                             <span className="text-[9px] sm:text-[10px] font-black tracking-wider text-stone-200 uppercase truncate">
-                                {gameState.isMultiplayer ? (gameState.opponentName || 'OPPONENT') : 'DEALER'}
+                                {p2DisplayName}
                             </span>
                         </div>
                         <div className="flex items-center gap-1 mt-0.5">
@@ -226,10 +265,15 @@ const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, 
     return (
         <div className="flex justify-between items-start w-full pointer-events-none px-1 md:px-2 py-2 md:py-4">
             {/* Player Side */}
-            <div className="flex flex-col items-start min-w-[80px] md:w-1/3 animate-in slide-in-from-left duration-700">
-                <div className="flex flex-col mb-4">
-                    <span className="text-[10px] md:text-sm font-black tracking-[0.2em] md:tracking-[0.4em] text-stone-300 mb-1 uppercase truncate max-w-[135px] md:max-w-full flex items-center gap-1">
-                        {playerName || 'OPERATOR'}
+            <div className={`flex flex-col items-start min-w-[80px] md:w-1/3 animate-in slide-in-from-left duration-700 transition-opacity ${isSplitMode && !isP1Turn ? 'opacity-70' : 'opacity-100'}`}>
+                <div className={`flex flex-col mb-4 ${isSplitMode && isP1Turn ? 'bg-emerald-950/30 border border-emerald-500/50 rounded-xl px-3 py-2 shadow-[0_0_24px_rgba(16,185,129,0.2)]' : ''}`}>
+                    <span className="text-[10px] md:text-sm font-black tracking-[0.2em] md:tracking-[0.4em] text-stone-200 mb-1 uppercase truncate max-w-[180px] md:max-w-full flex items-center gap-2">
+                        {p1DisplayName}
+                        {isSplitMode && isP1Turn && (
+                            <span className="text-[8px] md:text-[10px] font-mono font-black tracking-widest px-1.5 py-0.5 rounded bg-emerald-500/20 border border-emerald-400/50 text-emerald-300">
+                                ACTIVE
+                            </span>
+                        )}
                         {player.isFlashbanged && <span className="text-red-500 animate-pulse text-[8px] md:text-xs font-black">⚡ BLINDED</span>}
                     </span>
                     <div className="flex items-center gap-1.5 md:gap-3">
@@ -281,7 +325,13 @@ const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, 
                     </div>
                 )}
 
-                {!gameState.isMultiplayer && !gameState.isHardMode && gameState.normalModeState && (
+                {isSplitMode && isP2Turn && (
+                    <div className="mt-1">
+                        {renderItems(player.items)}
+                    </div>
+                )}
+
+                {!gameState.isMultiplayer && !isSplitMode && !gameState.isHardMode && gameState.normalModeState && (
                     <div className="flex items-center gap-1 md:gap-2 bg-stone-900/40 px-2 md:px-3 py-1 rounded-full border border-stone-800/40">
                         <span className="text-[8px] md:text-xs font-black text-stone-400 tracking-[0.2em] uppercase">RD</span>
                         <span className="text-xs md:text-lg text-stone-200 font-black tracking-widest leading-none">
@@ -293,24 +343,40 @@ const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, 
 
             {/* Center Protocol Display */}
             <div className="flex-1 flex flex-col items-center justify-start pt-1 md:pt-2 animate-in fade-in duration-1000">
-                <div className={`relative px-2 md:px-6 py-1 md:py-2 rounded-xl overflow-hidden transition-all duration-500 border ${gameState.turnOwner === 'PLAYER'
-                    ? 'bg-green-950/10 border-green-500/20'
-                    : 'bg-red-950/10 border-red-500/20'
+                <div className={`relative px-2 md:px-6 py-1 md:py-2 rounded-xl overflow-hidden transition-all duration-500 border ${isP1Turn
+                    ? 'bg-green-950/20 border-green-500/40'
+                    : isSplitMode
+                        ? 'bg-amber-950/25 border-amber-500/50'
+                        : 'bg-red-950/10 border-red-500/20'
                     }`}>
                     {!isBalanced && (
-                        <div className={`absolute inset-0 blur-2xl opacity-20 -z-10 animate-pulse ${gameState.turnOwner === 'PLAYER' ? 'bg-green-500' : 'bg-red-600'
+                        <div className={`absolute inset-0 blur-2xl opacity-20 -z-10 animate-pulse ${isP1Turn ? 'bg-green-500' : (isSplitMode ? 'bg-amber-500' : 'bg-red-600')
                             }`} />
                     )}
 
-                    <div className={`text-xs md:text-3xl font-black tracking-[0.1em] md:tracking-[0.4em] transition-all duration-500 whitespace-nowrap uppercase italic ${gameState.turnOwner === 'PLAYER'
-                        ? `text-green-500 ${isBalanced ? '' : 'drop-shadow-[0_0_15px_rgba(34,197,94,0.5)]'}`
-                        : `text-red-600 ${isBalanced ? '' : 'drop-shadow-[0_0_15px_rgba(220,38,38,0.5)]'}`
+                    <div className={`text-xs md:text-3xl font-black tracking-[0.1em] md:tracking-[0.3em] transition-all duration-500 whitespace-nowrap uppercase italic ${isP1Turn
+                        ? `text-green-400 ${isBalanced ? '' : 'drop-shadow-[0_0_15px_rgba(34,197,94,0.5)]'}`
+                        : isSplitMode
+                            ? `text-amber-300 ${isBalanced ? '' : 'drop-shadow-[0_0_15px_rgba(245,158,11,0.55)]'}`
+                            : `text-red-600 ${isBalanced ? '' : 'drop-shadow-[0_0_15px_rgba(220,38,38,0.5)]'}`
                         } ${gameState.isHardMode && gameState.turnOwner === 'DEALER' && !isPotato ? 'animate-[chromatic_0.2s_infinite]' : ''}`}>
                         {turnLabel}
                     </div>
                 </div>
 
-                <div className="flex items-center gap-2 md:gap-4 mt-2 md:mt-4">
+                {isSplitMode && splitScore && (
+                    <div className="mt-2 flex items-center gap-2 bg-stone-950/80 border border-amber-500/35 px-3 py-1 rounded-lg">
+                        <span className="text-[9px] md:text-[11px] font-mono font-black tracking-[0.18em] text-amber-400 uppercase">
+                            SPLIT • MATCH {splitCurrentMatch}/{splitTotalMatches}
+                        </span>
+                        <span className="text-stone-600">|</span>
+                        <span className="text-[10px] md:text-xs font-mono font-black text-white tabular-nums">
+                            {splitScore.playerWins} - {splitScore.opponentWins}
+                        </span>
+                    </div>
+                )}
+
+                <div className="flex items-center gap-2 md:gap-4 mt-2 md:mt-3">
                     <div className="h-[1px] w-4 md:w-16 bg-gradient-to-r from-transparent via-stone-800 to-stone-800" />
                     <div className="flex items-center gap-1 md:gap-2 bg-stone-900/40 px-2 md:px-4 py-1 rounded-lg border border-white/5">
                         <Icons.Shell size={12} className="text-stone-400 md:hidden" />
@@ -324,17 +390,22 @@ const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, 
             </div>
 
             {/* Dealer & Opponent Side (Right aligned stack) */}
-            <div className="flex flex-col gap-4 md:gap-6 items-end min-w-[80px] md:w-1/3 animate-in slide-in-from-right duration-700">
+            <div className={`flex flex-col gap-4 md:gap-6 items-end min-w-[80px] md:w-1/3 animate-in slide-in-from-right duration-700 transition-opacity ${isSplitMode && !isP2Turn ? 'opacity-70' : 'opacity-100'}`}>
                 {/* Opponent 1 (Dealer / Front) */}
-                <div className="flex flex-col items-end">
+                <div className={`flex flex-col items-end ${isSplitMode && isP2Turn ? 'bg-amber-950/30 border border-amber-500/50 rounded-xl px-3 py-2 shadow-[0_0_24px_rgba(245,158,11,0.2)]' : ''}`}>
                     <div className="flex flex-col items-end">
-                        <span className="text-[10px] md:text-sm font-black tracking-[0.2em] md:tracking-[0.4em] text-stone-300 mb-1 uppercase flex items-center gap-1">
-                            {gameState.isMultiplayer ? (gameState.opponentName || 'OPPONENT') : 'DEALER'}
+                        <span className="text-[10px] md:text-sm font-black tracking-[0.2em] md:tracking-[0.4em] text-stone-200 mb-1 uppercase flex items-center gap-2">
+                            {isSplitMode && isP2Turn && (
+                                <span className="text-[8px] md:text-[10px] font-mono font-black tracking-widest px-1.5 py-0.5 rounded bg-amber-500/20 border border-amber-400/50 text-amber-300">
+                                    ACTIVE
+                                </span>
+                            )}
+                            {p2DisplayName}
                             {dealer.isFlashbanged && <span className="text-red-500 animate-pulse text-[8px] md:text-xs font-black">⚡ BLINDED</span>}
                         </span>
                         {renderEnemyHpBars(dealer, 'w-1.5 h-4 md:w-5 md:h-12 rounded-sm')}
                     </div>
-                    {renderItems(dealer.items)}
+                    {(!isSplitMode || isP1Turn) && renderItems(dealer.items)}
                 </div>
 
                 {/* Opponent 2 (Player 3 / Left Side) */}

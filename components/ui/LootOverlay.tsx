@@ -4,6 +4,10 @@ import { Icons } from './Icons';
 
 interface LootOverlayProps {
     receivedItems: ItemType[];
+    opponentReceivedItems?: ItemType[];
+    isLocalSplit?: boolean;
+    player1Name?: string;
+    player2Name?: string;
 }
 
 const ITEM_NAMES: Record<ItemType, string> = {
@@ -25,7 +29,7 @@ const ITEM_NAMES: Record<ItemType, string> = {
     'TOTEM': 'TOTEM OF UNDYING',
     'MIRROR': 'MIRROR',
     'DECK_CARD': 'TAROT CARD DECK',
-    'JACKPOT': 'JACKPOT SLOT MACHINE'
+    'JACKPOT': 'JACKPOT SLOT'
 };
 
 const ITEM_COLORS: Record<ItemType, string> = {
@@ -50,25 +54,104 @@ const ITEM_COLORS: Record<ItemType, string> = {
     'JACKPOT': 'text-yellow-500 border-yellow-500/50 bg-yellow-950/30'
 };
 
-export const LootOverlay: React.FC<LootOverlayProps> = ({ receivedItems }) => {
-    // Staggered reveal effect
+const renderItemIcon = (item: ItemType, className: string) => {
+    switch (item) {
+        case 'BEER': return <Icons.Beer className={className} />;
+        case 'CIGS': return <Icons.Cigs className={className} />;
+        case 'GLASS': return <Icons.Glass className={className} />;
+        case 'CUFFS': return <Icons.Cuffs className={className} />;
+        case 'SAW': return <Icons.Saw className={className} />;
+        case 'PHONE': return <Icons.Phone className={className} />;
+        case 'INVERTER': return <Icons.Inverter className={className} />;
+        case 'ADRENALINE': return <Icons.Adrenaline className={className} />;
+        case 'CHOKE': return <Icons.Choke className={className} />;
+        case 'REMOTE': return <Icons.Remote className={className} />;
+        case 'BIG_INVERTER': return <Icons.BigInverter className={className} />;
+        case 'CONTRACT': return <Icons.Contract className={className} />;
+        case 'LUCKYCHARM': return <Icons.Luckycharm className={className} />;
+        case 'FLASHBANG': return <Icons.Flashbang className={className} />;
+        case 'CRUSHER': return <Icons.Crusher className={className} />;
+        case 'TOTEM': return <Icons.Totem className={className} />;
+        case 'MIRROR': return <Icons.Mirror className={className} />;
+        case 'DECK_CARD': return <Icons.DeckCard className={className} />;
+        case 'JACKPOT': return <Icons.Jackpot className={className} />;
+        default: return <Icons.Glass className={className} />;
+    }
+};
+
+export const LootOverlay: React.FC<LootOverlayProps> = ({
+    receivedItems,
+    opponentReceivedItems = [],
+    isLocalSplit = false,
+    player1Name = 'PLAYER 1',
+    player2Name = 'PLAYER 2'
+}) => {
+    const showDualSplit = isLocalSplit && opponentReceivedItems.length > 0;
+    const maxBatch = Math.max(receivedItems.length, showDualSplit ? opponentReceivedItems.length : 0);
     const [visibleCount, setVisibleCount] = useState(0);
 
     useEffect(() => {
         setVisibleCount(0);
+        const stepMs = showDualSplit ? 220 : 300;
         const interval = setInterval(() => {
             setVisibleCount(prev => {
-                if (prev < receivedItems.length) return prev + 1;
+                if (prev < maxBatch) return prev + 1;
                 clearInterval(interval);
                 return prev;
             });
-        }, 300); // Reveal one every 300ms
+        }, stepMs);
         return () => clearInterval(interval);
-    }, [receivedItems]);
+    }, [receivedItems, opponentReceivedItems, maxBatch, showDualSplit]);
+
+    const renderDualPlayerColumn = (
+        title: string,
+        items: ItemType[],
+        accentBorder: string,
+        accentTitle: string,
+        seatTag: string
+    ) => (
+        <div className={`flex-1 min-w-0 bg-stone-950/85 border ${accentBorder} rounded-2xl p-3 sm:p-4 flex flex-col`}>
+            <div className="flex items-center justify-between gap-2 pb-2 mb-3 border-b border-stone-800/80">
+                <span className={`text-xs sm:text-base font-black uppercase tracking-[0.18em] truncate ${accentTitle}`}>
+                    {title}
+                </span>
+                <span className="text-[10px] font-mono font-bold text-stone-400 uppercase tracking-wider shrink-0 tabular-nums">
+                    {seatTag} · {items.length} ITEMS
+                </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 gap-2 sm:gap-2.5 flex-1 content-start">
+                {items.map((item, i) => {
+                    const isVisible = i < visibleCount;
+                    const colorToken = ITEM_COLORS[item].split(' ')[0];
+                    return (
+                        <div
+                            key={`${seatTag}-${item}-${i}`}
+                            className={`transition-all duration-500 transform ${
+                                isVisible ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-6 scale-90'
+                            }`}
+                        >
+                            <div className="relative flex flex-col items-center justify-center p-2 sm:p-3 rounded-xl border border-white/10 bg-gradient-to-b from-stone-900/75 to-black/90 aspect-square">
+                                <div className={`p-2 sm:p-2.5 rounded-xl bg-black/50 border border-white/5 mb-1.5 ${colorToken}`}>
+                                    {renderItemIcon(item, 'w-6 h-6 sm:w-8 sm:h-8')}
+                                </div>
+                                <span className={`text-[8px] sm:text-[9.5px] font-black tracking-[0.12em] uppercase text-center leading-tight line-clamp-2 w-full ${colorToken}`}>
+                                    {ITEM_NAMES[item]}
+                                </span>
+                                <span className="absolute top-1.5 left-2 text-[7px] font-mono font-black text-white/20">
+                                    {`0${i + 1}`}
+                                </span>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
 
     return (
-        <div 
-            className="absolute inset-0 z-50 flex flex-col items-center justify-start sm:justify-center bg-black/85 backdrop-blur-2xl p-3 sm:p-4 animate-in fade-in duration-1000 overflow-y-auto custom-scrollbar"
+        <div
+            className="absolute inset-0 z-50 flex flex-col items-center justify-start sm:justify-center bg-black/88 backdrop-blur-2xl p-3 sm:p-5 animate-in fade-in duration-500 overflow-y-auto custom-scrollbar"
             style={{
                 paddingTop: 'max(env(safe-area-inset-top, 0px), 12px)',
                 paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 12px)',
@@ -76,102 +159,80 @@ export const LootOverlay: React.FC<LootOverlayProps> = ({ receivedItems }) => {
                 paddingRight: 'max(env(safe-area-inset-right, 0px), 12px)'
             }}
         >
-            {/* Background Grid/Scanlines */}
             <div className="absolute inset-0 z-0 opacity-20 pointer-events-none">
-                <div className="absolute inset-0 bg-[linear-gradient(transparent_0%,rgba(255,255,255,0.05)_50%,transparent_100%)] bg-[length:100%_4px] animate-[scanline_8s_linear_infinite]" />
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(50,50,50,0.5)_0%,transparent_100%)]" />
+                <div className="absolute inset-0 bg-[linear-gradient(transparent_0%,rgba(255,255,255,0.05)_50%,transparent_100%)] bg-[length:100%_4px]" />
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(50,50,50,0.45)_0%,transparent_100%)]" />
             </div>
 
             <div className="relative z-10 w-full max-w-6xl flex flex-col items-center my-auto">
                 {/* Header Section */}
-                <div className="mb-4 sm:mb-10 text-center animate-in slide-in-from-top-10 duration-1000">
-                    <div className="flex items-center gap-2.5 sm:gap-4 mb-1 sm:mb-2 justify-center">
-                        <div className="h-[1px] w-8 sm:w-20 lg:w-40 bg-gradient-to-r from-transparent to-red-600" />
-                        <span className="text-red-500 font-black tracking-[0.2em] sm:tracking-[0.5em] text-[9px] sm:text-[10px] lg:text-sm uppercase animate-pulse">Incoming Shipment Verified</span>
-                        <div className="h-[1px] w-8 sm:w-20 lg:w-40 bg-gradient-to-l from-transparent to-red-600" />
+                <div className={`${showDualSplit ? 'mb-4 sm:mb-6' : 'mb-4 sm:mb-10'} text-center animate-in slide-in-from-top-6 duration-500`}>
+                    <div className="flex items-center gap-2.5 sm:gap-4 mb-1 justify-center">
+                        <div className="h-[1px] w-8 sm:w-20 lg:w-36 bg-gradient-to-r from-transparent to-red-600" />
+                        <span className="text-red-400 font-black tracking-[0.2em] sm:tracking-[0.4em] text-[9px] sm:text-xs uppercase">
+                            {showDualSplit ? 'Dual Split Shipment Delivered' : 'Incoming Shipment Verified'}
+                        </span>
+                        <div className="h-[1px] w-8 sm:w-20 lg:w-36 bg-gradient-to-l from-transparent to-red-600" />
                     </div>
-                    <h2 className="text-2xl sm:text-5xl lg:text-8xl font-black italic tracking-tighter text-white drop-shadow-[0_0_40px_rgba(255,255,255,0.3)]">
+                    <h2 className={`${showDualSplit ? 'text-2xl sm:text-4xl lg:text-5xl' : 'text-2xl sm:text-5xl lg:text-7xl'} font-black italic tracking-tighter text-white drop-shadow-[0_0_30px_rgba(255,255,255,0.25)]`}>
                         RESOURCE <span className="text-stone-400">PACK</span>
                     </h2>
                 </div>
 
-                {/* Grid */}
-                <div className="flex flex-wrap gap-3 sm:gap-6 lg:gap-10 justify-center items-center w-full">
-                    {receivedItems.map((item, i) => {
-                        const isVisible = i < visibleCount;
-                        return (
-                            <div
-                                key={`${item}-${i}`}
-                                className={`
-                                    flex flex-col items-center justify-center
-                                    transition-all duration-1000 transform
-                                    ${isVisible ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-12 scale-75 rotate-3'}
-                                `}
-                                style={{ transitionDelay: `${i * 150}ms` }}
-                            >
-                                <div className={`
-                                    relative group
-                                    w-20 sm:w-28 lg:w-44 aspect-square sm:aspect-[4/5] shrink-0
-                                    flex flex-col items-center justify-center p-2 sm:p-3
-                                    border border-white/10 rounded-xl sm:rounded-2xl
-                                    shadow-2xl overflow-hidden
-                                    bg-gradient-to-b from-stone-900/60 to-black/80
-                                    backdrop-blur-xl
-                                `}>
-                                    {/* Item Glow */}
-                                    <div className={`absolute inset-0 opacity-10 blur-2xl group-hover:opacity-30 transition-opacity bg-current ${ITEM_COLORS[item].split(' ')[0]}`} />
-
-                                    {/* Scanline Effect */}
-                                    <div className="absolute inset-0 bg-[linear-gradient(transparent_0%,rgba(255,255,255,0.02)_50%,transparent_100%)] bg-[length:100%_4px] pointer-events-none" />
-
-                                    {/* Icon Container */}
-                                    <div className={`relative z-10 p-2.5 sm:p-5 rounded-2xl sm:rounded-3xl bg-black/40 border border-white/5 mb-1.5 sm:mb-3 group-hover:scale-110 group-hover:drop-shadow-[0_0_20px_rgba(255,255,255,0.2)] transition-all duration-500 ${ITEM_COLORS[item].split(' ')[0]}`}>
-                                        {item === 'BEER' && <Icons.Beer className="w-7 h-7 sm:w-11 sm:h-11 lg:w-14 lg:h-14" />}
-                                        {item === 'CIGS' && <Icons.Cigs className="w-7 h-7 sm:w-11 sm:h-11 lg:w-14 lg:h-14" />}
-                                        {item === 'GLASS' && <Icons.Glass className="w-7 h-7 sm:w-11 sm:h-11 lg:w-14 lg:h-14" />}
-                                        {item === 'CUFFS' && <Icons.Cuffs className="w-7 h-7 sm:w-11 sm:h-11 lg:w-14 lg:h-14" />}
-                                        {item === 'SAW' && <Icons.Saw className="w-7 h-7 sm:w-11 sm:h-11 lg:w-14 lg:h-14" />}
-                                        {item === 'PHONE' && <Icons.Phone className="w-7 h-7 sm:w-11 sm:h-11 lg:w-14 lg:h-14" />}
-                                        {item === 'INVERTER' && <Icons.Inverter className="w-7 h-7 sm:w-11 sm:h-11 lg:w-14 lg:h-14" />}
-                                        {item === 'ADRENALINE' && <Icons.Adrenaline className="w-7 h-7 sm:w-11 sm:h-11 lg:w-14 lg:h-14" />}
-                                        {item === 'CHOKE' && <Icons.Choke className="w-7 h-7 sm:w-11 sm:h-11 lg:w-14 lg:h-14" />}
-                                        {item === 'REMOTE' && <Icons.Remote className="w-7 h-7 sm:w-11 sm:h-11 lg:w-14 lg:h-14" />}
-                                        {item === 'BIG_INVERTER' && <Icons.BigInverter className="w-7 h-7 sm:w-11 sm:h-11 lg:w-14 lg:h-14" />}
-                                        {item === 'CONTRACT' && <Icons.Contract className="w-7 h-7 sm:w-11 sm:h-11 lg:w-14 lg:h-14" />}
-                                        {item === 'LUCKYCHARM' && <Icons.Luckycharm className="w-7 h-7 sm:w-11 sm:h-11 lg:w-14 lg:h-14" />}
-                                        {item === 'FLASHBANG' && <Icons.Flashbang className="w-7 h-7 sm:w-11 sm:h-11 lg:w-14 lg:h-14" />}
-                                        {item === 'CRUSHER' && <Icons.Crusher className="w-7 h-7 sm:w-11 sm:h-11 lg:w-14 lg:h-14" />}
-                                        {item === 'TOTEM' && <Icons.Totem className="w-7 h-7 sm:w-11 sm:h-11 lg:w-14 lg:h-14" />}
-                                        {item === 'MIRROR' && <Icons.Mirror className="w-7 h-7 sm:w-11 sm:h-11 lg:w-14 lg:h-14" />}
-                                        {item === 'DECK_CARD' && <Icons.DeckCard className="w-7 h-7 sm:w-11 sm:h-11 lg:w-14 lg:h-14" />}
-                                        {item === 'JACKPOT' && <Icons.Jackpot className="w-7 h-7 sm:w-11 sm:h-11 lg:w-14 lg:h-14" />}
+                {showDualSplit ? (
+                    <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-5 items-stretch">
+                        {renderDualPlayerColumn(
+                            player1Name,
+                            receivedItems,
+                            'border-emerald-500/45',
+                            'text-emerald-300',
+                            'P1'
+                        )}
+                        {renderDualPlayerColumn(
+                            player2Name,
+                            opponentReceivedItems,
+                            'border-amber-500/45',
+                            'text-amber-300',
+                            'P2'
+                        )}
+                    </div>
+                ) : (
+                    <div className="flex flex-wrap gap-3 sm:gap-6 lg:gap-10 justify-center items-center w-full">
+                        {receivedItems.map((item, i) => {
+                            const isVisible = i < visibleCount;
+                            const colorToken = ITEM_COLORS[item].split(' ')[0];
+                            return (
+                                <div
+                                    key={`${item}-${i}`}
+                                    className={`flex flex-col items-center justify-center transition-all duration-700 transform ${
+                                        isVisible ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-75 rotate-3'
+                                    }`}
+                                    style={{ transitionDelay: `${i * 120}ms` }}
+                                >
+                                    <div className="relative group w-20 sm:w-28 lg:w-44 aspect-square sm:aspect-[4/5] shrink-0 flex flex-col items-center justify-center p-2 sm:p-3 border border-white/10 rounded-xl sm:rounded-2xl shadow-2xl overflow-hidden bg-gradient-to-b from-stone-900/60 to-black/80 backdrop-blur-xl">
+                                        <div className={`absolute inset-0 opacity-10 blur-2xl group-hover:opacity-30 transition-opacity bg-current ${colorToken}`} />
+                                        <div className={`relative z-10 p-2.5 sm:p-5 rounded-2xl sm:rounded-3xl bg-black/40 border border-white/5 mb-1.5 sm:mb-3 group-hover:scale-110 transition-all duration-500 ${colorToken}`}>
+                                            {renderItemIcon(item, 'w-7 h-7 sm:w-11 sm:h-11 lg:w-14 lg:h-14')}
+                                        </div>
+                                        <div className="relative z-10 text-center px-1.5 sm:px-3 w-full">
+                                            <span className={`text-[7.5px] sm:text-[9px] lg:text-xs font-black tracking-[0.15em] sm:tracking-[0.25em] uppercase block truncate ${colorToken}`}>
+                                                {ITEM_NAMES[item]}
+                                            </span>
+                                        </div>
+                                        <div className="absolute top-2 left-2.5 sm:top-4 sm:left-4 text-[7px] sm:text-[8px] font-black text-white/15 tracking-widest">
+                                            {`0${i + 1}`}
+                                        </div>
                                     </div>
-
-                                    {/* Text Label */}
-                                    <div className="relative z-10 text-center px-1.5 sm:px-3 w-full">
-                                        <span className={`text-[7.5px] sm:text-[9px] lg:text-xs font-black tracking-[0.15em] sm:tracking-[0.3em] uppercase block truncate ${ITEM_COLORS[item].split(' ')[0]}`}>
-                                            {ITEM_NAMES[item]}
-                                        </span>
-                                    </div>
-
-                                    {/* Decorative Indices */}
-                                    <div className="absolute top-2 left-2.5 sm:top-4 sm:left-4 text-[7px] sm:text-[8px] font-black text-white/15 tracking-widest">{`0${i + 1}`}</div>
-                                    <div className="hidden sm:block absolute bottom-4 right-4 text-[8px] font-black text-white/10 tracking-widest">ACT_LOG_SYS</div>
-
-                                    {/* Corner Bars */}
-                                    <div className="absolute top-0 left-0 w-5 sm:w-8 h-[1px] bg-white/20" />
-                                    <div className="absolute top-0 left-0 w-[1px] h-5 sm:h-8 bg-white/20" />
-                                    <div className="absolute bottom-0 right-0 w-5 sm:w-8 h-[1px] bg-white/20" />
-                                    <div className="absolute bottom-0 right-0 w-[1px] h-5 sm:h-8 bg-white/20" />
                                 </div>
-                            </div>
-                        );
-                    })}
-                </div>
+                            );
+                        })}
+                    </div>
+                )}
 
-                {/* Footer deco */}
-                <div className="mt-5 sm:mt-14 flex flex-col items-center gap-2 sm:gap-4 animate-pulse">
-                    <span className="text-stone-500 font-bold tracking-[0.4em] sm:tracking-[0.8em] text-[8px] sm:text-[9px] uppercase text-center">Awaiting Protocol Acknowledgement</span>
+                <div className={`${showDualSplit ? 'mt-4 sm:mt-6' : 'mt-5 sm:mt-12'} flex flex-col items-center gap-2`}>
+                    <span className="text-stone-500 font-bold tracking-[0.35em] text-[8px] sm:text-[9px] uppercase text-center">
+                        {showDualSplit ? 'Both Inventories Updated' : 'Shipment Synchronized'}
+                    </span>
                     <div className="h-[2px] w-36 sm:w-48 bg-gradient-to-r from-transparent via-stone-800 to-transparent" />
                 </div>
             </div>

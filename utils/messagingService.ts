@@ -32,6 +32,8 @@ import {
     resolveCanonicalAvatar
 } from './dicebear';
 import { presenceClient } from './presenceService';
+import { DMContactRecord, upsertDMContactList, isValidDMContactUsername } from './dmContacts';
+export type { DMContactRecord };
 
 // Unified Player Avatar Resolver across Profile, Main Menu, Leaderboard, DMs, Presence & ChatBox
 export const resolvePlayerAvatar = (user?: {
@@ -693,6 +695,173 @@ const saveLocalDM = (convId: string, msg: ChatMessage) => {
     } catch (e) {}
 };
 
+const LS_DM_CONTACTS_PREFIX = 'aadish_roulette_dm_contacts_';
+
+export const getLocalRecentDMContacts = (username: string): DMContactRecord[] => {
+    const clean = (username || '').trim().toLowerCase();
+    if (!clean || typeof window === 'undefined') return [];
+    try {
+        const raw = localStorage.getItem(`${LS_DM_CONTACTS_PREFIX}${clean}`);
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+};
+
+export const recordRecentDMContact = (
+    ownerUsername: string,
+    partnerUsername: string,
+    lastMessage: string,
+    lastTimestamp: number = Date.now(),
+    lastSender?: string,
+    partnerMeta?: { displayName?: string; avatarUrl?: string }
+): DMContactRecord[] => {
+    const cleanOwner = (ownerUsername || '').trim().toLowerCase();
+    const cleanPartner = (partnerUsername || '').trim().toLowerCase();
+    if (!cleanOwner || !isValidDMContactUsername(cleanPartner) || cleanOwner === cleanPartner) {
+        return getLocalRecentDMContacts(cleanOwner);
+    }
+
+    const existing = getLocalRecentDMContacts(cleanOwner);
+    const updated = upsertDMContactList(existing, {
+        username: cleanPartner,
+        displayName: partnerMeta?.displayName || cleanPartner,
+        avatarUrl: partnerMeta?.avatarUrl,
+        lastMessage: (lastMessage || '').trim() || '[Sticker]',
+        lastTimestamp,
+        lastSender: (lastSender || cleanOwner).trim().toLowerCase()
+    });
+
+    if (typeof window !== 'undefined') {
+        try {
+            localStorage.setItem(`${LS_DM_CONTACTS_PREFIX}${cleanOwner}`, JSON.stringify(updated));
+            window.dispatchEvent(new CustomEvent(`bugshot_dm_contacts_${cleanOwner}`, { detail: updated }));
+        } catch (e) {}
+    }
+    return updated;
+};
+
+// 6b. SUBSCRIBE TO ALL RECENT DM CONTACTS (Sent AND Received, persisted across sessions)
+export const subscribeToRecentDMContacts = (
+    username: string,
+    callback: (contacts: DMContactRecord[]) => void
+): (() => void) => {
+    const clean = (username || '').trim().toLowerCase();
+    if (!clean) {
+        callback([]);
+        return () => {};
+    }
+
+    let isActive = true;
+    const cutoffTimestamp = Date.now() - DIRECT_MESSAGE_RETENTION_MS;
+    let sentRecords: DMContactRecord[] = [];
+    let receivedRecords: DMContactRecord[] = [];
+
+    const emitMerged = () => {
+        if (!isActive) return;
+        let merged = getLocalRecentDMContacts(clean);
+        for (const rec of sentRecords) {
+            merged = upsertDMContactList(merged, rec);
+        }
+        for (const rec of receivedRecords) {
+            merged = upsertDMContactList(merged, rec);
+        }
+        if (typeof window !== 'undefined') {
+            try {
+                localStorage.setItem(`${LS_DM_CONTACTS_PREFIX}${clean}`, JSON.stringify(merged));
+            } catch (e) {}
+        }
+        callback(merged);
+    };
+
+    const handleLocalEvent = () => {
+        emitMerged();
+    };
+    if (typeof window !== 'undefined') {
+        window.addEventListener(`bugshot_dm_contacts_${clean}`, handleLocalEvent);
+    }
+
+    // Immediate emission from local cache
+    emitMerged();
+
+    let unsubSent = () => {};
+    let unsubReceived = () => {};
+
+    if (isFirebaseConfigured() && db) {
+        try {
+            const qSent = query(
+                collection(db, 'direct_messages'),
+                where('sender', '==', clean)
+            );
+            unsubSent = onSnapshot(qSent, (snap) => {
+                if (!isActive) return;
+                let list: DMContactRecord[] = [];
+                snap.forEach((docSnap) => {
+                    const data = docSnap.data();
+                    if (!data) return;
+                    const createdAt = typeof data.createdAt === 'number' ? data.createdAt : 0;
+                    if (createdAt && createdAt < cutoffTimestamp) return;
+                    const partner = (data.recipient || '').trim().toLowerCase();
+                    if (!isValidDMContactUsername(partner) || partner === clean) return;
+                    list = upsertDMContactList(list, {
+                        username: partner,
+                        displayName: data.recipientDisplayName || partner,
+                        lastMessage: (data.text || '').trim() || (data.stickerId ? '[Sticker]' : ''),
+                        lastTimestamp: createdAt || Date.now(),
+                        lastSender: clean
+                    });
+                });
+                sentRecords = list;
+                emitMerged();
+            }, (err) => {
+                console.warn('[Firebase] Recent sent DM contacts listener warning:', err);
+            });
+
+            const qReceived = query(
+                collection(db, 'direct_messages'),
+                where('recipient', '==', clean)
+            );
+            unsubReceived = onSnapshot(qReceived, (snap) => {
+                if (!isActive) return;
+                let list: DMContactRecord[] = [];
+                snap.forEach((docSnap) => {
+                    const data = docSnap.data();
+                    if (!data) return;
+                    const createdAt = typeof data.createdAt === 'number' ? data.createdAt : 0;
+                    if (createdAt && createdAt < cutoffTimestamp) return;
+                    const partner = (data.sender || '').trim().toLowerCase();
+                    if (!isValidDMContactUsername(partner) || partner === clean) return;
+                    list = upsertDMContactList(list, {
+                        username: partner,
+                        displayName: data.senderDisplayName || partner,
+                        avatarUrl: data.senderAvatarUrl || undefined,
+                        lastMessage: (data.text || '').trim() || (data.stickerId ? '[Sticker]' : ''),
+                        lastTimestamp: createdAt || Date.now(),
+                        lastSender: partner
+                    });
+                });
+                receivedRecords = list;
+                emitMerged();
+            }, (err) => {
+                console.warn('[Firebase] Recent received DM contacts listener warning:', err);
+            });
+        } catch (e) {
+            console.warn('Error initializing recent DM contacts listeners:', e);
+        }
+    }
+
+    return () => {
+        isActive = false;
+        unsubSent();
+        unsubReceived();
+        if (typeof window !== 'undefined') {
+            window.removeEventListener(`bugshot_dm_contacts_${clean}`, handleLocalEvent);
+        }
+    };
+};
+
 // 6. SUBSCRIBE TO DIRECT MESSAGES (With 30-Day Retention Filter)
 export const subscribeToDirectMessages = (
     userA: string,
@@ -829,6 +998,14 @@ export const sendDirectMessage = async (
     if (stickerId) {
         newMessage.stickerId = stickerId;
     }
+
+    // Immediately record this contact in the sender's persistent DM list so the chat & name always stay in DMs
+    const previewText = cleanText || (stickerId ? '[Sticker]' : '');
+    const cachedPartner = getCachedUserSync(cleanRecipient);
+    recordRecentDMContact(cleanSender, cleanRecipient, previewText, newMessage.createdAt, cleanSender, {
+        displayName: cachedPartner?.displayName || cleanRecipient,
+        avatarUrl: cachedPartner ? resolvePlayerAvatar(cachedPartner) : undefined
+    });
 
     if (isFirebaseConfigured() && db) {
         try {

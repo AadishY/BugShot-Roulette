@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { SceneContext, GraphicsPresetTier } from '../../types';
 import { getDeviceType } from '../gameUtils';
 import { getGraphicsPreset } from '../../constants';
+import { detectSoftwareWebGL, getGraphicsPresetConfig, GraphicsPresetProfile } from './graphicsConfig';
 import { setupLighting, createTable, createGunModel, createDealerModel, createPlayerAvatar, createProjectiles, createEnvironment, createDust, createBunkerEnvTexture, createBeerCan, createCigarette, createSaw, createHandcuffs, createMagnifyingGlass, createPhone, createInverter, createAdrenaline, createRemote, createBigInverter, createContract, createLuckycharm, createFlashbang, createCrusher, createTotem, createMirror, createTarotCard, createJackpotMachine, optimizeItemForPreset } from '../threeHelpers';
 
 export const getPresetPixelScale = (settings: any, width: number): number => {
@@ -19,45 +20,32 @@ export const getPresetPixelScale = (settings: any, width: number): number => {
     }
 
     const preset = getGraphicsPreset(settings);
-    let mobilePixelScale = 2.4;
+    let mobilePixelScale = 2.5;
     if (isMob) {
-        mobilePixelScale = preset === 'potato' ? 4.6 : (preset === 'low' ? 3.2 : (preset === 'balanced' ? 2.4 : 1.8));
+        mobilePixelScale = preset === 'potato' ? 4.6 : (preset === 'low' ? 3.3 : (preset === 'balanced' ? 2.5 : 1.85));
     } else if (isTab) {
-        mobilePixelScale = preset === 'potato' ? 3.6 : (preset === 'low' ? 2.6 : (preset === 'balanced' ? 2.0 : 1.5));
+        mobilePixelScale = preset === 'potato' ? 3.8 : (preset === 'low' ? 2.8 : (preset === 'balanced' ? 2.15 : 1.6));
     }
     mobilePixelScale = Math.max(mobilePixelScale, settings?.pixelScale || 0);
 
-    const desktopProfileMin = preset === 'potato' ? 4.0 : (preset === 'low' ? 2.8 : (preset === 'balanced' ? 2.4 : 1.8));
-    const desktopPixelScale = settings?.pixelScale || 2.4;
+    const desktopProfileMin = preset === 'potato' ? 4.0 : (preset === 'low' ? 2.8 : (preset === 'balanced' ? 2.3 : 1.7));
+    const desktopPixelScale = settings?.pixelScale || 2.3;
     const desktopBaseScale = Math.max(desktopProfileMin, desktopPixelScale);
 
     const baseScale = (isMob || isTab) ? mobilePixelScale : desktopBaseScale;
     return Math.max(1.0, baseScale * 0.45);
 };
 
-export const getPresetMaxPixelRatio = (preset: GraphicsPresetTier, nativeDpr: number, isAndroid: boolean): number => {
-    if (isAndroid) {
-        switch (preset) {
-            case 'potato':
-                return Math.min(nativeDpr, 0.85);
-            case 'low':
-                return Math.min(nativeDpr, 1.0);
-            case 'balanced':
-                return Math.min(nativeDpr, 1.15);
-            case 'high':
-                return Math.min(nativeDpr, 1.35);
-        }
-    }
-    switch (preset) {
-        case 'potato':
-            return Math.min(nativeDpr, 0.85);
-        case 'low':
-            return Math.min(nativeDpr, 0.95);
-        case 'balanced':
-            return Math.min(nativeDpr, 1.15);
-        case 'high':
-            return Math.min(nativeDpr, 1.6);
-    }
+export const getPresetMaxPixelRatio = (preset: GraphicsPresetTier, nativeDpr: number, isAndroid: boolean, isSoftwareGl: boolean = false): number => {
+    if (isSoftwareGl) return 1;
+    const isMobile = isAndroid || (typeof window !== 'undefined' && window.innerWidth < 900 && ('ontouchstart' in window || navigator.maxTouchPoints > 0));
+    const profile = getGraphicsPresetConfig(preset, {
+        isMobile,
+        isAndroid,
+        nativeDpr,
+        isSoftwareGl: false
+    });
+    return profile.maxPixelRatio;
 };
 
 export const cleanScene = (scene: THREE.Scene) => {
@@ -248,32 +236,45 @@ export const initThreeScene = (container: HTMLElement, props: any): SceneContext
     // Preset 4: High ('high') - Cinematic ACESFilmic, warm/cool rims, crisp shadows, volumetric dust/muzzle & reflections
     const preset = getGraphicsPreset(props.settings);
     const isPotato = preset === 'potato';
-    const isLow = preset === 'low';
-    const isBalanced = preset === 'balanced';
-    const isHigh = preset === 'high';
 
-    const isLowEndDevice = (isMobile && (isAndroid || width < 600 || pixelRatio < 2 || (typeof navigator !== 'undefined' && navigator.hardwareConcurrency < 6))) || isPotato;
-
-    // Android Mobile GPU optimization (Adreno and Mali architectures):
-    const shaderPrecision: 'highp' | 'mediump' | 'lowp' = isAndroid
-        ? (isPotato ? 'lowp' : 'mediump')
-        : (isHigh || isBalanced ? 'highp' : (isLow ? 'mediump' : 'lowp'));
+    const initialProfile: GraphicsPresetProfile = getGraphicsPresetConfig(preset, {
+        isMobile,
+        isTablet,
+        isAndroid,
+        nativeDpr: pixelRatio,
+        isSoftwareGl: false
+    });
 
     const renderer = new THREE.WebGLRenderer({
-        antialias: isHigh && !isMobile && !isAndroid,
+        antialias: initialProfile.antialias,
         powerPreference: 'high-performance',
         alpha: false,
         stencil: false,
         depth: true,
-        precision: shaderPrecision
+        precision: initialProfile.shaderPrecision
     });
 
+    const isSoftwareGl = detectSoftwareWebGL(renderer.getContext());
+    const graphicsProfile: GraphicsPresetProfile = isSoftwareGl
+        ? getGraphicsPresetConfig(preset, {
+            isMobile,
+            isTablet,
+            isAndroid,
+            nativeDpr: pixelRatio,
+            isSoftwareGl: true
+        })
+        : initialProfile;
+
+    const isLowEndDevice = isSoftwareGl || (isMobile && (isAndroid || width < 600 || pixelRatio < 2 || (typeof navigator !== 'undefined' && navigator.hardwareConcurrency < 6))) || isPotato;
+
     const pixelScale = getPresetPixelScale(props.settings, width);
-    const maxPixelRatio = getPresetMaxPixelRatio(preset, pixelRatio, isAndroid);
+    const maxPixelRatio = graphicsProfile.maxPixelRatio;
 
     renderer.setPixelRatio(maxPixelRatio);
     scene.userData.basePixelRatio = maxPixelRatio;
     scene.userData._lastResolutionPreset = preset;
+    scene.userData.graphicsProfile = graphicsProfile;
+    scene.userData.isSoftwareGl = isSoftwareGl;
     renderer.setSize(width / pixelScale, height / pixelScale, false);
 
     renderer.domElement.style.width = '100%';
@@ -292,35 +293,24 @@ export const initThreeScene = (container: HTMLElement, props: any): SceneContext
     }
     rendererProps.physicallyCorrectLights = true;
 
-    // Shadow Map configuration per preset:
-    switch (preset) {
-        case 'potato':
-            renderer.shadowMap.enabled = false;
-            renderer.shadowMap.autoUpdate = false;
-            break;
-        case 'low':
-        case 'balanced':
-            renderer.shadowMap.enabled = true;
-            renderer.shadowMap.autoUpdate = true;
-            renderer.shadowMap.type = THREE.PCFShadowMap;
-            break;
-        case 'high':
-            renderer.shadowMap.enabled = true;
-            renderer.shadowMap.autoUpdate = true;
-            renderer.shadowMap.type = isAndroid ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
-            break;
+    // Shadow Map configuration driven by graphicsProfile (LOW & POTATO disable shadow passes completely; BALANCED refreshes every 2nd frame)
+    renderer.shadowMap.enabled = graphicsProfile.shadowMapEnabled;
+    renderer.shadowMap.autoUpdate = graphicsProfile.shadowAutoUpdate;
+    if (graphicsProfile.shadowMapEnabled) {
+        renderer.shadowMap.type = graphicsProfile.useSoftShadows ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+        renderer.shadowMap.needsUpdate = true;
     }
 
     // Tone mapping & exposure stored per preset so render loop respects it
-    renderer.toneMapping = isPotato
+    renderer.toneMapping = graphicsProfile.toneMapping === 'linear'
         ? THREE.LinearToneMapping
         : THREE.ACESFilmicToneMapping;
-    const baseExposure = isPotato ? 1.05 : (isLow ? 1.48 : (isBalanced ? 1.62 : 1.85));
+    const baseExposure = graphicsProfile.baseExposure;
     renderer.toneMappingExposure = baseExposure;
     scene.userData.baseExposure = baseExposure;
 
-    // Smooth bunker reflections for metal & wood in Balanced and High
-    scene.environment = (isHigh || isBalanced) ? createBunkerEnvTexture() : null;
+    // Smooth bunker reflections for metal & wood (PC Balanced & High only)
+    scene.environment = graphicsProfile.enableEnvMap ? createBunkerEnvTexture() : null;
 
     scene.userData.isMobile = isMobile;
     scene.userData.isAndroid = isAndroid;
@@ -404,7 +394,7 @@ export const initThreeScene = (container: HTMLElement, props: any): SceneContext
     ].filter(bl => bl.light) as { light: THREE.Light, baseIntensity: number }[];
 
     createEnvironment(scene, isMobile, isPotato);
-    const dustParticles = isPotato ? null : createDust(scene, isMobile, false);
+    const dustParticles = graphicsProfile.enableDust ? createDust(scene, isMobile, false) : null;
     createTable(scene, isPotato);
 
     const { gunGroup, barrelMesh, shortBarrelMesh, sawCut, muzzleFlash, pump, magTube, shortMagTube, chokeMesh, sight, sSight } = createGunModel(scene);
@@ -587,6 +577,39 @@ export const initThreeScene = (container: HTMLElement, props: any): SceneContext
 
         if (scene.fog instanceof THREE.FogExp2) scene.fog.density = 0.003;
 
+    } else if (props.gameState?.isLocalSplit) {
+        const splitHp = props.gameState.localSplitConfig?.startingHp ?? 4;
+        const player1Name = props.gameState.player1Name || 'PLAYER 1';
+        const player2Name = props.gameState.opponentName || 'PLAYER 2';
+
+        // Seat B (-Z): Player 2 facing +Z using dealer.glb
+        dealerGroup = createPlayerAvatar(
+            scene,
+            new THREE.Vector3(0, -4.5, -8),
+            Math.PI,
+            player2Name,
+            splitHp,
+            splitHp,
+            'DEFAULT'
+        );
+        dealerGroup.name = 'DEALER';
+
+        // Seat A (+Z): Player 1 facing -Z using dealer.glb
+        const localPlayer1Group = createPlayerAvatar(
+            scene,
+            new THREE.Vector3(0, -4.5, 8),
+            0,
+            player1Name,
+            splitHp,
+            splitHp,
+            'DEFAULT'
+        );
+        localPlayer1Group.name = 'LOCAL_PLAYER1';
+        localPlayer1Group.visible = false; // Hidden initially while camera is on Seat A side
+        scene.userData.cachedLocalPlayer1Group = localPlayer1Group;
+
+        if (scene.fog instanceof THREE.FogExp2) scene.fog.density = 0.003;
+
     } else {
         dealerGroup = createDealerModel(scene, props.settings?.debugHeadModel ?? 'DEFAULT');
 
@@ -613,10 +636,7 @@ export const initThreeScene = (container: HTMLElement, props: any): SceneContext
     // Preset 2 (Low): preserved particles (18 on mobile, 25 on PC)
     // Preset 3 (Balanced): solid 60fps (22 on mobile, 35 on PC)
     // Preset 4 (High): full particles (45 on Android, 75 on PC)
-    const isMobileOrAndroid = isMobile || isAndroid;
-    const particleCount = isHigh
-        ? (isAndroid ? 45 : 75)
-        : (isBalanced ? (isMobileOrAndroid ? 22 : 35) : (isLow ? (isMobileOrAndroid ? 18 : 25) : 10));
+    const particleCount = graphicsProfile.bloodParticleCount;
     const particles = new THREE.BufferGeometry();
     const pPositions = new Float32Array(particleCount * 3);
     const pVelocities = new Float32Array(particleCount * 3);
@@ -651,9 +671,7 @@ export const initThreeScene = (container: HTMLElement, props: any): SceneContext
     bloodParticles.frustumCulled = false;
     scene.add(bloodParticles);
 
-    const sparkCount = isHigh
-        ? (isAndroid ? 30 : 55)
-        : (isBalanced ? (isMobileOrAndroid ? 16 : 28) : (isLow ? 12 : 8));
+    const sparkCount = graphicsProfile.sparkParticleCount;
     const sparkGeo = new THREE.BufferGeometry();
     const sPos = new Float32Array(sparkCount * 3);
     const sVel = new Float32Array(sparkCount * 3);

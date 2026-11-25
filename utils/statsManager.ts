@@ -1,4 +1,6 @@
 import { saveUserStatsToFirebase, syncPendingStatsToFirebase } from './firebaseService';
+export { computeDetailedStats, formatDurationCompact } from './statsAnalytics';
+export type { DetailedCareerStats } from './statsAnalytics';
 
 export interface GameStats {
     wins: number;
@@ -32,6 +34,7 @@ export interface MatchStats {
     isHardMode?: boolean;
     roundResults?: string[]; // e.g. ['WIN', 'LOSS', 'WIN']
     isMultiplayer?: boolean;
+    isLocalSplit?: boolean;
     mpPlayers?: any[];
 }
 
@@ -279,6 +282,7 @@ export const saveGameStats = async (matchStats: MatchStats): Promise<GameStats> 
         totalScore: calculateMatchScore(matchStats),
         timestamp: Date.now(),
         isMultiplayer: Boolean(matchStats.isMultiplayer),
+        isLocalSplit: Boolean(matchStats.isLocalSplit),
         mpPlayers: matchStats.mpPlayers || []
     };
     current.matchHistory = [historyEntry, ...current.matchHistory].slice(0, 20);

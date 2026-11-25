@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { GameState, PlayerState, LogEntry, TurnOwner, ItemType, AimTarget, ShellType, CameraView, GameSettings, ChatMessage, isUltraPerf, isLowPerf } from '../types';
+import { GameState, PlayerState, LogEntry, TurnOwner, ItemType, AimTarget, ShellType, CameraView, GameSettings, ChatMessage, LocalSplitConfig, isUltraPerf, isLowPerf } from '../types';
 import { Settings as SettingsIcon, Skull, Send, Smile, Minimize2 } from 'lucide-react';
 import { audioManager } from '../utils/audioManager';
 import { StatusDisplay } from './ui/StatusDisplay';
@@ -32,6 +32,7 @@ interface GameUIProps {
     triggerDrink: number;
     knownShell: ShellType | null;
     receivedItems: ItemType[];
+    opponentReceivedItems?: ItemType[];
     playerName: string;
     cameraView: CameraView;
     aimTarget?: AimTarget; // Added for controls logic
@@ -51,6 +52,7 @@ interface GameUIProps {
     onStealItem?: (index: number) => void;
     onBootComplete?: () => void;
     onStartMultiplayer?: (name: string) => void;
+    onStartLocalSplit?: (config: LocalSplitConfig) => void;
     matchData?: any;
     isMultiplayer?: boolean;
     messages?: ChatMessage[];
@@ -58,6 +60,7 @@ interface GameUIProps {
     mpGameState?: any;
     mpMyPlayerId?: string | null;
     stickers?: string[];
+    hideIntro?: boolean;
 }
 
 const RenderColoredText = ({ text }: { text: string }) => {
@@ -89,6 +92,7 @@ export const GameUI: React.FC<GameUIProps> = ({
     triggerDrink,
     knownShell,
     receivedItems,
+    opponentReceivedItems = [],
     playerName,
     cameraView,
     aimTarget = 'IDLE',
@@ -109,6 +113,7 @@ export const GameUI: React.FC<GameUIProps> = ({
     isRecovering = false,
     matchData,
     onStartMultiplayer,
+    onStartLocalSplit,
     isMultiplayer = false,
     messages = [],
     onSendMessage,
@@ -116,7 +121,8 @@ export const GameUI: React.FC<GameUIProps> = ({
     mpMyPlayerId,
     stickers = [],
     player3,
-    player4
+    player4,
+    hideIntro = false
 }) => {
     const isLowGraphics = isLowPerf(settings) || isUltraPerf(settings);
     const [inputName, setInputName] = useState(playerName || '');
@@ -306,8 +312,18 @@ export const GameUI: React.FC<GameUIProps> = ({
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [isStickersOpen, isChatMinimized]);
 
+    const isSplitMode = Boolean(gameState.isLocalSplit);
+    const isSplitP2Turn = isSplitMode && gameState.turnOwner === 'DEALER';
+    const p1Label = isSplitMode ? (gameState.player1Name || playerName || 'PLAYER 1') : (playerName || 'OPERATOR');
+    const p2Label = (isMultiplayer || isSplitMode) ? (gameState.opponentName || getOpponentName()) : 'DEALER';
+    const activePlayerState = isSplitP2Turn ? dealer : player;
+    const activeOpponentState = isSplitP2Turn ? player : dealer;
+    const activePlayerName = isSplitP2Turn ? p2Label : p1Label;
+    const targetOpponentName = isSplitP2Turn ? p1Label : p2Label;
+
     const isGunHeld = cameraView === 'GUN' || cameraView === 'PLAYER3_GUN' || cameraView === 'DEALER_GUN' || aimTarget === 'CHOOSING' || aimTarget === 'OPPONENT' || aimTarget === 'SELF' || aimTarget === 'LEFT' || aimTarget === 'RIGHT';
-    const isMyTurn = (gameState.turnOwner === 'PLAYER' && (gameState.phase === 'PLAYER_TURN' || gameState.phase === 'LOOTING'));
+    const isMyTurn = (gameState.turnOwner === 'PLAYER' && (gameState.phase === 'PLAYER_TURN' || gameState.phase === 'LOOTING'))
+        || (isSplitMode && gameState.turnOwner === 'DEALER' && (gameState.phase === 'DEALER_TURN' || gameState.phase === 'LOOTING'));
 
     // Robust UI Scaling: Scale the UI container while keeping it centered and contained
     const [screenSize, setScreenSize] = useState({ w: window.innerWidth, h: window.innerHeight });
@@ -346,14 +362,16 @@ export const GameUI: React.FC<GameUIProps> = ({
 
     return (
         <>
-            {/* Falling Shells Background - Pauses drawing when inactive to free GPU and improve performance, while keeping context alive to avoid context recreation lag/errors */}
-            <div className={`absolute inset-0 bg-black transition-opacity ${gameState.phase === 'BOOT' || gameState.phase === 'INTRO' ? 'opacity-100 duration-1000' : 'opacity-0 duration-0 pointer-events-none'}`}>
-                {!isUltraPerf(settings) && (
-                    <ShellBackground active={gameState.phase === 'INTRO' || gameState.phase === 'BOOT'} />
-                )}
-            </div>
+            {/* Falling Shells Background - Mounted only on INTRO and disabled on Low/Potato profiles for silky menu performance */}
+            {!hideIntro && (gameState.phase === 'BOOT' || gameState.phase === 'INTRO') && (
+                <div className="absolute inset-0 bg-black">
+                    {gameState.phase === 'INTRO' && !isLowGraphics && (
+                        <ShellBackground active={true} />
+                    )}
+                </div>
+            )}
 
-            {gameState.phase === 'BOOT' && <BootScreen onContinue={onBootComplete} />}
+            {!hideIntro && gameState.phase === 'BOOT' && <BootScreen onContinue={onBootComplete} />}
 
             {/* FX Layers */}
             <div className={`absolute inset-0 pointer-events-none transition-colors duration-300 z-10 ${overlayColor === 'red' ? 'bg-red-900/40' : overlayColor === 'green' ? 'bg-green-900/20' : overlayColor === 'scan' ? 'bg-fuchsia-900/30 mix-blend-overlay' : ''}`} />
@@ -411,7 +429,7 @@ export const GameUI: React.FC<GameUIProps> = ({
             )}
 
             {/* Intro Screen - Kept outside of scaled HUD so HUD scale setting does not affect main menu */}
-            {gameState.phase === 'INTRO' && (
+            {!hideIntro && gameState.phase === 'INTRO' && (
                 <IntroScreen
                     playerName={playerName}
                     inputName={inputName}
@@ -421,6 +439,7 @@ export const GameUI: React.FC<GameUIProps> = ({
                     onOpenGuide={onOpenGuide}
                     onOpenScoreboard={onOpenScoreboard}
                     onStartMultiplayer={onStartMultiplayer ?? (() => {})}
+                    onStartLocalSplit={onStartLocalSplit}
                 />
             )}
 
@@ -502,7 +521,7 @@ export const GameUI: React.FC<GameUIProps> = ({
                     >
                         <div className={`flex items-center gap-1.5 bg-red-955/95 border border-red-500 ${isCompactHUD ? 'px-2.5 py-1 text-[9px] rotate-2' : 'border-2 px-3 py-1.5 md:px-5 md:py-2 rotate-6 text-xs md:text-lg'} shadow-[0_0_30px_rgba(239,68,68,0.6)] rounded-xl text-red-200 font-mono font-black tracking-widest uppercase`}>
                             <Icons.Cuffs size={isCompactHUD ? 13 : 18} className="text-red-400 shrink-0 lg:w-5 lg:h-5 animate-pulse" />
-                            <span>RESTRAINED: TURN LOCKED</span>
+                            <span>{isSplitMode ? `${(player.isHandcuffed ? p1Label : p2Label).toUpperCase()} RESTRAINED` : 'RESTRAINED: TURN LOCKED'}</span>
                         </div>
                     </div>
                 )}
@@ -671,7 +690,9 @@ export const GameUI: React.FC<GameUIProps> = ({
                             <div className={`absolute ${isCompactHUD ? 'top-[14%]' : 'top-[20%]'} left-1/2 transform -translate-x-1/2 z-30 flex flex-col items-center animate-in fade-in zoom-in duration-500 pointer-events-none px-2 w-max max-w-[92vw]`}>
                                 <div className={`px-3.5 sm:px-6 ${isCompactHUD ? 'py-1' : 'py-2'} ${isLowGraphics ? 'bg-stone-900/95' : 'bg-black/85 backdrop-blur-md'} border border-purple-500/35 rounded-full shadow-[0_0_30px_rgba(168,85,247,0.2)] text-center`}>
                                     <span className={`${isCompactHUD ? 'text-[10px] tracking-[0.15em]' : 'text-[10px] sm:text-xs lg:text-xl tracking-[0.2em] sm:tracking-[0.3em]'} font-black uppercase text-purple-400 animate-pulse`}>
-                                        {gameState.turnOwner === 'PLAYER' ? '🔮 SELECT A TAROT CARD 🔮' : `🔮 ${gameState.opponentName?.toUpperCase() || 'DEALER'} CHOOSING CARD... 🔮`}
+                                        {isSplitMode
+                                            ? `🔮 ${activePlayerName.toUpperCase()}: SELECT A TAROT CARD 🔮`
+                                            : (gameState.turnOwner === 'PLAYER' ? '🔮 SELECT A TAROT CARD 🔮' : `🔮 ${gameState.opponentName?.toUpperCase() || 'DEALER'} CHOOSING CARD... 🔮`)}
                                     </span>
                                 </div>
                             </div>
@@ -720,16 +741,29 @@ export const GameUI: React.FC<GameUIProps> = ({
                                         mpMyPlayerId={mpMyPlayerId}
                                         settings={settings}
                                         isCompact={isCompactHUD}
+                                        isLocalSplit={isSplitMode}
+                                        activeTurnOwner={gameState.turnOwner}
+                                        activePlayerName={activePlayerName}
+                                        targetOpponentName={targetOpponentName}
                                     />
                                 </div>
                             )}
 
                             {/* Inventory */}
-                            <div className="pointer-events-auto w-full max-w-full flex justify-center min-w-0">
-                                {gameState.phase === 'STEALING' && gameState.turnOwner === 'PLAYER' ? (
+                            <div className="pointer-events-auto w-full max-w-full flex flex-col items-center min-w-0">
+                                {isSplitMode && (
+                                    <div className={`mb-1 px-2.5 py-0.5 rounded-full border text-[9px] font-mono font-black uppercase tracking-[0.2em] ${
+                                        isSplitP2Turn
+                                            ? 'bg-amber-950/70 border-amber-500/40 text-amber-300'
+                                            : 'bg-emerald-950/70 border-emerald-500/40 text-emerald-300'
+                                    }`}>
+                                        {activePlayerName.toUpperCase()}&apos;S LOADOUT
+                                    </div>
+                                )}
+                                {gameState.phase === 'STEALING' && (gameState.turnOwner === 'PLAYER' || isSplitP2Turn) ? (
                                     <Inventory
-                                        player={dealer} // Show DEALER items to steal
-                                        dealer={player} // (Swap context)
+                                        player={activeOpponentState}
+                                        dealer={activePlayerState}
                                         gameState={gameState}
                                         cameraView={cameraView}
                                         isProcessing={false}
@@ -743,14 +777,14 @@ export const GameUI: React.FC<GameUIProps> = ({
                                     />
                                 ) : (
                                     <Inventory
-                                        player={player}
-                                        dealer={dealer}
+                                        player={activePlayerState}
+                                        dealer={activeOpponentState}
                                         gameState={gameState}
                                         cameraView={cameraView}
                                         isProcessing={isProcessing}
                                         onUseItem={(idx) => {
                                             audioManager.playSound('grab');
-                                            const item = player.items[idx];
+                                            const item = activePlayerState.items[idx];
                                             const targetedItems = ['CUFFS', 'ADRENALINE', 'CRUSHER', 'FLASHBANG'];
                                             if ((gameState.isThreePlayer || gameState.isFourPlayer) && targetedItems.includes(item)) {
                                                 setPendingItemIndex(idx);
@@ -779,11 +813,16 @@ export const GameUI: React.FC<GameUIProps> = ({
                     isDebugUsed={gameState.isDebugUsed}
                     isMultiplayer={isMultiplayer}
                     isThreeOrFourPlayerWin={gameState.winner === 'PLAYER' && (gameState.isThreePlayer || gameState.isFourPlayer)}
+                    isLocalSplit={isSplitMode}
+                    player1Name={p1Label}
+                    player2Name={p2Label}
+                    splitScore={gameState.multiModeState}
+                    splitTotalMatches={gameState.localSplitConfig?.totalMatches}
                 />
             )}
 
             {/* Global Stealing Screen Overlay - Priority Layer Outside UI Scale */}
-            {gameState.phase === 'STEALING' && gameState.turnOwner === 'PLAYER' && (
+            {gameState.phase === 'STEALING' && (gameState.turnOwner === 'PLAYER' || isSplitP2Turn) && (
                 <div
                     className={`fixed inset-0 z-[150] h-[100dvh] flex flex-col items-center justify-start sm:justify-center ${isLowGraphics ? 'bg-stone-900/95' : 'bg-red-950/40 backdrop-blur-[16px]'} px-3 sm:px-6 pointer-events-auto animate-in fade-in duration-500 overflow-y-auto overflow-x-hidden hud-hardware-accel custom-scrollbar`}
                     style={{
@@ -805,7 +844,7 @@ export const GameUI: React.FC<GameUIProps> = ({
                             </h2>
                             <div className="flex flex-col items-center gap-1.5">
                                 <p className="text-stone-400 font-bold tracking-[0.25em] sm:tracking-[0.5em] text-[8px] sm:text-xs uppercase bg-black/40 px-4 py-1 rounded-full border border-red-900/30">
-                                    Neural Link Active • Seize Repository
+                                    {isSplitMode ? `${activePlayerName.toUpperCase()} • Seize From ${targetOpponentName.toUpperCase()}` : 'Neural Link Active • Seize Repository'}
                                 </p>
                             </div>
                         </div>
@@ -813,11 +852,13 @@ export const GameUI: React.FC<GameUIProps> = ({
                         {/* Extraction Grid */}
                         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2.5 sm:gap-5 w-full max-w-5xl mx-auto">
                             {(() => {
-                                const targetItems = (gameState.adrenalineTargetOwner === 'PLAYER3' && player3)
-                                    ? player3.items
-                                    : (gameState.adrenalineTargetOwner === 'PLAYER4' && player4)
-                                    ? player4.items
-                                    : dealer.items;
+                                const targetItems = isSplitMode
+                                    ? activeOpponentState.items
+                                    : ((gameState.adrenalineTargetOwner === 'PLAYER3' && player3)
+                                        ? player3.items
+                                        : (gameState.adrenalineTargetOwner === 'PLAYER4' && player4)
+                                            ? player4.items
+                                            : dealer.items);
 
                                 if (targetItems.length === 0) {
                                     return (
@@ -973,7 +1014,13 @@ export const GameUI: React.FC<GameUIProps> = ({
             {/* Global Loot Overlay - Priority Layer Outside UI Scale */}
             {showLootOverlay && (
                 <div className="fixed inset-0 z-[200]">
-                    <LootOverlay receivedItems={receivedItems} />
+                    <LootOverlay
+                        receivedItems={receivedItems}
+                        opponentReceivedItems={opponentReceivedItems}
+                        isLocalSplit={isSplitMode}
+                        player1Name={p1Label}
+                        player2Name={p2Label}
+                    />
                 </div>
             )}
 
