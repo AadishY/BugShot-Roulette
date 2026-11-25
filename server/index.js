@@ -53,6 +53,18 @@ const isOriginAllowed = (origin) => {
         // Cloudflare Pages (*.pages.dev, pages.dev)
         if (host === 'pages.dev' || host.endsWith('.pages.dev')) return true;
 
+        // GitHub Pages (*.github.io, github.io)
+        if (host === 'github.io' || host.endsWith('.github.io')) return true;
+
+        // Netlify (*.netlify.app, netlify.app)
+        if (host === 'netlify.app' || host.endsWith('.netlify.app')) return true;
+
+        // Firebase Web Apps (*.web.app, *.firebaseapp.com)
+        if (host === 'web.app' || host.endsWith('.web.app') || host === 'firebaseapp.com' || host.endsWith('.firebaseapp.com')) return true;
+
+        // Render (*.onrender.com)
+        if (host === 'onrender.com' || host.endsWith('.onrender.com')) return true;
+
         // Google AI Studio & Google ecosystems (aistudio.google.com, *.google.com, *.googleusercontent.com)
         if (
             host === 'aistudio.google.com' ||

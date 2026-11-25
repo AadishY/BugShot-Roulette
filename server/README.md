@@ -1,5 +1,5 @@
 ---
-title: Bugshot Roulette Core Server
+title: Buckshot
 emoji: 🔫
 colorFrom: red
 colorTo: gray
