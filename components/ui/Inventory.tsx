@@ -250,7 +250,7 @@ const InventoryComponent: React.FC<InventoryProps> = ({ player, dealer, gameStat
                 <div
                     style={{ bottom: tooltipBottom }}
                     className={isCompact
-                        ? "fixed right-2 sm:right-4 z-[999] w-[min(17rem,calc(100vw-1rem))] bg-stone-950/95 border border-stone-700/80 rounded-xl p-2.5 text-left text-stone-300 shadow-2xl backdrop-blur-xl pointer-events-none"
+                        ? "fixed left-1/2 -translate-x-1/2 sm:left-auto sm:translate-x-0 sm:right-4 z-[999] w-[min(17.5rem,calc(100vw-1rem))] bg-stone-950/95 border border-stone-700/80 rounded-xl p-2.5 text-left text-stone-300 shadow-2xl backdrop-blur-xl pointer-events-none"
                         : "fixed right-4 sm:right-6 z-[999] w-[min(22rem,calc(100vw-2rem))] max-w-[22rem] bg-stone-950/95 border border-stone-800 rounded-3xl p-4 text-left text-stone-300 shadow-[0_25px_70px_rgba(0,0,0,0.8)] backdrop-blur-2xl pointer-events-none"
                     }
                 >

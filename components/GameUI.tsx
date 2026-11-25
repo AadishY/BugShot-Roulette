@@ -61,7 +61,6 @@ interface GameUIProps {
     mpMyPlayerId?: string | null;
     stickers?: string[];
     hideIntro?: boolean;
-    experimentalHoverLabel?: string | null;
     isMenuLaunching?: boolean;
 }
 
@@ -125,7 +124,6 @@ export const GameUI: React.FC<GameUIProps> = ({
     player3,
     player4,
     hideIntro = false,
-    experimentalHoverLabel = null,
     isMenuLaunching = false
 }) => {
     const isLowGraphics = isLowPerf(settings) || isUltraPerf(settings);
@@ -263,10 +261,13 @@ export const GameUI: React.FC<GameUIProps> = ({
 
             if (!fullscreenRequestedRef.current && document.documentElement?.requestFullscreen) {
                 fullscreenRequestedRef.current = true;
-                const requestFullscreen = () => {
+                const requestFullscreen = async () => {
                     try {
                         if (!document.fullscreenElement) {
-                            void document.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
+                            await document.documentElement.requestFullscreen({ navigationUI: 'hide' } as any).catch(() => {});
+                        }
+                        if (settings?.orientationMode === 'vertical' || document.documentElement.classList.contains('force-vertical')) {
+                            await (screen as any)?.orientation?.lock?.('portrait')?.catch(() => {});
                         }
                     } catch (e) {}
                 };
@@ -337,17 +338,20 @@ export const GameUI: React.FC<GameUIProps> = ({
         return () => window.removeEventListener('resize', handleResize);
     }, []);
 
+    const isPortraitLayout = screenSize.h > screenSize.w;
     const isVeryNarrow = screenSize.w < 380;
-    const isPortraitMobile = screenSize.w < 768;
+    const isPortraitMobile = screenSize.w < 768 || (isPortraitLayout && screenSize.w < 1024);
     const isLandscapeMobile = screenSize.h < 540 && screenSize.w > screenSize.h;
     const isCompactHUD = isPortraitMobile || isLandscapeMobile;
 
-    // Calibrated HUD scale: on compact mobile/Android viewports, keep HUD crisp and legible (~0.75-0.95x at default 0.50)
-    // since compact components already use minimal footprints instead of oversized desktop dimensions.
+    // Calibrated HUD scale: on compact vertical & mobile viewports, keep HUD crisp and legible
+    // with true 44px+ touch targets while preserving vertical 3D table visibility.
     const finalScale = settings.uiScale <= 0
         ? 0
         : isCompactHUD
-            ? Math.min(1.05, settings.uiScale * (isVeryNarrow ? 1.45 : (isLandscapeMobile ? 1.55 : 1.65)))
+            ? (isPortraitLayout && screenSize.w < 768
+                ? Math.min(1.05, Math.max(0.84, settings.uiScale * (isVeryNarrow ? 1.72 : 1.85)))
+                : Math.min(1.05, settings.uiScale * (isVeryNarrow ? 1.45 : (isLandscapeMobile ? 1.55 : 1.65))))
             : settings.uiScale;
     const showExternalSettingsButton = finalScale < 0.45;
     const isHudHidden = finalScale <= 0;
@@ -520,8 +524,8 @@ export const GameUI: React.FC<GameUIProps> = ({
                     <div
                         className={`absolute ${
                             player.isHandcuffed
-                                ? (isCompactHUD ? 'bottom-[110px] left-2' : 'bottom-[30%] left-4 md:left-[15%]')
-                                : (isCompactHUD ? 'top-[54px] right-2' : 'top-[22%] right-4 md:right-[15%]')
+                                ? (isCompactHUD ? (isPortraitLayout ? 'bottom-[124px] left-2' : 'bottom-[110px] left-2') : 'bottom-[30%] left-4 md:left-[15%]')
+                                : (isCompactHUD ? (isPortraitLayout ? 'top-[90px] right-2' : 'top-[54px] right-2') : 'top-[22%] right-4 md:right-[15%]')
                         } z-20 animate-pulse pointer-events-none hud-hardware-accel cuffs-indicator`}
                     >
                         <div className={`flex items-center gap-1.5 bg-red-955/95 border border-red-500 ${isCompactHUD ? 'px-2.5 py-1 text-[9px] rotate-2' : 'border-2 px-3 py-1.5 md:px-5 md:py-2 rotate-6 text-xs md:text-lg'} shadow-[0_0_30px_rgba(239,68,68,0.6)] rounded-xl text-red-200 font-mono font-black tracking-widest uppercase`}>
@@ -705,7 +709,7 @@ export const GameUI: React.FC<GameUIProps> = ({
 
                         {/* Top Bar */}
                         <div className={`flex justify-between items-start w-full ${isCompactHUD ? 'gap-1' : 'gap-2'}`}>
-                            <StatusDisplay player={player} dealer={dealer} player3={player3} player4={player4} playerName={playerName} gameState={gameState} settings={settings} isCompact={isCompactHUD} />
+                            <StatusDisplay player={player} dealer={dealer} player3={player3} player4={player4} playerName={playerName} gameState={gameState} settings={settings} isCompact={isCompactHUD} isPortrait={isPortraitLayout} />
                             {!showExternalSettingsButton && (
                                 <button
                                     onClick={() => {
@@ -729,7 +733,7 @@ export const GameUI: React.FC<GameUIProps> = ({
                             }}
                         >
                             {/* Controls */}
-                            {gameState.phase !== 'STEALING' && gameState.phase !== 'CARD_SELECT' && isMyTurn && !showLootOverlay && (
+                            {!settings?.experimentalDirectAim && gameState.phase !== 'STEALING' && gameState.phase !== 'CARD_SELECT' && isMyTurn && !showLootOverlay && (
                                 <div className="pointer-events-none w-full max-w-full flex justify-center">
                                     <Controls
                                         isGunHeld={isGunHeld}
@@ -750,7 +754,6 @@ export const GameUI: React.FC<GameUIProps> = ({
                                         activeTurnOwner={gameState.turnOwner}
                                         activePlayerName={activePlayerName}
                                         targetOpponentName={targetOpponentName}
-                                        experimentalHoverLabel={experimentalHoverLabel}
                                     />
                                 </div>
                             )}
@@ -1038,7 +1041,11 @@ export const GameUI: React.FC<GameUIProps> = ({
                         <div
                             className={`absolute z-[100] pointer-events-auto select-none flex ${isCompactHUD ? 'flex-row items-center gap-1.5' : 'flex-col items-start gap-2'}`}
                             style={{
-                                bottom: isCompactHUD ? 'max(calc(env(safe-area-inset-bottom, 0px) + 62px), 62px)' : 'max(env(safe-area-inset-bottom, 0px), 16px)',
+                                bottom: isCompactHUD
+                                    ? (isPortraitLayout
+                                        ? (!settings?.experimentalDirectAim ? 'max(calc(env(safe-area-inset-bottom, 0px) + 114px), 114px)' : 'max(calc(env(safe-area-inset-bottom, 0px) + 74px), 74px)')
+                                        : 'max(calc(env(safe-area-inset-bottom, 0px) + 62px), 62px)')
+                                    : 'max(env(safe-area-inset-bottom, 0px), 16px)',
                                 left: isCompactHUD ? 'max(env(safe-area-inset-left, 0px), 8px)' : 'max(env(safe-area-inset-left, 0px), 16px)'
                             }}
                         >
@@ -1238,7 +1245,7 @@ export const GameUI: React.FC<GameUIProps> = ({
 
             {/* Minimized Chat Overlay - Visible in-game at above left corner when minimized (Filters out sticker logs) */}
             {isMultiplayer && gameState.phase !== 'INTRO' && gameState.phase !== 'BOOT' && isChatMinimized && showChatPreview && (
-                <div className={`absolute ${isCompactHUD ? 'top-[54px] left-2 max-w-[180px]' : 'top-28 left-4 max-w-xs md:max-w-sm'} z-[100] pointer-events-none space-y-1.5 select-none`}>
+                <div className={`absolute ${isCompactHUD ? (isPortraitLayout ? 'top-[90px] left-2 max-w-[200px]' : 'top-[54px] left-2 max-w-[180px]') : 'top-28 left-4 max-w-xs md:max-w-sm'} z-[100] pointer-events-none space-y-1.5 select-none`}>
                     {chatPreviewMessages.map((msg, i) => (
                         <div key={`${msg.timestamp}-${i}`} className="text-white text-[10px] sm:text-xs font-semibold drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] animate-in fade-in slide-in-from-left-2 duration-300 flex items-baseline gap-1.5">
                             <span style={{ color: msg.color }} className="font-extrabold uppercase text-[9px] sm:text-[10px] tracking-widest shrink-0">{msg.sender}:</span>
@@ -1250,7 +1257,7 @@ export const GameUI: React.FC<GameUIProps> = ({
 
             {/* Transparent Active Stickers Overlay - rendered on left side, auto fades after 8s, max 3 limit */}
             {isMultiplayer && gameState.phase !== 'INTRO' && gameState.phase !== 'BOOT' && activeStickers.length > 0 && (
-                <div className={`absolute ${isCompactHUD ? 'bottom-[114px] left-2' : 'bottom-[120px] left-4'} z-[100] pointer-events-none space-y-2 select-none flex flex-col-reverse items-start bg-transparent`}>
+                <div className={`absolute ${isCompactHUD ? (isPortraitLayout ? 'bottom-[168px] left-2' : 'bottom-[114px] left-2') : 'bottom-[120px] left-4'} z-[100] pointer-events-none space-y-2 select-none flex flex-col-reverse items-start bg-transparent`}>
                     {activeStickers.map((stk) => (
                         <div key={stk.id} className="animate-in fade-in slide-in-from-left-3 duration-300 flex flex-col items-start bg-transparent">
                             <span style={{ color: stk.color }} className="font-extrabold uppercase text-[8px] tracking-widest drop-shadow-[0_1.5px_2px_rgba(0,0,0,0.95)]">
@@ -1268,7 +1275,7 @@ export const GameUI: React.FC<GameUIProps> = ({
             {gameState.phase !== 'INTRO' && gameState.phase !== 'BOOT' && (
                 <>
                     {(player.jackpotImmunityShots || 0) > 0 && (
-                        <div className={`absolute ${isCompactHUD ? 'top-[52px] left-2' : 'top-[200px] left-4'} z-[100] pointer-events-none flex flex-col items-start bg-transparent animate-pulse select-none`}>
+                        <div className={`absolute ${isCompactHUD ? (isPortraitLayout ? 'top-[90px] left-2' : 'top-[52px] left-2') : 'top-[200px] left-4'} z-[100] pointer-events-none flex flex-col items-start bg-transparent animate-pulse select-none`}>
                             <span className="font-extrabold uppercase text-[7px] tracking-widest text-amber-400 drop-shadow-[0_1.5px_2px_rgba(0,0,0,0.95)]">
                                 {playerName} IMMUNITY ({player.jackpotImmunityShots})
                             </span>
@@ -1280,7 +1287,7 @@ export const GameUI: React.FC<GameUIProps> = ({
                         </div>
                     )}
                     {(dealer.jackpotImmunityShots || 0) > 0 && (
-                        <div className={`absolute ${isCompactHUD ? 'top-[52px] left-28' : 'top-[200px] left-28 sm:left-32'} z-[100] pointer-events-none flex flex-col items-start bg-transparent animate-pulse select-none`}>
+                        <div className={`absolute ${isCompactHUD ? (isPortraitLayout ? 'top-[90px] left-28' : 'top-[52px] left-28') : 'top-[200px] left-28 sm:left-32'} z-[100] pointer-events-none flex flex-col items-start bg-transparent animate-pulse select-none`}>
                             <span className="font-extrabold uppercase text-[7px] tracking-widest text-stone-400 drop-shadow-[0_1.5px_2px_rgba(0,0,0,0.95)]">
                                 {isMultiplayer ? getOpponentName() : 'DEALER'} IMMUNITY ({dealer.jackpotImmunityShots})
                             </span>

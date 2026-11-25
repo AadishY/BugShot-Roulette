@@ -8,7 +8,6 @@ import {
     ExperimentalHitTag,
     ExperimentalTargetOwner,
     getExperimentalAimTarget,
-    getExperimentalHoverLabel,
     isExperimentalTurnActive,
     resolveExperimentalActionFromHit
 } from '../utils/three/experimentalAim';
@@ -38,7 +37,6 @@ interface ThreeSceneProps {
     isProcessing?: boolean;
     isRecovering?: boolean;
     onExperimentalShoot?: (target: ExperimentalTargetOwner) => void;
-    onExperimentalHover?: (label: string | null) => void;
     onHoverTarget?: (target: AimTarget, targetId?: string) => void;
 }
 
@@ -78,18 +76,18 @@ const projectHeadTag = (
     if (head.userData._headTagOffset === undefined) {
         bbox3.setFromObject(head);
         if (bbox3.isEmpty()) {
-            head.userData._headTagOffset = 2.4;
+            head.userData._headTagOffset = 2.6;
         } else {
             const topY = bbox3.max.y;
             const headHeight = bbox3.max.y - bbox3.min.y;
-            head.userData._headTagOffset = (topY - worldPos.y) + Math.max(0.08, headHeight * 0.08);
+            head.userData._headTagOffset = (topY - worldPos.y) + Math.max(0.22, headHeight * 0.14);
         }
     }
     worldPos.y += head.userData._headTagOffset;
     worldPos.project(camera);
     target.name = label;
     target.x = (worldPos.x * 0.5 + 0.5) * 100;
-    target.y = Math.min(100, (worldPos.y * -0.5 + 0.5) * 100 + 7);
+    target.y = Math.max(10, Math.min(92, (worldPos.y * -0.5 + 0.5) * 100 - 1.5));
     target.visible = worldPos.z <= 1.0;
     return true;
 };
@@ -159,7 +157,6 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
     isProcessing = false,
     isRecovering = false,
     onExperimentalShoot,
-    onExperimentalHover,
     onHoverTarget,
 }) => {
     const containerRef = useRef<HTMLDivElement>(null);
@@ -193,7 +190,6 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
         isProcessing,
         isRecovering,
         onExperimentalShoot,
-        onExperimentalHover,
         onHoverTarget,
     });
 
@@ -223,10 +219,9 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
             isProcessing,
             isRecovering,
             onExperimentalShoot,
-            onExperimentalHover,
             onHoverTarget,
         };
-    }, [isSawed, isChokeActive, isPlayerCuffed, aimTarget, cameraView, animState, turnOwner, settings, knownShell, isHardMode, player, dealer, player3, player4, gameState, onCardClick, onGunClick, onLowPerformance, isPaused, onUpdateNameTags, dealerModel, isProcessing, isRecovering, onExperimentalShoot, onExperimentalHover, onHoverTarget]);
+    }, [isSawed, isChokeActive, isPlayerCuffed, aimTarget, cameraView, animState, turnOwner, settings, knownShell, isHardMode, player, dealer, player3, player4, gameState, onCardClick, onGunClick, onLowPerformance, isPaused, onUpdateNameTags, dealerModel, isProcessing, isRecovering, onExperimentalShoot, onHoverTarget]);
 
     const sceneRef = useRef<SceneContext | null>(null);
     const tagProjectionVec = useRef(new THREE.Vector3());
@@ -661,7 +656,6 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
 
         // INPUT HANDLING - Prevent Double Firing
         let isTouchInteraction = false;
-        let lastExpHoverLabel: string | null = null;
         let lastExpAimTarget: AimTarget | null = null;
 
         const isObjectChainVisible = (obj: THREE.Object3D | null): boolean => {
@@ -783,13 +777,9 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
             return null;
         };
 
-        const emitExperimentalHover = (label: string | null, nextAim?: AimTarget | null) => {
+        const emitExperimentalHover = (hasTarget: boolean, nextAim?: AimTarget | null) => {
             if (containerRef.current) {
-                containerRef.current.style.cursor = label ? 'pointer' : '';
-            }
-            if (label !== lastExpHoverLabel) {
-                lastExpHoverLabel = label;
-                propsRef.current.onExperimentalHover?.(label);
+                containerRef.current.style.cursor = hasTarget ? 'pointer' : '';
             }
             if (nextAim !== undefined) {
                 if (nextAim !== lastExpAimTarget) {
@@ -824,16 +814,13 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
                     }
                     sceneRef.current.scene.userData.hoveredCardIndex = hoveredIdx;
                 }
-                emitExperimentalHover(null, null);
+                emitExperimentalHover(false, null);
             } else {
                 if (sceneRef.current.scene?.userData) {
                     sceneRef.current.scene.userData.hoveredCardIndex = null;
                 }
                 if (currentProps.settings?.experimentalDirectAim) {
                     const action = evaluateExperimentalTargetUnderPointer();
-                    const oppLabel = currentGameState.isLocalSplit
-                        ? (currentProps.turnOwner === 'DEALER' ? (currentGameState.player1Name || 'PLAYER 1') : (currentGameState.opponentName || 'PLAYER 2'))
-                        : (currentGameState.isMultiplayer ? (currentGameState.opponentName || 'OPPONENT') : 'DEALER');
                     const isGunTurnActive = currentProps.cameraView === 'GUN' && isExperimentalTurnActive({
                         phase: currentGameState.phase,
                         turnOwner: currentProps.turnOwner,
@@ -846,12 +833,9 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
                     const nextAim = isGunTurnActive
                         ? getExperimentalAimTarget(action, currentGameState.isLocalSplit, currentProps.turnOwner, true)
                         : null;
-                    emitExperimentalHover(
-                        getExperimentalHoverLabel(action, currentGameState.isLocalSplit, currentProps.turnOwner, oppLabel),
-                        nextAim
-                    );
+                    emitExperimentalHover(Boolean(action), nextAim);
                 } else {
-                    emitExperimentalHover(null, null);
+                    emitExperimentalHover(false, null);
                 }
             }
         };
@@ -921,10 +905,10 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
                 const action = evaluateExperimentalTargetUnderPointer();
                 if (action?.type === 'PICKUP_GUN') {
                     currentProps.onGunClick?.();
-                    emitExperimentalHover(null);
+                    emitExperimentalHover(false, null);
                 } else if (action?.type === 'SHOOT') {
                     currentProps.onExperimentalShoot?.(action.target);
-                    emitExperimentalHover(null);
+                    emitExperimentalHover(false, null);
                 }
                 return;
             }

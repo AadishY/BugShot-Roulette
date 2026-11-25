@@ -46,6 +46,11 @@ import {
     getMultiplayerDefaultWeights,
     getSplitMultiplayerRoomSettings,
 } from './game/inventory.ts';
+import {
+    computeResponsiveCameraFov,
+    computePortraitCameraZAdjust,
+    computePortraitGunChoosingX,
+} from './three/portraitCamera.ts';
 
 class MemoryStorage {
     private map = new Map<string, string>();
@@ -776,6 +781,33 @@ test('Totem stays rare and Split MP uses strict 2-player multiplayer probability
     const spTotemRate = spTotemCount / (sampleBatches * 4);
     assert.ok(splitTotemRate < 0.02, `Split MP Totem rate unexpectedly high: ${splitTotemRate}`);
     assert.ok(spTotemRate < 0.02, `SP Normal Totem rate unexpectedly high: ${spTotemRate}`);
+});
+
+test('portraitCamera preserves landscape framing and compensates vertical aspect ratios cleanly', () => {
+    // Landscape / square screens stay completely unchanged
+    assert.equal(computeResponsiveCameraFov(60, 1.78, false), 60);
+    assert.equal(computeResponsiveCameraFov(85, 1.0, false), 85);
+    assert.equal(computePortraitCameraZAdjust(1.78, 'IDLE', 'PLAYER', 'PLAYER_TURN'), 0);
+    assert.equal(computePortraitGunChoosingX(1.78, 0.5), 0.5);
+
+    // Narrow vertical screen (e.g. 9:19 phone ~0.47 aspect) boosts FOV cleanly and caps self-aim tighter
+    const mobilePortraitFov = computeResponsiveCameraFov(60, 390 / 844, false);
+    const mobileSelfFov = computeResponsiveCameraFov(60, 390 / 844, true);
+    assert.ok(mobilePortraitFov > 75 && mobilePortraitFov <= 104, `Unexpected portrait FOV: ${mobilePortraitFov}`);
+    assert.ok(mobileSelfFov <= 92 && mobileSelfFov >= 60, `Unexpected portrait self FOV: ${mobileSelfFov}`);
+
+    // Pulls camera back along Z for neutral/table views on portrait, never for self-aim or menu
+    const zPullIdle = computePortraitCameraZAdjust(390 / 844, 'IDLE', 'PLAYER', 'PLAYER_TURN');
+    const zPullOpp = computePortraitCameraZAdjust(390 / 844, 'OPPONENT', 'GUN', 'PLAYER_TURN');
+    const zPullSelf = computePortraitCameraZAdjust(390 / 844, 'SELF', 'GUN', 'PLAYER_TURN');
+    const zPullMenu = computePortraitCameraZAdjust(390 / 844, 'IDLE', 'PLAYER', 'INTRO');
+    assert.ok(zPullIdle > zPullOpp && zPullOpp > 0);
+    assert.equal(zPullSelf, 0);
+    assert.equal(zPullMenu, 0);
+
+    // Centers held gun horizontally on portrait screens
+    assert.equal(computePortraitGunChoosingX(0.5, 0.5), 0);
+    assert.equal(computePortraitGunChoosingX(0.5, -0.5), 0);
 });
 
 

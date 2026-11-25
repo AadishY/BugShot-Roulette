@@ -222,9 +222,24 @@ export default function App() {
     }
   }, []);
 
-  // --- ORIENTATION CHECK (strict horizontal enforcement from first paint) ---
-  const checkIsPortraitLocked = useCallback(() => {
+  // --- ORIENTATION CHECK (supports both horizontal enforcement & Force Vertical mode) ---
+  const [isForceVertical, setIsForceVertical] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
+    try {
+      if (sessionStorage.getItem('aadish_roulette_force_vertical') === 'true') return true;
+      const saved = localStorage.getItem('aadish_roulette_settings');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed?.orientationMode === 'vertical') return true;
+      }
+    } catch {}
+    return false;
+  });
+
+  const checkIsPortraitLocked = useCallback((forceVerticalOverride?: boolean) => {
+    if (typeof window === 'undefined') return false;
+    const verticalAllowed = forceVerticalOverride !== undefined ? forceVerticalOverride : isForceVertical;
+    if (verticalAllowed) return false;
     const params = new URLSearchParams(window.location.search);
     const isDiscord =
       params.has('frame_id') ||
@@ -239,10 +254,18 @@ export default function App() {
       (navigator.maxTouchPoints || 0) > 0;
     const isCompactViewport = window.innerWidth < 1024;
     return isPortrait && (hasTouch || isCompactViewport);
-  }, []);
+  }, [isForceVertical]);
 
   const [showRotateWarning, setShowRotateWarning] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
+    try {
+      if (sessionStorage.getItem('aadish_roulette_force_vertical') === 'true') return false;
+      const saved = localStorage.getItem('aadish_roulette_settings');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed?.orientationMode === 'vertical') return false;
+      }
+    } catch {}
     const params = new URLSearchParams(window.location.search);
     const isDiscord =
       params.has('frame_id') ||
@@ -260,6 +283,14 @@ export default function App() {
   const [isMobileNameTag, setIsMobileNameTag] = useState(false);
 
   const lockLandscapeFullscreen = useCallback(async () => {
+    setIsForceVertical(false);
+    try {
+      sessionStorage.removeItem('aadish_roulette_force_vertical');
+    } catch {}
+    if (typeof document !== 'undefined') {
+      document.documentElement.classList.remove('force-vertical');
+    }
+    setSettings(prev => (prev.orientationMode === 'vertical' ? { ...prev, orientationMode: 'auto' } : prev));
     try {
       const docEl = document.documentElement as any;
       if (!document.fullscreenElement && docEl?.requestFullscreen) {
@@ -274,8 +305,34 @@ export default function App() {
         await orientation.lock('landscape').catch(() => {});
       }
     } catch {}
-    setShowRotateWarning(checkIsPortraitLocked());
+    setShowRotateWarning(checkIsPortraitLocked(false));
   }, [checkIsPortraitLocked]);
+
+  const forceVerticalFullscreen = useCallback(async () => {
+    setIsForceVertical(true);
+    try {
+      sessionStorage.setItem('aadish_roulette_force_vertical', 'true');
+    } catch {}
+    if (typeof document !== 'undefined') {
+      document.documentElement.classList.add('force-vertical');
+    }
+    setSettings(prev => ({ ...prev, orientationMode: 'vertical' }));
+    try {
+      const docEl = document.documentElement as any;
+      if (!document.fullscreenElement && docEl?.requestFullscreen) {
+        await docEl.requestFullscreen({ navigationUI: 'hide' } as any).catch(() => {});
+      } else if (!(document as any).webkitFullscreenElement && docEl?.webkitRequestFullscreen) {
+        docEl.webkitRequestFullscreen();
+      }
+    } catch {}
+    try {
+      const orientation = (screen as any)?.orientation;
+      if (orientation && typeof orientation.lock === 'function') {
+        await orientation.lock('portrait').catch(() => {});
+      }
+    } catch {}
+    setShowRotateWarning(false);
+  }, []);
 
   useEffect(() => {
     const updateMobileTagState = () => {
@@ -383,39 +440,6 @@ export default function App() {
     }
   }, []);
 
-  useEffect(() => {
-    const syncOrientation = () => {
-      setShowRotateWarning(checkIsPortraitLocked());
-    };
-
-    syncOrientation();
-
-    // Attempt immediate passive landscape lock when supported (installed PWA / fullscreen)
-    try {
-      const orientation = (screen as any)?.orientation;
-      if (orientation && typeof orientation.lock === 'function') {
-        orientation.lock('landscape').catch(() => {});
-      }
-    } catch {}
-
-    const mql = typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(orientation: portrait)') : null;
-    window.addEventListener('resize', syncOrientation);
-    window.addEventListener('orientationchange', syncOrientation);
-    if (mql) {
-      if (mql.addEventListener) mql.addEventListener('change', syncOrientation);
-      else if ((mql as any).addListener) (mql as any).addListener(syncOrientation);
-    }
-
-    return () => {
-      window.removeEventListener('resize', syncOrientation);
-      window.removeEventListener('orientationchange', syncOrientation);
-      if (mql) {
-        if (mql.removeEventListener) mql.removeEventListener('change', syncOrientation);
-        else if ((mql as any).removeListener) (mql as any).removeListener(syncOrientation);
-      }
-    };
-  }, [checkIsPortraitLocked]);
-
   // For loot overlay
   const effectiveShowLootOverlay = spGame.showLootOverlay;
   const effectiveReceivedItems = spGame.receivedItems as import('./types').ItemType[];
@@ -429,7 +453,6 @@ export default function App() {
   const [detectedLowFps, setDetectedLowFps] = useState(0);
   const [isMenuLaunching, setIsMenuLaunching] = useState(false);
   const [showGameReveal, setShowGameReveal] = useState(false);
-  const [experimentalHoverLabel, setExperimentalHoverLabel] = useState<string | null>(null);
 
   const [settings, setSettings] = useState<GameSettings>(() => {
     const saved = localStorage.getItem('aadish_roulette_settings');
@@ -452,14 +475,56 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('aadish_roulette_settings', JSON.stringify(settings));
     audioManager.updateVolumes(settings);
-
+    const nextForceVertical = settings.orientationMode === 'vertical';
+    setIsForceVertical(nextForceVertical);
+    try {
+      if (nextForceVertical) {
+        sessionStorage.setItem('aadish_roulette_force_vertical', 'true');
+      } else {
+        sessionStorage.removeItem('aadish_roulette_force_vertical');
+      }
+    } catch {}
+    if (typeof document !== 'undefined') {
+      document.documentElement.classList.toggle('force-vertical', nextForceVertical);
+    }
   }, [settings]);
 
   useEffect(() => {
-    if (appState !== 'GAME' || !settings.experimentalDirectAim || (spGame.cameraView !== 'GUN' && spGame.isProcessing)) {
-      setExperimentalHoverLabel(null);
+    const verticalPreferred = isForceVertical || settings.orientationMode === 'vertical';
+    if (typeof document !== 'undefined') {
+      document.documentElement.classList.toggle('force-vertical', verticalPreferred);
     }
-  }, [appState, settings.experimentalDirectAim, spGame.cameraView, spGame.isProcessing]);
+    const syncOrientation = () => {
+      setShowRotateWarning(checkIsPortraitLocked(verticalPreferred));
+    };
+
+    syncOrientation();
+
+    // Attempt passive orientation lock matching active orientation mode when supported (PWA / fullscreen)
+    try {
+      const orientation = (screen as any)?.orientation;
+      if (orientation && typeof orientation.lock === 'function') {
+        orientation.lock(verticalPreferred ? 'portrait' : 'landscape').catch(() => {});
+      }
+    } catch {}
+
+    const mql = typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(orientation: portrait)') : null;
+    window.addEventListener('resize', syncOrientation);
+    window.addEventListener('orientationchange', syncOrientation);
+    if (mql) {
+      if (mql.addEventListener) mql.addEventListener('change', syncOrientation);
+      else if ((mql as any).addListener) (mql as any).addListener(syncOrientation);
+    }
+
+    return () => {
+      window.removeEventListener('resize', syncOrientation);
+      window.removeEventListener('orientationchange', syncOrientation);
+      if (mql) {
+        if (mql.removeEventListener) mql.removeEventListener('change', syncOrientation);
+        else if ((mql as any).removeListener) (mql as any).removeListener(syncOrientation);
+      }
+    };
+  }, [checkIsPortraitLocked, isForceVertical, settings.orientationMode]);
 
   useEffect(() => {
     const prev = prevAppStateForRevealRef.current;
@@ -1886,7 +1951,6 @@ export default function App() {
     }
     setIsMenuLaunching(false);
     setShowGameReveal(false);
-    setExperimentalHoverLabel(null);
     setAbortedByName(null);
     setNameTags([]);
     mp.disconnect();
@@ -2382,26 +2446,36 @@ export default function App() {
 
       <div
         id="rotate-warning"
-        className={`fixed inset-0 z-[99999] flex-col items-center justify-center bg-black ${!isDiscordPlatform ? 'portrait-guard' : ''} ${showRotateWarning ? 'active flex opacity-100 pointer-events-auto' : 'hidden opacity-0 pointer-events-none'}`}
+        className={`fixed inset-0 z-[99999] flex-col items-center justify-center bg-black ${!isDiscordPlatform && !isForceVertical ? 'portrait-guard' : ''} ${showRotateWarning ? 'active flex opacity-100 pointer-events-auto' : 'hidden opacity-0 pointer-events-none'}`}
       >
-        <div className="warning-card max-w-xs w-[88vw] p-6 rounded-2xl border-2 border-red-700/70 bg-stone-950 text-center space-y-5 shadow-[0_0_50px_rgba(220,38,38,0.25)]">
+        <div className="warning-card max-w-xs w-[88vw] p-6 rounded-2xl border-2 border-red-700/70 bg-stone-950 text-center space-y-4 shadow-[0_0_50px_rgba(220,38,38,0.25)]">
           <div className="relative inline-flex items-center justify-center">
-            <RotateCw size={48} className="text-red-500 animate-[spin_3s_linear_infinite]" />
+            <RotateCw size={44} className="text-red-500 animate-[spin_3s_linear_infinite]" />
           </div>
-          <div className="space-y-2">
-            <h1 className="text-2xl font-black tracking-[0.25em] text-red-500 uppercase">ROTATE DEVICE</h1>
-            <p className="text-[11px] font-mono font-bold tracking-[0.2em] text-stone-400 uppercase leading-relaxed">
-              STRICT HORIZONTAL (LANDSCAPE) MODE REQUIRED
+          <div className="space-y-1.5">
+            <h1 className="text-xl font-black tracking-[0.22em] text-red-500 uppercase">ROTATE DEVICE</h1>
+            <p className="text-[10px] font-mono font-bold tracking-[0.16em] text-stone-400 uppercase leading-relaxed">
+              ROTATE TO LANDSCAPE OR CONTINUE IN VERTICAL ONLY
             </p>
           </div>
           <div className="w-16 h-1 mx-auto bg-gradient-to-r from-transparent via-red-700/70 to-transparent" />
-          <button
-            type="button"
-            onClick={lockLandscapeFullscreen}
-            className="w-full min-h-[44px] py-3 px-4 bg-red-900/40 hover:bg-red-800/60 border border-red-600/80 text-red-200 hover:text-white font-mono font-black text-[10px] tracking-[0.22em] uppercase rounded-xl active:scale-95 transition-all cursor-pointer"
-          >
-            LOCK LANDSCAPE & FULLSCREEN
-          </button>
+          <div className="space-y-2.5 pt-1">
+            <button
+              type="button"
+              onClick={lockLandscapeFullscreen}
+              className="w-full min-h-[44px] py-3 px-4 bg-red-900/40 hover:bg-red-800/60 border border-red-600/80 text-red-200 hover:text-white font-mono font-black text-[10px] tracking-[0.2em] uppercase rounded-xl active:scale-95 transition-all cursor-pointer"
+            >
+              LOCK LANDSCAPE & FULLSCREEN
+            </button>
+            <button
+              type="button"
+              data-testid="btn-force-vertical"
+              onClick={forceVerticalFullscreen}
+              className="w-full min-h-[44px] py-3 px-4 bg-stone-900/80 hover:bg-amber-950/50 border border-stone-700 hover:border-amber-500/70 text-stone-200 hover:text-amber-300 font-mono font-black text-[10px] tracking-[0.2em] uppercase rounded-xl active:scale-95 transition-all cursor-pointer"
+            >
+              FORCE VERTICAL
+            </button>
+          </div>
         </div>
       </div>
 
@@ -2431,7 +2505,6 @@ export default function App() {
             isProcessing={spGame.isProcessing}
             isRecovering={spGame.animState.playerHit || spGame.animState.playerRecovering || spGame.animState.dealerDropping || spGame.animState.dealerRecovering}
             onExperimentalShoot={handleExperimentalShoot}
-            onExperimentalHover={setExperimentalHoverLabel}
             onHoverTarget={handleHoverTarget}
           />
         </Suspense>
@@ -2484,16 +2557,15 @@ export default function App() {
         mpMyPlayerId={mp.playerId}
         stickers={stickersList}
         hideIntro={appState !== 'MENU'}
-        experimentalHoverLabel={experimentalHoverLabel}
         isMenuLaunching={isMenuLaunching}
       />
 
       {appState === 'LOBBY' && mp.room && (
         <Suspense fallback={null}>
           <div className="absolute inset-0 z-[110] flex flex-col bg-stone-950 overflow-hidden lobby-three-cols-container">
-            <div className="w-full flex-1 flex flex-row gap-0 min-h-0 overflow-hidden">
+            <div className="w-full flex-1 flex flex-col md:flex-row gap-0 min-h-0 overflow-hidden">
               {/* Lobby View */}
-              <div className="h-full min-h-0 flex lobby-main-view">
+              <div className="flex-1 min-h-0 min-w-0 flex lobby-main-view">
                 <MultiplayerLobby
                   room={mp.room}
                   playerId={mp.playerId!}
@@ -2507,7 +2579,7 @@ export default function App() {
               </div>
               
               {/* Chat View */}
-              <div className="h-full min-h-0 flex border-l border-stone-900 lobby-chat-view">
+              <div className="h-[34dvh] md:h-full w-full md:w-80 lg:w-96 shrink-0 min-h-0 flex border-t md:border-t-0 md:border-l border-stone-900 lobby-chat-view">
                 <ChatBox
                   messages={mp.messages}
                   onSendMessage={handleSendChatMessage}

@@ -139,6 +139,8 @@ export const SettingsMenu: React.FC<SettingsMenuProps> = ({ settings, onUpdateSe
             const mode = value as string;
             updated.ultraPerformance = mode === 'potato';
             updated.balancedPerformance = mode === 'balanced' || mode === 'low';
+        } else if (key === 'orientationMode') {
+            audioManager.playSound('click');
         }
         onUpdateSettings(updated);
     };
@@ -175,7 +177,7 @@ export const SettingsMenu: React.FC<SettingsMenuProps> = ({ settings, onUpdateSe
                         </div>
                         <div>
                             <h2 className="text-sm sm:text-base font-black text-white tracking-[0.2em] uppercase leading-tight">SETTINGS</h2>
-                            <p className="text-[8px] sm:text-[9px] text-stone-500 font-bold tracking-[0.4em] uppercase">Display & Audio</p>
+                            <p className="text-[8px] sm:text-[9px] text-stone-500 font-bold tracking-[0.3em] uppercase">Display, Audio &amp; Controls</p>
                         </div>
                     </div>
                     <button
@@ -248,6 +250,41 @@ export const SettingsMenu: React.FC<SettingsMenuProps> = ({ settings, onUpdateSe
                                     value={settings.fov || 85}
                                     onChange={(val) => handleChange('fov', val)}
                                 />
+                            </div>
+                        </div>
+
+                        {/* Screen Orientation Preference (Mobile / Compact Devices) */}
+                        <div className="p-2.5 sm:p-3 bg-stone-950/65 border border-stone-700/70 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                            <div className="min-w-0">
+                                <span className="text-stone-300 font-bold tracking-widest text-[9px] sm:text-[10px] uppercase block">Screen Orientation</span>
+                                <span className="text-[8px] sm:text-[9px] text-stone-500 font-bold tracking-wider block mt-0.5 leading-snug">
+                                    Choose Landscape (Auto) or Force Vertical mode with portrait-calibrated UI &amp; camera framing.
+                                </span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-1.5 shrink-0">
+                                <button
+                                    type="button"
+                                    onClick={() => handleChange('orientationMode', 'auto')}
+                                    className={`px-3 py-2 min-h-[40px] rounded-lg border text-[9px] font-black tracking-widest uppercase transition-all cursor-pointer touch-manipulation ${
+                                        settings.orientationMode !== 'vertical'
+                                            ? 'bg-emerald-950/50 border-emerald-500/80 text-emerald-300'
+                                            : 'bg-stone-900/60 border-stone-800 text-stone-400 hover:text-stone-200'
+                                    }`}
+                                >
+                                    Landscape
+                                </button>
+                                <button
+                                    type="button"
+                                    data-testid="toggle-force-vertical-setting"
+                                    onClick={() => handleChange('orientationMode', 'vertical')}
+                                    className={`px-3 py-2 min-h-[40px] rounded-lg border text-[9px] font-black tracking-widest uppercase transition-all cursor-pointer touch-manipulation ${
+                                        settings.orientationMode === 'vertical'
+                                            ? 'bg-amber-950/50 border-amber-500/80 text-amber-300 shadow-[0_0_12px_rgba(245,158,11,0.2)]'
+                                            : 'bg-stone-900/60 border-stone-800 text-stone-400 hover:text-stone-200'
+                                    }`}
+                                >
+                                    Force Vertical
+                                </button>
                             </div>
                         </div>
 
@@ -373,27 +410,57 @@ export const SettingsMenu: React.FC<SettingsMenuProps> = ({ settings, onUpdateSe
                             <div className="h-[1px] flex-1 bg-amber-900/30" />
                         </div>
 
-                        <div className="flex items-center justify-between gap-3 p-2.5 sm:p-3 bg-amber-950/15 border border-amber-800/35 rounded-xl">
-                            <div className="min-w-0">
-                                <span className="text-stone-200 font-bold tracking-widest text-[9px] sm:text-[10px] uppercase block">
-                                    Direct 3D Gun &amp; Table Aiming
-                                </span>
-                                <span className="text-[8px] sm:text-[9px] text-stone-400 font-bold tracking-wider block mt-0.5 leading-relaxed">
-                                    Removes Grab &amp; Shoot HUD buttons. Click the shotgun to pick it up, click the front opponent to shoot them, or click the bottom of the table to shoot yourself.
-                                </span>
+                        <div className="p-2.5 sm:p-3 bg-amber-950/15 border border-amber-800/35 rounded-xl space-y-2.5">
+                            <div className="flex items-center justify-between gap-3">
+                                <div className="min-w-0">
+                                    <span className="text-stone-200 font-bold tracking-widest text-[9px] sm:text-[10px] uppercase block">
+                                        Direct 3D Gun &amp; Table Aiming
+                                    </span>
+                                    <span className="text-[8px] sm:text-[9px] text-stone-400 font-bold tracking-wider block mt-0.5 leading-relaxed">
+                                        Hides Grab &amp; Shoot HUD buttons and in-game click hint banners for a clean 3D table view.
+                                    </span>
+                                </div>
+                                <button
+                                    type="button"
+                                    data-testid="toggle-experimental-direct-aim"
+                                    onClick={() => {
+                                        audioManager.playSound('click');
+                                        handleChange('experimentalDirectAim', !settings.experimentalDirectAim);
+                                    }}
+                                    className={`px-3.5 py-2 min-h-[44px] text-[9px] sm:text-[10px] font-black tracking-widest uppercase transition-all rounded-lg border active:scale-95 cursor-pointer flex items-center justify-center shrink-0 touch-manipulation ${
+                                        settings.experimentalDirectAim
+                                            ? 'bg-amber-600 hover:bg-amber-500 text-stone-950 border-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.35)]'
+                                            : 'bg-transparent hover:bg-stone-900 text-stone-400 border-stone-800'
+                                    }`}
+                                >
+                                    {settings.experimentalDirectAim ? 'Enabled' : 'Disabled'}
+                                </button>
                             </div>
-                            <button
-                                type="button"
-                                data-testid="toggle-experimental-direct-aim"
-                                onClick={() => handleChange('experimentalDirectAim', !settings.experimentalDirectAim)}
-                                className={`px-3.5 py-2 min-h-[44px] text-[9px] sm:text-[10px] font-black tracking-widest uppercase transition-all rounded-lg border active:scale-95 cursor-pointer flex items-center justify-center shrink-0 touch-manipulation ${
-                                    settings.experimentalDirectAim
-                                        ? 'bg-amber-600 hover:bg-amber-500 text-stone-950 border-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.35)]'
-                                        : 'bg-transparent hover:bg-stone-900 text-stone-400 border-stone-800'
-                                }`}
-                            >
-                                {settings.experimentalDirectAim ? 'Enabled' : 'Disabled'}
-                            </button>
+
+                            {/* Direct 3D Aiming Controls Guide (kept in Settings instead of on-screen HUD text) */}
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 sm:gap-2 pt-2 border-t border-amber-900/30">
+                                <div className="bg-black/45 border border-amber-900/35 rounded-lg px-2.5 py-2">
+                                    <span className="text-[8px] font-black uppercase tracking-widest text-amber-400 block">1. Grab Shotgun</span>
+                                    <span className="text-[8.5px] sm:text-[9px] text-stone-300 font-semibold leading-snug block mt-0.5">
+                                        Click or tap the 3D shotgun on the table to pick it up.
+                                    </span>
+                                </div>
+                                <div className="bg-black/45 border border-red-900/35 rounded-lg px-2.5 py-2">
+                                    <span className="text-[8px] font-black uppercase tracking-widest text-red-400 block">2. Shoot Opponent</span>
+                                    <span className="text-[8.5px] sm:text-[9px] text-stone-300 font-semibold leading-snug block mt-0.5">
+                                        Click or tap the opponent across (or side seats in 3P/4P).
+                                    </span>
+                                </div>
+                                <div className="bg-black/45 border border-cyan-900/35 rounded-lg px-2.5 py-2">
+                                    <span className="text-[8px] font-black uppercase tracking-widest text-cyan-400 block">3. Shoot Yourself</span>
+                                    <span className="text-[8.5px] sm:text-[9px] text-stone-300 font-semibold leading-snug block mt-0.5">
+                                        Click or tap the bottom / near edge of the table for self.
+                                    </span>
+                                </div>
+                            </div>
+                            <p className="text-[7.5px] sm:text-[8px] text-stone-500 font-mono uppercase tracking-wider leading-relaxed">
+                                Tip: On desktop, hovering aims the barrel before you click. Prompt text stays hidden during matches.
+                            </p>
                         </div>
                     </div>
 
@@ -440,7 +507,10 @@ export const SettingsMenu: React.FC<SettingsMenuProps> = ({ settings, onUpdateSe
                                     })()}
                                 </div>
                                 <button
-                                    onClick={() => handleChange('debugMode', !settings.debugMode)}
+                                    onClick={() => {
+                                        audioManager.playSound('click');
+                                        handleChange('debugMode', !settings.debugMode);
+                                    }}
                                     className={`px-3.5 py-2 min-h-[44px] text-[9px] sm:text-[10px] font-black tracking-widest uppercase transition-all rounded-lg border active:scale-95 cursor-pointer flex items-center justify-center ${settings.debugMode ? 'bg-red-600 hover:bg-red-500 text-white border-red-500' : 'bg-transparent hover:bg-stone-900 text-stone-400 border-stone-800'}`}
                                 >
                                     {settings.debugMode ? 'Enabled' : 'Disabled'}

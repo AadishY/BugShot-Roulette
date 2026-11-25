@@ -10,6 +10,11 @@ import {
     beginSplitCameraTransition,
     stepSplitCameraTransition,
 } from './three/splitCameraTransition';
+import {
+    computeResponsiveCameraFov,
+    computePortraitCameraZAdjust,
+    computePortraitGunChoosingX,
+} from './three/portraitCamera';
 
 // Pre-allocated scratch vectors & tuples — reused across frames to avoid GC pressure
 const _vKick = new THREE.Vector3();
@@ -126,6 +131,13 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
         targetCameraFOV *= 0.9;
     }
 
+    const camAspect = camera.aspect || 1;
+    targetCameraFOV = computeResponsiveCameraFov(
+        targetCameraFOV,
+        camAspect,
+        aimTarget === 'SELF' && isLocalHumanTurn
+    );
+
     if (Math.abs(camera.fov - targetCameraFOV) > 0.05) {
         camera.fov = THREE.MathUtils.lerp(camera.fov, targetCameraFOV, 1 - Math.exp(-4.5 * dt));
         camera.updateProjectionMatrix();
@@ -164,15 +176,15 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
             targets.targetPos.set(0, yOffset, 8.5 - flashZ);
             targets.targetRot.set(-0.08, 0, 0);
         } else if (aimTarget === 'CHOOSING') {
-            // Holding Gun, waiting for choice - optimized for mobile to avoid cutoff behind UI
-            const xPos = isMobile ? 0.0 : 0.5;
-            const yPos = isMobile ? -0.4 : -1.0;
-            const zPos = isMobile ? 4.8 : 5.5;
+            // Holding Gun, waiting for choice - optimized for mobile & portrait to avoid cutoff behind UI
+            const xPos = computePortraitGunChoosingX(camAspect, isMobile ? 0.0 : 0.5);
+            const yPos = camAspect < 1.0 ? -0.15 : (isMobile ? -0.4 : -1.0);
+            const zPos = camAspect < 1.0 ? 4.4 : (isMobile ? 4.8 : 5.5);
             targets.targetPos.set(xPos, yPos, zPos);
             targets.targetRot.set(0, Math.PI / 2.2, Math.PI / 2); // Sideways hold
         } else if (cameraView === 'GUN') {
-            const yPos = isMobile ? -0.4 : -0.75;
-            targets.targetPos.set(0, yPos, 4);
+            const yPos = camAspect < 1.0 ? -0.15 : (isMobile ? -0.4 : -0.75);
+            targets.targetPos.set(0, yPos, camAspect < 1.0 ? 3.8 : 4);
             targets.targetRot.set(0, Math.PI / 2, Math.PI / 2);
         } else if (cameraView === 'DEALER_GUN') {
             // Gun held by Dealer/Remote player in PLAYER turn (e.g. Adrenaline check?) or transition
@@ -254,14 +266,14 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
             targets.targetPos.set(0, yOffset, -8.5 + flashZ);
             targets.targetRot.set(0.08, Math.PI, 0);
         } else if (aimTarget === 'CHOOSING') {
-            const xPos = isMobile ? 0.0 : -0.5;
-            const yPos = isMobile ? -0.4 : -1.0;
-            const zPos = isMobile ? -4.8 : -5.5;
+            const xPos = computePortraitGunChoosingX(camAspect, isMobile ? 0.0 : -0.5);
+            const yPos = camAspect < 1.0 ? -0.15 : (isMobile ? -0.4 : -1.0);
+            const zPos = camAspect < 1.0 ? -4.4 : (isMobile ? -4.8 : -5.5);
             targets.targetPos.set(xPos, yPos, zPos);
             targets.targetRot.set(0, -Math.PI / 2.2, Math.PI / 2);
         } else if (cameraView === 'GUN') {
-            const yPos = isMobile ? -0.4 : -0.75;
-            targets.targetPos.set(0, yPos, -4);
+            const yPos = camAspect < 1.0 ? -0.15 : (isMobile ? -0.4 : -0.75);
+            targets.targetPos.set(0, yPos, camAspect < 1.0 ? -3.8 : -4);
             targets.targetRot.set(0, -Math.PI / 2, Math.PI / 2);
         } else {
             targets.targetPos.set(0, -0.8, -2);
@@ -554,6 +566,17 @@ export function updateScene(context: SceneContext, props: SceneProps, time: numb
         } else {
             targetCamPos.set(pSwayX * 0.5, 3.8 + pSwayY, 12); // Closer to table
         }
+    }
+
+    // Apply gentle portrait Z pullback so vertical viewports frame the whole table width cleanly
+    const portraitZAdjust = activeSelfCameraHit
+        ? 0
+        : computePortraitCameraZAdjust(camAspect, aimTarget, cameraView, phase);
+    if (portraitZAdjust > 0) {
+        if (cameraView === 'TABLE') {
+            targetCamPos.y += portraitZAdjust * 0.75;
+        }
+        targetCamPos.z += isSplitSeatB ? -portraitZAdjust : portraitZAdjust;
     }
 
     // Dynamic lookAt target

@@ -340,7 +340,7 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
             {/* Main Two-Column Staging Area */}
             <div className="flex-1 p-2 sm:p-4 flex flex-col md:flex-row gap-2.5 sm:gap-4 overflow-y-auto md:overflow-hidden min-h-0 custom-scrollbar">
                 {/* Left Column: All Bunker & Match Settings */}
-                <div className="flex-1 md:w-1/2 md:overflow-y-auto pr-0.5 custom-scrollbar min-w-0 lobby-settings-column bg-stone-900/25 border border-stone-850 rounded-xl p-2.5 sm:p-3.5">
+                <div className="w-full shrink-0 md:shrink md:flex-1 md:w-1/2 md:overflow-y-auto pr-0.5 custom-scrollbar min-w-0 lobby-settings-column bg-stone-900/25 border border-stone-850 rounded-xl p-2.5 sm:p-3.5">
                     <div className="flex items-center justify-between border-b border-stone-850 pb-2 mb-2.5">
                         <h2 className="text-[9.5px] sm:text-[10.5px] font-black text-stone-300 uppercase flex items-center gap-2 tracking-widest">
                             <Settings size={12} className="text-cyan-400" />
@@ -602,7 +602,7 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
                 </div>
 
                 {/* Right Column: Registered Squad Roster */}
-                <div className="flex-1 md:w-1/2 md:overflow-y-auto pr-0.5 custom-scrollbar min-w-0 lobby-players-column bg-stone-900/25 border border-stone-850 rounded-xl p-2.5 sm:p-3.5">
+                <div className="w-full shrink-0 md:shrink md:flex-1 md:w-1/2 md:overflow-y-auto pr-0.5 custom-scrollbar min-w-0 lobby-players-column bg-stone-900/25 border border-stone-850 rounded-xl p-2.5 sm:p-3.5">
                     <div className="flex items-center justify-between border-b border-stone-850 pb-2 mb-2.5">
                         <h2 className="text-[9.5px] sm:text-[10.5px] font-black text-stone-300 uppercase flex items-center gap-2 tracking-widest">
                             <Users size={12} className="text-cyan-400" />

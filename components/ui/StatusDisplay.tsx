@@ -11,12 +11,14 @@ interface StatusDisplayProps {
     gameState: GameState;
     settings?: GameSettings;
     isCompact?: boolean;
+    isPortrait?: boolean;
 }
 
-const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, player3, player4, playerName, gameState, settings, isCompact: isCompactProp }) => {
+const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, player3, player4, playerName, gameState, settings, isCompact: isCompactProp, isPortrait: isPortraitProp }) => {
     const isBalanced = !!settings?.balancedPerformance || !!settings?.ultraPerformance;
     const isPotato = !!settings?.ultraPerformance;
     const isCompact = isCompactProp ?? (typeof window !== 'undefined' && (window.innerWidth < 768 || window.innerHeight < 540));
+    const isPortrait = isPortraitProp ?? (typeof window !== 'undefined' && window.innerHeight > window.innerWidth);
 
     const getPlayer3Name = () => {
         if (!gameState.multiplayerState?.players) return 'OPPONENT 2';
@@ -132,11 +134,171 @@ const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, 
                     ? `${getPlayer4Name().toUpperCase()}'S TURN`
                     : `${(gameState.opponentName?.toUpperCase() || 'DEALER')}'S TURN`)));
 
+    const totalAmmo = gameState.liveCount + gameState.blankCount;
+
+    const renderLeftTelemetry = (compactBadge: boolean) => (
+        <div className={`flex flex-wrap items-center ${compactBadge ? 'gap-1 mt-1' : 'gap-1.5 mt-1.5'}`}>
+            {/* Total Ammo Pill (Compact, left side below health) */}
+            <div
+                className={`flex items-center gap-1 bg-black/65 border border-white/10 rounded-md ${
+                    compactBadge ? 'px-1.5 py-0.5 text-[8.5px]' : 'px-2 py-0.5 text-[10px] md:text-[11px]'
+                }`}
+                title={`Total Shells Loaded: ${totalAmmo}`}
+            >
+                <Icons.Shell size={compactBadge ? 10 : 12} className="text-stone-300 shrink-0" />
+                <span className="font-mono font-black text-stone-100 tabular-nums leading-none">
+                    {totalAmmo}
+                </span>
+            </div>
+
+            {/* Split Match Score & Progress Pill */}
+            {isSplitMode && splitScore && (
+                <div
+                    className={`flex items-center gap-1 bg-amber-950/60 border border-amber-500/40 rounded-md font-mono font-black tabular-nums leading-none whitespace-nowrap ${
+                        compactBadge ? 'px-1.5 py-0.5 text-[8px] text-amber-300' : 'px-2 py-0.5 text-[9.5px] md:text-[10.5px] text-amber-300'
+                    }`}
+                    title={`Split Match ${splitCurrentMatch} of ${splitTotalMatches}`}
+                >
+                    <span>M{splitCurrentMatch}/{splitTotalMatches}</span>
+                    <span className="text-amber-500/60">•</span>
+                    <span className="text-white">{splitScore.playerWins}-{splitScore.opponentWins}</span>
+                </div>
+            )}
+
+            {/* Hard Mode Phase */}
+            {gameState.isHardMode && gameState.hardModeState && (
+                <div className={`flex items-center gap-1 bg-red-950/50 border border-red-800/50 rounded-md font-mono font-black tabular-nums leading-none ${
+                    compactBadge ? 'px-1.5 py-0.5 text-[8px] text-red-400' : 'px-2 py-0.5 text-[9.5px] md:text-[10.5px] text-red-400'
+                }`}>
+                    <span>PH</span>
+                    <span className="text-red-300">{gameState.hardModeState.round}/3</span>
+                </div>
+            )}
+
+            {/* Normal Mode Round */}
+            {!gameState.isMultiplayer && !isSplitMode && !gameState.isHardMode && gameState.normalModeState && (
+                <div className={`flex items-center gap-1 bg-stone-900/75 border border-white/10 rounded-md font-mono font-black tabular-nums leading-none ${
+                    compactBadge ? 'px-1.5 py-0.5 text-[8px] text-stone-300' : 'px-2 py-0.5 text-[9.5px] md:text-[10.5px] text-stone-300'
+                }`}>
+                    <span>RD</span>
+                    <span className="text-stone-100">{gameState.normalModeState.round}/2</span>
+                </div>
+            )}
+
+            {/* Jackpot Immunity Shots */}
+            {player.jackpotImmunityShots !== undefined && player.jackpotImmunityShots > 0 && (
+                <div className={`flex items-center gap-1 bg-yellow-950/65 border border-yellow-500/40 rounded-md font-mono font-black text-yellow-400 tabular-nums leading-none ${
+                    compactBadge ? 'px-1.5 py-0.5 text-[8px]' : 'px-2 py-0.5 text-[9.5px] md:text-[10.5px]'
+                }`}>
+                    <span>★{player.jackpotImmunityShots}</span>
+                </div>
+            )}
+        </div>
+    );
+
+    if (isCompact && isPortrait) {
+        return (
+            <div className="flex flex-col gap-1 w-full pointer-events-none px-0.5 py-0.5 min-w-0 flex-1">
+                {/* Row 1: Left Player (HP + Split/Ammo telemetry below) & Right Dealer Cards */}
+                <div className="flex justify-between items-start gap-1.5 w-full min-w-0">
+                    <div className={`flex flex-col items-start min-w-0 flex-1 max-w-[49%] bg-black/55 border rounded-lg px-2 py-1 transition-all ${
+                        isSplitMode && isP1Turn
+                            ? 'border-emerald-400/80 ring-1 ring-emerald-500/40'
+                            : isSplitMode
+                                ? 'border-white/10 opacity-80'
+                                : 'border-white/10'
+                    }`}>
+                        <div className="flex items-center gap-1 min-w-0 w-full">
+                            <span className="text-[9.5px] font-black tracking-wider text-stone-200 uppercase truncate">
+                                {p1DisplayName}
+                            </span>
+                            {isSplitMode && isP1Turn && (
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                            )}
+                            {player.isFlashbanged && <span className="text-red-500 text-[9px] font-black shrink-0" title="Blinded">⚡</span>}
+                        </div>
+                        <div className="flex items-center gap-1 mt-0.5">
+                            <div className="flex items-center gap-0.5">
+                                {[...Array(player.maxHp)].map((_, i) => {
+                                    const isActive = i < player.hp;
+                                    const isLowHp = player.hp <= 1;
+                                    const hpClass = isActive
+                                        ? (isPotato
+                                            ? 'bg-green-600 border-green-700'
+                                            : `bg-gradient-to-t from-green-900 via-green-500/70 to-green-400/50 border-green-400/70 ${isLowHp && !isBalanced ? 'animate-pulse' : ''}`)
+                                        : 'bg-stone-950 border-stone-800/50 opacity-20';
+                                    return <div key={i} className={`w-2.5 h-3 border rounded-[2px] ${hpClass}`} />;
+                                })}
+                            </div>
+                            <span className="text-[9px] font-mono font-bold text-green-400 tabular-nums leading-none">
+                                {player.hp}/{player.maxHp}
+                            </span>
+                        </div>
+                        {renderLeftTelemetry(true)}
+                        {isSplitMode && isP2Turn && renderItems(player.items)}
+                    </div>
+
+                    <div className="flex flex-col items-end min-w-0 flex-1 max-w-[49%]">
+                        <div className={`flex flex-col items-end w-full bg-black/55 border rounded-lg px-2 py-1 transition-all ${
+                            isSplitMode && isP2Turn
+                                ? 'border-amber-400/80 ring-1 ring-amber-500/40'
+                                : isSplitMode
+                                    ? 'border-white/10 opacity-80'
+                                    : 'border-white/10'
+                        }`}>
+                            <div className="flex items-center gap-1 max-w-full justify-end">
+                                {isSplitMode && isP2Turn && (
+                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse shrink-0" />
+                                )}
+                                {dealer.isFlashbanged && <span className="text-red-500 text-[9px] font-black shrink-0" title="Blinded">⚡</span>}
+                                <span className="text-[9.5px] font-black tracking-wider text-stone-200 uppercase truncate">
+                                    {p2DisplayName}
+                                </span>
+                            </div>
+                            <div className="flex items-center gap-1 mt-0.5">
+                                <span className="text-[9px] font-mono font-bold text-red-400 tabular-nums leading-none">
+                                    {dealer.hp}/{dealer.maxHp}
+                                </span>
+                                {renderEnemyHpBars(dealer, 'w-2.5 h-3')}
+                            </div>
+                            {renderItems(dealer.items)}
+                        </div>
+                    </div>
+                </div>
+
+                {/* Row 2: Centered Slim Turn Badge + Extra 3P/4P Chips */}
+                <div className="flex flex-wrap items-center justify-center gap-1 w-full">
+                    <div className={`px-2.5 py-0.5 rounded-full border text-[9px] font-black tracking-wider uppercase italic whitespace-nowrap max-w-[75vw] truncate ${
+                        isP1Turn
+                            ? 'bg-green-950/70 border-green-500/50 text-green-400'
+                            : isSplitMode
+                                ? 'bg-amber-950/70 border-amber-500/50 text-amber-300'
+                                : 'bg-red-950/70 border-red-500/40 text-red-400'
+                    }`}>
+                        {turnLabel}
+                    </div>
+                    {(gameState.isThreePlayer || gameState.isFourPlayer) && player3 && (
+                        <div className="flex items-center gap-1 bg-black/60 border border-amber-500/25 rounded-full px-1.5 py-0.5 text-[8px]">
+                            <span className="font-black text-amber-300 uppercase truncate max-w-[54px]">{getPlayer3Name()}</span>
+                            <span className="font-mono font-bold text-red-400 tabular-nums">{player3.hp}/{player3.maxHp}</span>
+                        </div>
+                    )}
+                    {gameState.isFourPlayer && player4 && (
+                        <div className="flex items-center gap-1 bg-black/60 border border-purple-500/25 rounded-full px-1.5 py-0.5 text-[8px]">
+                            <span className="font-black text-purple-300 uppercase truncate max-w-[54px]">{getPlayer4Name()}</span>
+                            <span className="font-mono font-bold text-red-400 tabular-nums">{player4.hp}/{player4.maxHp}</span>
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+    }
+
     if (isCompact) {
         return (
             <div className="flex justify-between items-start gap-1.5 w-full pointer-events-none px-0.5 py-0.5 min-w-0">
-                {/* Player Side (Ultra-Compact) */}
-                <div className={`flex flex-col items-start min-w-0 max-w-[34%] bg-black/50 border rounded-lg px-2 py-1 transition-all ${
+                {/* Player Side (Compact Landscape - Split Match & Ammo tucked neatly below health) */}
+                <div className={`flex flex-col items-start min-w-0 max-w-[36%] bg-black/50 border rounded-lg px-2 py-1 transition-all ${
                     isSplitMode && isP1Turn
                         ? 'border-emerald-400/80 ring-1 ring-emerald-500/40'
                         : isSplitMode
@@ -151,16 +313,6 @@ const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, 
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
                         )}
                         {player.isFlashbanged && <span className="text-red-500 text-[9px] font-black shrink-0" title="Blinded">⚡</span>}
-                        {gameState.isHardMode && gameState.hardModeState && (
-                            <span className="text-[8px] font-black text-red-400 bg-red-950/60 border border-red-800/50 px-1 rounded leading-tight shrink-0">
-                                P{gameState.hardModeState.round}/3
-                            </span>
-                        )}
-                        {!gameState.isMultiplayer && !isSplitMode && !gameState.isHardMode && gameState.normalModeState && (
-                            <span className="text-[8px] font-black text-stone-300 bg-stone-800/80 border border-white/10 px-1 rounded leading-tight shrink-0">
-                                R{gameState.normalModeState.round}/2
-                            </span>
-                        )}
                     </div>
                     <div className="flex items-center gap-1 mt-0.5">
                         <div className="flex items-center gap-0.5">
@@ -178,18 +330,14 @@ const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, 
                         <span className="text-[9px] font-mono font-bold text-green-400 tabular-nums leading-none">
                             {player.hp}/{player.maxHp}
                         </span>
-                        {player.jackpotImmunityShots !== undefined && player.jackpotImmunityShots > 0 && (
-                            <span className="text-[8px] font-black text-yellow-400 bg-yellow-950/70 border border-yellow-500/40 px-1 rounded leading-tight">
-                                ★{player.jackpotImmunityShots}
-                            </span>
-                        )}
                     </div>
+                    {renderLeftTelemetry(true)}
                     {isSplitMode && isP2Turn && renderItems(player.items)}
                 </div>
 
-                {/* Center Turn & Shell Pill */}
+                {/* Center Turn Pill */}
                 <div className="flex flex-wrap items-center justify-center gap-1 pt-0.5 min-w-0 shrink">
-                    <div className={`px-2 py-0.5 rounded-full border text-[9px] sm:text-[10px] font-black tracking-wider uppercase italic whitespace-nowrap max-w-[140px] truncate ${
+                    <div className={`px-2.5 py-0.5 rounded-full border text-[9px] sm:text-[10px] font-black tracking-wider uppercase italic whitespace-nowrap max-w-[160px] truncate ${
                         isP1Turn
                             ? 'bg-green-950/60 border-green-500/50 text-green-400'
                             : isSplitMode
@@ -197,17 +345,6 @@ const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, 
                                 : 'bg-red-950/60 border-red-500/40 text-red-400'
                     }`}>
                         {turnLabel}
-                    </div>
-                    {isSplitMode && splitScore && splitTotalMatches > 1 && (
-                        <div className="px-1.5 py-0.5 rounded-full bg-black/60 border border-amber-500/30 text-[8px] font-mono font-black text-amber-300 tabular-nums whitespace-nowrap">
-                            M{splitCurrentMatch}/{splitTotalMatches} • {splitScore.playerWins}-{splitScore.opponentWins}
-                        </div>
-                    )}
-                    <div className="flex items-center gap-1 bg-black/55 px-2 py-0.5 rounded-full border border-white/10">
-                        <Icons.Shell size={11} className="text-stone-300 shrink-0" />
-                        <span className="text-stone-100 font-black text-[9px] sm:text-[10px] tabular-nums leading-none">
-                            {gameState.liveCount + gameState.blankCount}
-                        </span>
                     </div>
                 </div>
 
@@ -266,8 +403,8 @@ const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, 
         <div className="flex justify-between items-start w-full pointer-events-none px-1 md:px-2 py-2 md:py-4">
             {/* Player Side */}
             <div className={`flex flex-col items-start min-w-[80px] md:w-1/3 animate-in slide-in-from-left duration-700 transition-opacity ${isSplitMode && !isP1Turn ? 'opacity-70' : 'opacity-100'}`}>
-                <div className={`flex flex-col mb-4 ${isSplitMode && isP1Turn ? 'bg-emerald-950/30 border border-emerald-500/50 rounded-xl px-3 py-2 shadow-[0_0_24px_rgba(16,185,129,0.2)]' : ''}`}>
-                    <span className="text-[10px] md:text-sm font-black tracking-[0.2em] md:tracking-[0.4em] text-stone-200 mb-1 uppercase truncate max-w-[180px] md:max-w-full flex items-center gap-2">
+                <div className={`flex flex-col mb-1.5 ${isSplitMode && isP1Turn ? 'bg-emerald-950/30 border border-emerald-500/50 rounded-xl px-2.5 py-1.5 shadow-[0_0_24px_rgba(16,185,129,0.2)]' : ''}`}>
+                    <span className="text-[10px] md:text-sm font-black tracking-[0.2em] md:tracking-[0.35em] text-stone-200 mb-1 uppercase truncate max-w-[180px] md:max-w-full flex items-center gap-2">
                         {p1DisplayName}
                         {isSplitMode && isP1Turn && (
                             <span className="text-[8px] md:text-[10px] font-mono font-black tracking-widest px-1.5 py-0.5 rounded bg-emerald-500/20 border border-emerald-400/50 text-emerald-300">
@@ -276,7 +413,7 @@ const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, 
                         )}
                         {player.isFlashbanged && <span className="text-red-500 animate-pulse text-[8px] md:text-xs font-black">⚡ BLINDED</span>}
                     </span>
-                    <div className="flex items-center gap-1.5 md:gap-3">
+                    <div className="flex items-center gap-1.5 md:gap-2.5">
                         {[...Array(player.maxHp)].map((_, i) => {
                             const isActive = i < player.hp;
                             const isLowHp = player.hp <= 1;
@@ -297,7 +434,7 @@ const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, 
                             }
 
                             return (
-                                <div key={i} className={`relative group w-2 h-6 md:w-6 md:h-20 border rounded-sm transition-all duration-1000 ${hpClass}`}>
+                                <div key={i} className={`relative group w-2 h-6 md:w-5 md:h-12 border rounded-sm transition-all duration-1000 ${hpClass}`}>
                                     {isActive && !isPotato && (
                                         <>
                                             <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_0%,rgba(255,255,255,0.05)_50%,transparent_100%)] animate-[scanline_3s_linear_infinite]" />
@@ -308,40 +445,19 @@ const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, 
                             );
                         })}
                     </div>
-                    {player.jackpotImmunityShots !== undefined && player.jackpotImmunityShots > 0 && (
-                        <div className="mt-2.5 flex items-center gap-1.5 bg-yellow-950/50 border border-yellow-500/30 px-2.5 py-1 rounded-lg text-[9px] md:text-[11px] font-black text-yellow-400 tracking-wider uppercase animate-pulse shadow-[0_0_15px_rgba(234,179,8,0.25)]">
-                            <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 animate-ping" />
-                            <span>JACKPOT: {player.jackpotImmunityShots}</span>
-                        </div>
-                    )}
                 </div>
 
-                {gameState.isHardMode && gameState.hardModeState && (
-                    <div className="flex items-center gap-1 md:gap-2 bg-red-950/20 px-2 md:px-3 py-1 rounded-full border border-red-900/30">
-                        <span className="text-[8px] md:text-xs font-black text-red-400 tracking-[0.2em] uppercase">PH</span>
-                        <span className="text-xs md:text-lg text-red-500 font-black tracking-widest leading-none">
-                            {gameState.hardModeState.round}<span className="text-[10px] text-red-800 mx-1">/</span>3
-                        </span>
-                    </div>
-                )}
+                {/* Compact Left Telemetry: Total Ammo + Split Match + Round / Immunity below Player Health */}
+                {renderLeftTelemetry(false)}
 
                 {isSplitMode && isP2Turn && (
-                    <div className="mt-1">
+                    <div className="mt-1.5">
                         {renderItems(player.items)}
-                    </div>
-                )}
-
-                {!gameState.isMultiplayer && !isSplitMode && !gameState.isHardMode && gameState.normalModeState && (
-                    <div className="flex items-center gap-1 md:gap-2 bg-stone-900/40 px-2 md:px-3 py-1 rounded-full border border-stone-800/40">
-                        <span className="text-[8px] md:text-xs font-black text-stone-400 tracking-[0.2em] uppercase">RD</span>
-                        <span className="text-xs md:text-lg text-stone-200 font-black tracking-widest leading-none">
-                            {gameState.normalModeState.round}<span className="text-[10px] text-stone-600 mx-1">/</span>2
-                        </span>
                     </div>
                 )}
             </div>
 
-            {/* Center Protocol Display */}
+            {/* Center Protocol Display (Clean Turn Pill only - keeps opponent face & nametag clear) */}
             <div className="flex-1 flex flex-col items-center justify-start pt-1 md:pt-2 animate-in fade-in duration-1000">
                 <div className={`relative px-2 md:px-6 py-1 md:py-2 rounded-xl overflow-hidden transition-all duration-500 border ${isP1Turn
                     ? 'bg-green-950/20 border-green-500/40'
@@ -354,7 +470,7 @@ const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, 
                             }`} />
                     )}
 
-                    <div className={`text-xs md:text-3xl font-black tracking-[0.1em] md:tracking-[0.3em] transition-all duration-500 whitespace-nowrap uppercase italic ${isP1Turn
+                    <div className={`text-xs md:text-2xl lg:text-3xl font-black tracking-[0.1em] md:tracking-[0.28em] transition-all duration-500 whitespace-nowrap uppercase italic ${isP1Turn
                         ? `text-green-400 ${isBalanced ? '' : 'drop-shadow-[0_0_15px_rgba(34,197,94,0.5)]'}`
                         : isSplitMode
                             ? `text-amber-300 ${isBalanced ? '' : 'drop-shadow-[0_0_15px_rgba(245,158,11,0.55)]'}`
@@ -362,30 +478,6 @@ const StatusDisplayComponent: React.FC<StatusDisplayProps> = ({ player, dealer, 
                         } ${gameState.isHardMode && gameState.turnOwner === 'DEALER' && !isPotato ? 'animate-[chromatic_0.2s_infinite]' : ''}`}>
                         {turnLabel}
                     </div>
-                </div>
-
-                {isSplitMode && splitScore && (
-                    <div className="mt-2 flex items-center gap-2 bg-stone-950/80 border border-amber-500/35 px-3 py-1 rounded-lg">
-                        <span className="text-[9px] md:text-[11px] font-mono font-black tracking-[0.18em] text-amber-400 uppercase">
-                            SPLIT • MATCH {splitCurrentMatch}/{splitTotalMatches}
-                        </span>
-                        <span className="text-stone-600">|</span>
-                        <span className="text-[10px] md:text-xs font-mono font-black text-white tabular-nums">
-                            {splitScore.playerWins} - {splitScore.opponentWins}
-                        </span>
-                    </div>
-                )}
-
-                <div className="flex items-center gap-2 md:gap-4 mt-2 md:mt-3">
-                    <div className="h-[1px] w-4 md:w-16 bg-gradient-to-r from-transparent via-stone-800 to-stone-800" />
-                    <div className="flex items-center gap-1 md:gap-2 bg-stone-900/40 px-2 md:px-4 py-1 rounded-lg border border-white/5">
-                        <Icons.Shell size={12} className="text-stone-400 md:hidden" />
-                        <Icons.Shell size={16} className="text-stone-400 hidden md:block" />
-                        <span className="text-stone-100 font-black text-[10px] md:text-xl tracking-[0.2em] tabular-nums leading-none">
-                            {gameState.liveCount + gameState.blankCount}
-                        </span>
-                    </div>
-                    <div className="h-[1px] w-4 md:w-16 bg-gradient-to-l from-transparent via-stone-800 to-stone-800" />
                 </div>
             </div>
 

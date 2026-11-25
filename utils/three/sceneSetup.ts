@@ -3,6 +3,7 @@ import { SceneContext, GraphicsPresetTier } from '../../types';
 import { getDeviceType } from '../gameUtils';
 import { getGraphicsPreset } from '../../constants';
 import { detectSoftwareWebGL, getGraphicsPresetConfig, GraphicsPresetProfile } from './graphicsConfig';
+import { computeResponsiveCameraFov, computePortraitCameraZAdjust } from './portraitCamera';
 import { setupLighting, createTable, createGunModel, createDealerModel, createPlayerAvatar, createProjectiles, createEnvironment, createDust, createBunkerEnvTexture, createBeerCan, createCigarette, createSaw, createHandcuffs, createMagnifyingGlass, createPhone, createInverter, createAdrenaline, createRemote, createBigInverter, createContract, createLuckycharm, createFlashbang, createCrusher, createTotem, createMirror, createTarotCard, createJackpotMachine, optimizeItemForPreset } from '../threeHelpers';
 
 export const getPresetPixelScale = (settings: any, width: number): number => {
@@ -169,7 +170,10 @@ export const initThreeScene = (container: HTMLElement, props: any): SceneContext
     scene.background = new THREE.Color(0x151210);
 
     const defaultFov = 85;
-    const camera = new THREE.PerspectiveCamera(props.settings.fov || defaultFov, width / height, 0.1, 100);
+    const initAspect = width / height;
+    const baseInitFov = props.settings.fov || defaultFov;
+    const effectiveInitFov = computeResponsiveCameraFov(baseInitFov, initAspect, props.aimTarget === 'SELF');
+    const camera = new THREE.PerspectiveCamera(effectiveInitFov, initAspect, 0.1, 100);
     
     // Position camera instantly at its starting view location to avoid gliding from afar in the grey fog at startup
     const isSplitMode = Boolean(props.gameState?.isLocalSplit);
@@ -203,6 +207,13 @@ export const initThreeScene = (container: HTMLElement, props: any): SceneContext
         } else {
             initialCamPos.set(pSwayX * 0.5, 3.8 + pSwayY, 12);
         }
+    }
+    const initPortraitPull = computePortraitCameraZAdjust(initAspect, props.aimTarget || 'IDLE', props.cameraView || 'PLAYER', props.gameState?.phase || 'LOAD');
+    if (initPortraitPull > 0) {
+        if (props.cameraView === 'TABLE') {
+            initialCamPos.y += initPortraitPull * 0.75;
+        }
+        initialCamPos.z += isSplitSeatB ? -initPortraitPull : initPortraitPull;
     }
     camera.position.copy(initialCamPos);
 

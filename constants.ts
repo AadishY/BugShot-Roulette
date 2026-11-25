@@ -59,7 +59,8 @@ export const getInitialSettings = (): GameSettings => {
       graphicsMode: 'low',
       ultraPerformance: false,
       balancedPerformance: true,
-      experimentalDirectAim: false
+      experimentalDirectAim: false,
+      orientationMode: 'auto'
     };
   } else {
     // PC / Desktop
@@ -76,7 +77,8 @@ export const getInitialSettings = (): GameSettings => {
       graphicsMode: 'balanced',
       ultraPerformance: false,
       balancedPerformance: true,
-      experimentalDirectAim: false
+      experimentalDirectAim: false,
+      orientationMode: 'auto'
     };
   }
 };

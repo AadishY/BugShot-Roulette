@@ -250,6 +250,7 @@ export interface GameSettings {
   ultraPerformance?: boolean;
   balancedPerformance?: boolean;
   experimentalDirectAim?: boolean;
+  orientationMode?: 'auto' | 'vertical';
 }
 
 export interface SceneContext {

@@ -683,7 +683,7 @@
     }
 
     @media (orientation: portrait) and (max-width: 1023px) {
-      #rotate-warning.portrait-guard {
+      html:not(.force-vertical) #rotate-warning.portrait-guard {
         display: flex !important;
         opacity: 1 !important;
         pointer-events: auto !important;
