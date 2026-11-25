@@ -61,6 +61,8 @@ interface GameUIProps {
     mpMyPlayerId?: string | null;
     stickers?: string[];
     hideIntro?: boolean;
+    experimentalHoverLabel?: string | null;
+    isMenuLaunching?: boolean;
 }
 
 const RenderColoredText = ({ text }: { text: string }) => {
@@ -122,7 +124,9 @@ export const GameUI: React.FC<GameUIProps> = ({
     stickers = [],
     player3,
     player4,
-    hideIntro = false
+    hideIntro = false,
+    experimentalHoverLabel = null,
+    isMenuLaunching = false
 }) => {
     const isLowGraphics = isLowPerf(settings) || isUltraPerf(settings);
     const [inputName, setInputName] = useState(playerName || '');
@@ -411,7 +415,7 @@ export const GameUI: React.FC<GameUIProps> = ({
             )}
             {drinkActive && (
                 <>
-                    <div className={`absolute inset-0 z-30 pointer-events-none ${isLowGraphics ? 'bg-stone-900/95' : 'bg-amber-600/15 backdrop-blur-[2px]'} animate-pulse`} />
+                    <div className={`absolute inset-0 z-30 pointer-events-none ${isLowGraphics ? 'bg-amber-900/20' : 'bg-amber-600/15 backdrop-blur-[2px]'} animate-pulse`} />
                     <div className="absolute top-[35%] left-1/2 -translate-x-1/2 z-40 pointer-events-none hud-hardware-accel animate-in fade-in zoom-in duration-300">
                         <div className="flex items-center gap-2 bg-amber-955/90 border border-amber-500/50 px-4 py-1.5 rounded-full shadow-[0_0_20px_rgba(245,158,11,0.3)]">
                             <Icons.Beer size={16} className="text-amber-400" />
@@ -440,6 +444,7 @@ export const GameUI: React.FC<GameUIProps> = ({
                     onOpenScoreboard={onOpenScoreboard}
                     onStartMultiplayer={onStartMultiplayer ?? (() => {})}
                     onStartLocalSplit={onStartLocalSplit}
+                    isLaunching={isMenuLaunching}
                 />
             )}
 
@@ -745,6 +750,7 @@ export const GameUI: React.FC<GameUIProps> = ({
                                         activeTurnOwner={gameState.turnOwner}
                                         activePlayerName={activePlayerName}
                                         targetOpponentName={targetOpponentName}
+                                        experimentalHoverLabel={experimentalHoverLabel}
                                     />
                                 </div>
                             )}

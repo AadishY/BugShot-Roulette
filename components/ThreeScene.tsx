@@ -4,6 +4,14 @@ import { CameraView, TurnOwner, AimTarget, AnimationState, GameSettings, SceneCo
 
 import { updateScene } from '../utils/sceneLogic';
 import { initThreeScene, cleanScene, getPresetPixelScale, getPresetMaxPixelRatio } from '../utils/three/sceneSetup';
+import {
+    ExperimentalHitTag,
+    ExperimentalTargetOwner,
+    getExperimentalAimTarget,
+    getExperimentalHoverLabel,
+    isExperimentalTurnActive,
+    resolveExperimentalActionFromHit
+} from '../utils/three/experimentalAim';
 
 interface ThreeSceneProps {
     isSawed: boolean;
@@ -27,6 +35,11 @@ interface ThreeSceneProps {
     isPaused?: boolean;
     onUpdateNameTags?: (tags: { name: string, x: number, y: number, visible: boolean }[]) => void;
     dealerModel?: PlayerModelKey;
+    isProcessing?: boolean;
+    isRecovering?: boolean;
+    onExperimentalShoot?: (target: ExperimentalTargetOwner) => void;
+    onExperimentalHover?: (label: string | null) => void;
+    onHoverTarget?: (target: AimTarget, targetId?: string) => void;
 }
 
 interface NameTagItem {
@@ -143,6 +156,10 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
     isPaused = false,
     onUpdateNameTags,
     dealerModel,
+    isProcessing = false,
+    isRecovering = false,
+    onExperimentalShoot,
+    onExperimentalHover,
 }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     // Pre-allocated reusable vectors — avoids GC allocations inside gun-fire effects
@@ -172,6 +189,11 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
         isPaused,
         onUpdateNameTags,
         dealerModel,
+        isProcessing,
+        isRecovering,
+        onExperimentalShoot,
+        onExperimentalHover,
+        onHoverTarget,
     });
 
     useEffect(() => {
@@ -197,8 +219,13 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
             isPaused,
             onUpdateNameTags,
             dealerModel,
+            isProcessing,
+            isRecovering,
+            onExperimentalShoot,
+            onExperimentalHover,
+            onHoverTarget,
         };
-    }, [isSawed, isChokeActive, isPlayerCuffed, aimTarget, cameraView, animState, turnOwner, settings, knownShell, isHardMode, player, dealer, player3, player4, gameState, onCardClick, onGunClick, onLowPerformance, isPaused, onUpdateNameTags, dealerModel]);
+    }, [isSawed, isChokeActive, isPlayerCuffed, aimTarget, cameraView, animState, turnOwner, settings, knownShell, isHardMode, player, dealer, player3, player4, gameState, onCardClick, onGunClick, onLowPerformance, isPaused, onUpdateNameTags, dealerModel, isProcessing, isRecovering, onExperimentalShoot, onExperimentalHover, onHoverTarget]);
 
     const sceneRef = useRef<SceneContext | null>(null);
     const tagProjectionVec = useRef(new THREE.Vector3());
@@ -633,10 +660,148 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
 
         // INPUT HANDLING - Prevent Double Firing
         let isTouchInteraction = false;
+        let lastExpHoverLabel: string | null = null;
+        let lastExpAimTarget: AimTarget | null = null;
+
+        const isObjectChainVisible = (obj: THREE.Object3D | null): boolean => {
+            let curr: THREE.Object3D | null = obj;
+            while (curr) {
+                if (!curr.visible) return false;
+                curr = curr.parent;
+            }
+            return true;
+        };
+
+        const resolveExperimentalTagOnObject = (obj: THREE.Object3D | null): ExperimentalHitTag => {
+            let curr: THREE.Object3D | null = obj;
+            while (curr) {
+                const tag = curr.userData?.experimentalTarget as ExperimentalHitTag | undefined;
+                if (tag) return tag;
+                if (curr.userData?.type === 'GUN') return 'GUN';
+                curr = curr.parent;
+            }
+            return null;
+        };
+
+        const evaluateExperimentalTargetUnderPointer = () => {
+            if (!sceneRef.current) return null;
+            const currentProps = propsRef.current;
+            const currentGameState = currentProps.gameState;
+            if (!currentProps.settings?.experimentalDirectAim) return null;
+
+            const activeTurn = isExperimentalTurnActive({
+                phase: currentGameState.phase,
+                turnOwner: currentProps.turnOwner,
+                isLocalSplit: currentGameState.isLocalSplit,
+                isMultiplayer: currentGameState.isMultiplayer,
+                isMyTurn: currentProps.turnOwner === 'PLAYER',
+                isProcessing: currentProps.isProcessing,
+                isRecovering: currentProps.isRecovering
+            });
+            if (!activeTurn) return null;
+
+            const { raycaster, mouse, camera, gunGroup, scene } = sceneRef.current;
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = _rayIntersectsScratch.current;
+            const isGunHeld = currentProps.cameraView === 'GUN';
+
+            if (!isGunHeld) {
+                intersects.length = 0;
+                raycaster.intersectObjects(gunGroup.children, true, intersects);
+                for (let i = 0; i < intersects.length; i++) {
+                    if (isObjectChainVisible(intersects[i].object) && intersects[i].object.userData?.type === 'GUN') {
+                        return resolveExperimentalActionFromHit({
+                            isGunHeld: false,
+                            isLocalSplit: currentGameState.isLocalSplit,
+                            turnOwner: currentProps.turnOwner,
+                            hitTag: 'GUN'
+                        });
+                    }
+                }
+                return null;
+            }
+
+            const registry = scene.userData.experimentalTargetRegistry as {
+                opponents?: THREE.Object3D[];
+                tables?: THREE.Object3D[];
+            } | undefined;
+
+            if (registry?.opponents && registry.opponents.length > 0) {
+                intersects.length = 0;
+                raycaster.intersectObjects(registry.opponents, true, intersects);
+                for (let i = 0; i < intersects.length; i++) {
+                    const hitObj = intersects[i].object;
+                    if (!isObjectChainVisible(hitObj)) continue;
+                    const tag = resolveExperimentalTagOnObject(hitObj);
+                    if (tag) {
+                        const action = resolveExperimentalActionFromHit({
+                            isGunHeld: true,
+                            isLocalSplit: currentGameState.isLocalSplit,
+                            turnOwner: currentProps.turnOwner,
+                            hitTag: tag
+                        });
+                        if (action) return action;
+                    }
+                }
+            }
+
+            if (registry?.tables && registry.tables.length > 0) {
+                intersects.length = 0;
+                raycaster.intersectObjects(registry.tables, true, intersects);
+                for (let i = 0; i < intersects.length; i++) {
+                    const hitObj = intersects[i].object;
+                    if (!isObjectChainVisible(hitObj)) continue;
+                    const tag = resolveExperimentalTagOnObject(hitObj);
+                    if (tag) {
+                        const action = resolveExperimentalActionFromHit({
+                            isGunHeld: true,
+                            isLocalSplit: currentGameState.isLocalSplit,
+                            turnOwner: currentProps.turnOwner,
+                            hitTag: tag,
+                            ndcY: mouse.y,
+                            tableHitLocalZ: intersects[i].point.z
+                        });
+                        if (action) return action;
+                    }
+                }
+            }
+
+            // Generous bottom-of-viewport near-table fallback for aiming at self
+            if (mouse.y <= -0.32) {
+                return resolveExperimentalActionFromHit({
+                    isGunHeld: true,
+                    isLocalSplit: currentGameState.isLocalSplit,
+                    turnOwner: currentProps.turnOwner,
+                    hitTag: 'TABLE_SURFACE',
+                    ndcY: mouse.y
+                });
+            }
+
+            return null;
+        };
+
+        const emitExperimentalHover = (label: string | null, nextAim?: AimTarget | null) => {
+            if (containerRef.current) {
+                containerRef.current.style.cursor = label ? 'pointer' : '';
+            }
+            if (label !== lastExpHoverLabel) {
+                lastExpHoverLabel = label;
+                propsRef.current.onExperimentalHover?.(label);
+            }
+            if (nextAim !== undefined) {
+                if (nextAim !== lastExpAimTarget) {
+                    lastExpAimTarget = nextAim;
+                    if (nextAim !== null) {
+                        propsRef.current.onHoverTarget?.(nextAim);
+                    }
+                }
+            }
+        };
 
         const updateHoverIndex = () => {
             if (!sceneRef.current) return;
-            const currentGameState = propsRef.current.gameState;
+            const currentProps = propsRef.current;
+            const currentGameState = currentProps.gameState;
             const canPickCard = currentGameState.turnOwner === 'PLAYER' || (Boolean(currentGameState.isLocalSplit) && currentGameState.turnOwner === 'DEALER');
             if (currentGameState.phase === 'CARD_SELECT' && canPickCard && currentGameState.selectedCardIndex == null) {
                 if (sceneRef.current.itemDeckCards) {
@@ -656,9 +821,34 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
                     }
                     sceneRef.current.scene.userData.hoveredCardIndex = hoveredIdx;
                 }
+                emitExperimentalHover(null, null);
             } else {
                 if (sceneRef.current.scene?.userData) {
                     sceneRef.current.scene.userData.hoveredCardIndex = null;
+                }
+                if (currentProps.settings?.experimentalDirectAim) {
+                    const action = evaluateExperimentalTargetUnderPointer();
+                    const oppLabel = currentGameState.isLocalSplit
+                        ? (currentProps.turnOwner === 'DEALER' ? (currentGameState.player1Name || 'PLAYER 1') : (currentGameState.opponentName || 'PLAYER 2'))
+                        : (currentGameState.isMultiplayer ? (currentGameState.opponentName || 'OPPONENT') : 'DEALER');
+                    const isGunTurnActive = currentProps.cameraView === 'GUN' && isExperimentalTurnActive({
+                        phase: currentGameState.phase,
+                        turnOwner: currentProps.turnOwner,
+                        isLocalSplit: currentGameState.isLocalSplit,
+                        isMultiplayer: currentGameState.isMultiplayer,
+                        isMyTurn: currentProps.turnOwner === 'PLAYER',
+                        isProcessing: currentProps.isProcessing,
+                        isRecovering: currentProps.isRecovering
+                    });
+                    const nextAim = isGunTurnActive
+                        ? getExperimentalAimTarget(action, currentGameState.isLocalSplit, currentProps.turnOwner, true)
+                        : null;
+                    emitExperimentalHover(
+                        getExperimentalHoverLabel(action, currentGameState.isLocalSplit, currentProps.turnOwner, oppLabel),
+                        nextAim
+                    );
+                } else {
+                    emitExperimentalHover(null, null);
                 }
             }
         };
@@ -712,6 +902,18 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
                 return;
             }
 
+            if (currentProps.settings?.experimentalDirectAim) {
+                const action = evaluateExperimentalTargetUnderPointer();
+                if (action?.type === 'PICKUP_GUN') {
+                    currentProps.onGunClick?.();
+                    emitExperimentalHover(null);
+                } else if (action?.type === 'SHOOT') {
+                    currentProps.onExperimentalShoot?.(action.target);
+                    emitExperimentalHover(null);
+                }
+                return;
+            }
+
             sceneRef.current.raycaster.setFromCamera(sceneRef.current.mouse, sceneRef.current.camera);
             const gunHitTargets = sceneRef.current.gunGroup.children;
             if (gunHitTargets && gunHitTargets.length > 0) {
@@ -730,6 +932,19 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
             const touch = e.changedTouches[0];
             const rect = containerRef.current.getBoundingClientRect();
             containerRectRef.current = rect;
+            sceneRef.current.mouse.x = ((touch.clientX - rect.left) / rect.width) * 2 - 1;
+            sceneRef.current.mouse.y = -((touch.clientY - rect.top) / rect.height) * 2 + 1;
+            updateHoverIndex();
+        };
+
+        const handleTouchMove = (e: TouchEvent) => {
+            if (!containerRef.current || !sceneRef.current || e.changedTouches.length === 0) return;
+            let rect = containerRectRef.current;
+            if (!rect || rect.width === 0) {
+                rect = containerRef.current.getBoundingClientRect();
+                containerRectRef.current = rect;
+            }
+            const touch = e.changedTouches[0];
             sceneRef.current.mouse.x = ((touch.clientX - rect.left) / rect.width) * 2 - 1;
             sceneRef.current.mouse.y = -((touch.clientY - rect.top) / rect.height) * 2 + 1;
             updateHoverIndex();
@@ -757,6 +972,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
         // Passive false so we can preventDefault
         const touchOpt = { passive: false };
         el.addEventListener('touchstart', handleTouchStart, touchOpt);
+        el.addEventListener('touchmove', handleTouchMove, touchOpt);
         el.addEventListener('touchend', handleTouchEnd, touchOpt);
 
         return () => {
@@ -786,6 +1002,7 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
             window.removeEventListener('mousemove', handleMouseMove);
             el.removeEventListener('click', handleClick);
             el.removeEventListener('touchstart', handleTouchStart);
+            el.removeEventListener('touchmove', handleTouchMove);
             el.removeEventListener('touchend', handleTouchEnd);
             resizeObserver.disconnect();
             if (sceneRef.current) {
@@ -816,9 +1033,10 @@ export const ThreeScene: React.FC<ThreeSceneProps> = ({
         settings.ultraPerformance,
         settings.balancedPerformance,
         settings.debugHeadModel,
+        settings.debugPlayer1Model,
         isPaused,
         dealerModel
-    ]); // Rebuild scene when switching SP/MP/Split, toggling perf/head override, or unpausing the game
+    ]); // Rebuild scene when switching SP/MP/Split, toggling perf/body overrides, or unpausing the game
 
     // Separate effect for Pixel Scale / Resolution updates (No Rebuild)
     useEffect(() => {

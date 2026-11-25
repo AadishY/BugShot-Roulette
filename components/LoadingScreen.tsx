@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { X, Wifi, AlertTriangle, Terminal, ShieldAlert, Cpu, Lock } from 'lucide-react';
+import { LOADING_EXIT_DURATION_MS } from '../utils/cinematicTransition';
 
 interface LoadingScreenProps {
     onComplete: () => void;
@@ -115,6 +116,7 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = React.memo(({
     const [displayProgress, setDisplayProgress] = useState(0);
     const [terminalLines, setTerminalLines] = useState<string[]>([]);
     const [isSlowWait, setIsSlowWait] = useState(false);
+    const [isExiting, setIsExiting] = useState(false);
     const barFillRef = useRef<HTMLDivElement>(null);
 
     const trace = useMemo(() => generateSimulatedTrace(), []);
@@ -238,11 +240,11 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = React.memo(({
 
             if (!isNetworkMode && nextVal >= 100 && !completionScheduled) {
                 completionScheduled = true;
-                // Complete immediately without fading out over underlying layers
+                setIsExiting(true);
                 completionTimerRef.current = setTimeout(() => {
                     completionTimerRef.current = null;
                     if (active) onCompleteRef.current();
-                }, 40);
+                }, LOADING_EXIT_DURATION_MS);
             }
 
             if (!completionScheduled) {
@@ -328,8 +330,9 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = React.memo(({
 
             {/* Main Center Intrusion Console */}
             <div
+                data-testid="loading-console"
                 className={`relative z-10 flex flex-col items-center w-[94vw] max-w-lg px-4 py-3.5 sm:p-6 rounded-2xl border border-green-700/70 bg-stone-950/95 shadow-[0_0_40px_rgba(0,0,0,0.95),0_0_24px_rgba(34,197,94,0.16)] ${
-                    error ? 'opacity-0 pointer-events-none' : 'opacity-100'
+                    error ? 'opacity-0 pointer-events-none' : isExiting ? 'cinematic-console-out pointer-events-none' : 'cinematic-console-in'
                 }`}
             >
                 {/* Tech Corner Brackets */}

@@ -6,6 +6,7 @@ const CRITICAL_ASSETS = [
     '/',
     '/index.html',
     '/manifest.json',
+    // __VITE_BUILT_ASSETS_PLACEHOLDER__
     '/image/logo.webp',
     '/image/banner.webp',
     '/image/banner mobile.webp',
@@ -165,38 +166,60 @@ self.addEventListener('install', (event) => {
     );
 });
 
+// Purge every cache except active CACHE_NAME and RUNTIME_CACHE
+async function purgeStaleCaches() {
+    const cacheNames = await caches.keys();
+    await Promise.all(
+        cacheNames.map((cacheName) => {
+            if (cacheName !== CACHE_NAME && cacheName !== RUNTIME_CACHE) {
+                console.log('[Service Worker] Purging obsolete cache store:', cacheName);
+                return caches.delete(cacheName);
+            }
+            return Promise.resolve(false);
+        })
+    );
+}
+
 // Activate event - Claim open clients and purge obsolete cache stores
 self.addEventListener('activate', (event) => {
     console.log('[Service Worker] Activating version:', CACHE_NAME);
     event.waitUntil(
         (async () => {
-            const cacheNames = await caches.keys();
-            await Promise.all(
-                cacheNames.map((cacheName) => {
-                    if (cacheName !== CACHE_NAME && cacheName !== RUNTIME_CACHE) {
-                        console.log('[Service Worker] Purging obsolete cache store:', cacheName);
-                        return caches.delete(cacheName);
-                    }
-                })
-            );
-
+            await purgeStaleCaches();
             await self.clients.claim();
             console.log('[Service Worker] Clients claimed for version:', CACHE_NAME);
         })()
     );
 });
 
-// Message event - Listen for manual SKIP_WAITING, update requests, or version inquiries
+// Message event - Listen for manual SKIP_WAITING, cache purging, runtime warming, or version inquiries
 self.addEventListener('message', (event) => {
-    if (event.data) {
-        if (event.data.type === 'SKIP_WAITING') {
-            self.skipWaiting();
-        } else if (event.data.type === 'CHECK_FOR_UPDATE') {
-            self.registration.update().catch(() => {});
-        } else if (event.data.type === 'GET_VERSION') {
-            if (event.ports && event.ports[0]) {
-                event.ports[0].postMessage({ version: CACHE_NAME });
-            }
+    if (!event.data) return;
+    if (event.data.type === 'SKIP_WAITING') {
+        self.skipWaiting();
+    } else if (event.data.type === 'CHECK_FOR_UPDATE') {
+        self.registration.update().catch(() => {});
+    } else if (event.data.type === 'PURGE_OLD_CACHES') {
+        event.waitUntil(purgeStaleCaches());
+    } else if (event.data.type === 'WARM_URLS' && Array.isArray(event.data.urls)) {
+        const urls = Array.from(new Set(event.data.urls.filter((u) => typeof u === 'string' && u.startsWith('/'))));
+        if (urls.length > 0) {
+            event.waitUntil(
+                caches.open(CACHE_NAME).then(async (cache) => {
+                    const missing = [];
+                    for (const u of urls) {
+                        const hit = await cache.match(u);
+                        if (!hit) missing.push(u);
+                    }
+                    if (missing.length > 0) {
+                        await precacheInBatches(cache, missing, 4);
+                    }
+                }).catch(() => {})
+            );
+        }
+    } else if (event.data.type === 'GET_VERSION') {
+        if (event.ports && event.ports[0]) {
+            event.ports[0].postMessage({ version: CACHE_NAME });
         }
     }
 });
@@ -239,7 +262,7 @@ self.addEventListener('fetch', (event) => {
         event.respondWith(
             (async () => {
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 2500);
+                const timeoutId = setTimeout(() => controller.abort(), 1500);
 
                 try {
                     const networkResponse = await fetch(event.request, {

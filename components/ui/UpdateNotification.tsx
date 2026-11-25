@@ -130,6 +130,7 @@ export const UpdateNotification: React.FC<UpdateNotificationProps> = ({ onUpdate
 
         const activeReg = registration || (window as any).swRegistration;
         if (activeReg && activeReg.waiting) {
+            try { activeReg.waiting.postMessage({ type: 'PURGE_OLD_CACHES' }); } catch {}
             activeReg.waiting.postMessage({ type: 'SKIP_WAITING' });
             // Wait for controllerchange; fallback once after 1200ms if controllerchange doesn't fire
             window.setTimeout(() => {

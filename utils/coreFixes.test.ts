@@ -26,6 +26,26 @@ import {
     compactOfflineActionQueue,
 } from './syncOptimizer.ts';
 import { SocketBatcher } from './socketOptimizer.ts';
+import { resolveMenuBadgeMode, computeMenuScaleMetrics } from './menuLayout.ts';
+import {
+    MENU_LAUNCH_DURATION_MS,
+    LOADING_EXIT_DURATION_MS,
+    GAME_REVEAL_DURATION_MS,
+    resolveTransitionDelay,
+    shouldTriggerGameReveal,
+} from './cinematicTransition.ts';
+import {
+    isExperimentalTurnActive,
+    getExperimentalSelfTarget,
+    getExperimentalAimTarget,
+    resolveExperimentalActionFromHit,
+    getExperimentalHoverLabel,
+} from './three/experimentalAim.ts';
+import {
+    generateLootBatch,
+    getMultiplayerDefaultWeights,
+    getSplitMultiplayerRoomSettings,
+} from './game/inventory.ts';
 
 class MemoryStorage {
     private map = new Map<string, string>();
@@ -240,7 +260,8 @@ import {
     resolveSplitSetupConfig,
     getSplitItemAmountForMatch,
     pickRandomStartingTurn,
-    resolveSplitWinnerName
+    resolveSplitWinnerName,
+    buildLocalSplitMatchPlayers
 } from './splitMode.ts';
 
 test('DM contact persistence keeps sent & received chats sorted and deduplicated', () => {
@@ -547,6 +568,212 @@ test('syncOptimizer strips heavy room mirrors, fingerprints changes, and compact
     assert.equal(flushed[0][1].data.action.v, 2);
     batcher.clear();
 });
+
+test('menuLayout preserves corner badges on Android landscape (>=500px) and inline mode on narrow portrait (<500px)', () => {
+    assert.equal(resolveMenuBadgeMode(390), 'INLINE');
+    assert.equal(resolveMenuBadgeMode(499), 'INLINE');
+    assert.equal(resolveMenuBadgeMode(500), 'CORNER');
+    assert.equal(resolveMenuBadgeMode(640), 'CORNER');
+
+    const portrait = computeMenuScaleMetrics({
+        viewportW: 390,
+        viewportH: 660,
+        measuredW: 360,
+        measuredH: 590,
+        isCompact: false,
+        isMobileUA: true,
+        hasTouch: true,
+    });
+    assert.equal(portrait.badgeMode, 'INLINE');
+    assert.ok(portrait.scale > 0.4 && portrait.scale <= 1.0);
+    assert.ok(portrait.safeCenterWidth * portrait.scale <= 390);
+
+    const androidLandscape = computeMenuScaleMetrics({
+        viewportW: 568,
+        viewportH: 320,
+        measuredW: 380,
+        measuredH: 520,
+        isCompact: true,
+        isMobileUA: true,
+        hasTouch: true,
+    });
+    assert.equal(androidLandscape.badgeMode, 'CORNER');
+    assert.ok(androidLandscape.safeCenterWidth >= 340);
+    assert.ok(androidLandscape.scale >= 0.4 && androidLandscape.scale <= 1.0);
+
+    const desktop = computeMenuScaleMetrics({
+        viewportW: 1440,
+        viewportH: 900,
+        measuredW: 400,
+        measuredH: 520,
+        isCompact: false,
+        isMobileUA: false,
+        hasTouch: false,
+    });
+    assert.equal(desktop.badgeMode, 'CORNER');
+    assert.ok(desktop.scale >= 0.75 && desktop.scale <= 1.12);
+});
+
+test('cinematicTransition resolves timings and reveal triggers across menu, loading, and game states', () => {
+    assert.ok(MENU_LAUNCH_DURATION_MS > 0);
+    assert.ok(LOADING_EXIT_DURATION_MS > 0);
+    assert.ok(GAME_REVEAL_DURATION_MS > 0);
+
+    assert.equal(resolveTransitionDelay(MENU_LAUNCH_DURATION_MS, false), MENU_LAUNCH_DURATION_MS);
+    assert.equal(resolveTransitionDelay(MENU_LAUNCH_DURATION_MS, true), 0);
+    assert.equal(resolveTransitionDelay(-25, false), 0);
+
+    assert.equal(shouldTriggerGameReveal('LOADING_SP', 'GAME'), true);
+    assert.equal(shouldTriggerGameReveal('LOADING_MP', 'MP_SELECTION'), true);
+    assert.equal(shouldTriggerGameReveal('LOADING_MP', 'LOBBY'), true);
+    assert.equal(shouldTriggerGameReveal('GAME', 'GAME'), false);
+    assert.equal(shouldTriggerGameReveal('MENU', 'LOADING_SP'), false);
+});
+
+test('experimentalAim maps gun pickup, front opponent shots, 3P/4P targets, and bottom-of-table self shots', () => {
+    assert.equal(
+        isExperimentalTurnActive({ phase: 'PLAYER_TURN', turnOwner: 'PLAYER', isProcessing: false, isRecovering: false }),
+        true
+    );
+    assert.equal(
+        isExperimentalTurnActive({ phase: 'PLAYER_TURN', turnOwner: 'DEALER', isLocalSplit: false }),
+        false
+    );
+    assert.equal(
+        isExperimentalTurnActive({ phase: 'PLAYER_TURN', turnOwner: 'DEALER', isLocalSplit: true }),
+        true
+    );
+    assert.equal(
+        isExperimentalTurnActive({ phase: 'PLAYER_TURN', turnOwner: 'PLAYER', isProcessing: true }),
+        false
+    );
+    assert.equal(
+        isExperimentalTurnActive({ phase: 'GAME_OVER', turnOwner: 'PLAYER' }),
+        false
+    );
+
+    assert.equal(getExperimentalSelfTarget(false, 'PLAYER'), 'PLAYER');
+    assert.equal(getExperimentalSelfTarget(true, 'DEALER'), 'DEALER');
+
+    // Before grabbing gun: only gun mesh picks up gun
+    assert.deepEqual(
+        resolveExperimentalActionFromHit({ isGunHeld: false, turnOwner: 'PLAYER', hitTag: 'GUN' }),
+        { type: 'PICKUP_GUN' }
+    );
+    assert.equal(
+        resolveExperimentalActionFromHit({ isGunHeld: false, turnOwner: 'PLAYER', hitTag: 'FRONT_OPPONENT' }),
+        null
+    );
+
+    // Holding gun (SP / MP / Split Seat A): front shoots DEALER, bottom of table shoots PLAYER
+    assert.deepEqual(
+        resolveExperimentalActionFromHit({ isGunHeld: true, turnOwner: 'PLAYER', hitTag: 'FRONT_OPPONENT' }),
+        { type: 'SHOOT', target: 'DEALER' }
+    );
+    assert.deepEqual(
+        resolveExperimentalActionFromHit({ isGunHeld: true, turnOwner: 'PLAYER', hitTag: 'TABLE_BOTTOM_A' }),
+        { type: 'SHOOT', target: 'PLAYER' }
+    );
+    assert.deepEqual(
+        resolveExperimentalActionFromHit({ isGunHeld: true, turnOwner: 'PLAYER', hitTag: 'TABLE_SURFACE', ndcY: -0.5 }),
+        { type: 'SHOOT', target: 'PLAYER' }
+    );
+    assert.equal(
+        resolveExperimentalActionFromHit({ isGunHeld: true, turnOwner: 'PLAYER', hitTag: 'TABLE_SURFACE', ndcY: 0.1, tableHitLocalZ: 0.2 }),
+        null
+    );
+    assert.deepEqual(
+        resolveExperimentalActionFromHit({ isGunHeld: true, turnOwner: 'PLAYER', hitTag: 'PLAYER3' }),
+        { type: 'SHOOT', target: 'PLAYER3' }
+    );
+
+    // Holding gun (Split Seat B): front shoots PLAYER, bottom B shoots DEALER
+    assert.deepEqual(
+        resolveExperimentalActionFromHit({ isGunHeld: true, isLocalSplit: true, turnOwner: 'DEALER', hitTag: 'FRONT_OPPONENT' }),
+        { type: 'SHOOT', target: 'PLAYER' }
+    );
+    assert.deepEqual(
+        resolveExperimentalActionFromHit({ isGunHeld: true, isLocalSplit: true, turnOwner: 'DEALER', hitTag: 'TABLE_BOTTOM_B' }),
+        { type: 'SHOOT', target: 'DEALER' }
+    );
+
+    assert.equal(getExperimentalHoverLabel({ type: 'PICKUP_GUN' }, false, 'PLAYER', 'Dealer'), 'GRAB SHOTGUN');
+    assert.equal(getExperimentalHoverLabel({ type: 'SHOOT', target: 'PLAYER' }, false, 'PLAYER', 'Dealer'), 'SHOOT YOURSELF');
+    assert.equal(getExperimentalHoverLabel({ type: 'SHOOT', target: 'DEALER' }, false, 'PLAYER', 'Dealer'), 'SHOOT DEALER');
+    assert.equal(getExperimentalHoverLabel({ type: 'SHOOT', target: 'DEALER' }, true, 'DEALER', 'Player 1'), 'SHOOT YOURSELF');
+
+    // Live 3D gun aiming target mapping while holding gun
+    assert.equal(getExperimentalAimTarget({ type: 'SHOOT', target: 'DEALER' }, false, 'PLAYER', true), 'OPPONENT');
+    assert.equal(getExperimentalAimTarget({ type: 'SHOOT', target: 'PLAYER' }, false, 'PLAYER', true), 'SELF');
+    assert.equal(getExperimentalAimTarget({ type: 'SHOOT', target: 'PLAYER3' }, false, 'PLAYER', true), 'LEFT');
+    assert.equal(getExperimentalAimTarget({ type: 'SHOOT', target: 'PLAYER4' }, false, 'PLAYER', true), 'RIGHT');
+    assert.equal(getExperimentalAimTarget({ type: 'SHOOT', target: 'PLAYER' }, true, 'DEALER', true), 'OPPONENT');
+    assert.equal(getExperimentalAimTarget({ type: 'SHOOT', target: 'DEALER' }, true, 'DEALER', true), 'SELF');
+    assert.equal(getExperimentalAimTarget(null, false, 'PLAYER', true), 'CHOOSING');
+    assert.equal(getExperimentalAimTarget(null, false, 'PLAYER', false), 'IDLE');
+});
+
+test('buildLocalSplitMatchPlayers saves Player 2 name anonymously without any opponent ID', () => {
+    const roster = buildLocalSplitMatchPlayers('alice', 'bob', 'DEALER');
+    assert.equal(roster.length, 2);
+    assert.equal(roster[0].name, 'ALICE');
+    assert.equal(roster[0].isHost, true);
+    assert.equal(roster[0].isMe, true);
+    assert.equal(roster[0].result, 'LOSS');
+    assert.equal(roster[1].name, 'BOB');
+    assert.equal(roster[1].isAnonymous, true);
+    assert.equal(roster[1].isHost, false);
+    assert.equal(roster[1].isMe, false);
+    assert.equal(roster[1].result, 'WIN');
+    assert.equal('id' in roster[1], false);
+    assert.equal('playerId' in roster[1], false);
+    assert.equal('username' in roster[1], false);
+});
+
+test('Totem stays rare and Split MP uses strict 2-player multiplayer probability weights', () => {
+    const mp2Weights = getMultiplayerDefaultWeights(2);
+    const totalWeight = Object.values(mp2Weights).reduce((acc, w) => acc + w, 0);
+    const totemProb = (mp2Weights.TOTEM || 0) / totalWeight;
+    assert.ok(totemProb > 0 && totemProb <= 0.01, `Expected rare Totem rate <= 1%, got ${totemProb}`);
+
+    // Split MP room settings always strip custom advanced weights and preserve 2P multiplayer behavior
+    const splitSettings = getSplitMultiplayerRoomSettings({
+        localSplitConfig: {
+            player1Name: 'P1',
+            player2Name: 'P2',
+            itemRule: 'FROM_ROUND_1',
+            itemsPerShipment: 4,
+            totalMatches: 3,
+            startingHp: 4,
+        },
+        roomSettings: {
+            rounds: 3,
+            hp: 4,
+            itemsPerShipment: 4,
+            isAdvanced: true,
+            itemWeights: { TOTEM: 100 },
+        },
+    });
+    assert.equal(splitSettings.isAdvanced, false);
+    assert.equal(splitSettings.itemWeights, undefined);
+
+    // Monte Carlo check: 3,000 items rolled via Split MP settings & SP Normal should keep TOTEM < 2%
+    let splitTotemCount = 0;
+    let spTotemCount = 0;
+    const sampleBatches = 750; // 750 * 4 = 3,000 items
+    for (let i = 0; i < sampleBatches; i++) {
+        const splitBatch = generateLootBatch(4, false, false, 4, [], 0, 4, 4, splitSettings, 2);
+        splitTotemCount += splitBatch.filter((item) => item === 'TOTEM').length;
+
+        const spBatch = generateLootBatch(4, false, false, 4, [], 0, 4, 4, undefined, 2);
+        spTotemCount += spBatch.filter((item) => item === 'TOTEM').length;
+    }
+    const splitTotemRate = splitTotemCount / (sampleBatches * 4);
+    const spTotemRate = spTotemCount / (sampleBatches * 4);
+    assert.ok(splitTotemRate < 0.02, `Split MP Totem rate unexpectedly high: ${splitTotemRate}`);
+    assert.ok(spTotemRate < 0.02, `SP Normal Totem rate unexpectedly high: ${spTotemRate}`);
+});
+
 
 
 

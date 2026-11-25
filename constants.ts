@@ -55,9 +55,11 @@ export const getInitialSettings = (): GameSettings => {
       sfxVolume: 0.5,
       debugMode: false,
       debugHeadModel: 'DEFAULT',
+      debugPlayer1Model: 'DEFAULT',
       graphicsMode: 'low',
       ultraPerformance: false,
-      balancedPerformance: true
+      balancedPerformance: true,
+      experimentalDirectAim: false
     };
   } else {
     // PC / Desktop
@@ -70,9 +72,11 @@ export const getInitialSettings = (): GameSettings => {
       sfxVolume: 1.0,
       debugMode: false,
       debugHeadModel: 'DEFAULT',
+      debugPlayer1Model: 'DEFAULT',
       graphicsMode: 'balanced',
       ultraPerformance: false,
-      balancedPerformance: true
+      balancedPerformance: true,
+      experimentalDirectAim: false
     };
   }
 };

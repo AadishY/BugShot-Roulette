@@ -101,13 +101,43 @@
       };
 
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js')
+        navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' })
           .then((registration) => {
             window.swRegistration = registration;
+
+            const warmCriticalRuntimeAssets = () => {
+              if (!navigator.onLine) return;
+              const target = registration.active || navigator.serviceWorker.controller;
+              if (!target) return;
+              try {
+                const origin = window.location.origin;
+                const urls = new Set([window.location.pathname || '/', '/index.html', '/manifest.json']);
+                document.querySelectorAll('script[src], link[rel="stylesheet"][href], link[rel="modulepreload"][href]').forEach((el) => {
+                  const raw = el.getAttribute('src') || el.getAttribute('href');
+                  if (!raw) return;
+                  try {
+                    const resolved = new URL(raw, origin);
+                    if (resolved.origin === origin) {
+                      urls.add(resolved.pathname + resolved.search);
+                    }
+                  } catch {}
+                });
+                target.postMessage({ type: 'WARM_URLS', urls: Array.from(urls) });
+              } catch {}
+            };
+
+            navigator.serviceWorker.ready.then(() => {
+              warmCriticalRuntimeAssets();
+            }).catch(() => {});
 
             // Check if there is already a waiting worker on an existing controlled page
             if (registration.waiting && navigator.serviceWorker.controller) {
               emitSwUpdateOnce(registration);
+            }
+
+            // Check immediately for a newly published sw.js when online
+            if (navigator.onLine) {
+              registration.update().catch(() => {});
             }
 
             // Detect if a new worker is currently installing
@@ -849,6 +879,44 @@
     .ultra-perf .blood-overlay {
       display: none !important;
       opacity: 0 !important;
+    }
+
+    /* Cinematic Menu -> Loading -> Game Transitions (uses @keyframes so mobile preserves exact curve timing) */
+    @keyframes cinematicBlackoutIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    @keyframes cinematicMenuExit {
+      from { opacity: 1; transform: scale(1); filter: brightness(1); }
+      to { opacity: 0; transform: scale(0.95); filter: brightness(0.35); }
+    }
+    @keyframes cinematicConsoleIn {
+      from { opacity: 0; transform: scale(0.96) translateY(8px); }
+      to { opacity: 1; transform: scale(1) translateY(0); }
+    }
+    @keyframes cinematicConsoleOut {
+      from { opacity: 1; transform: scale(1); }
+      to { opacity: 0; transform: scale(1.03); }
+    }
+    @keyframes cinematicRevealFromBlack {
+      0% { opacity: 1; }
+      25% { opacity: 0.94; }
+      100% { opacity: 0; }
+    }
+    .cinematic-blackout-in {
+      animation: cinematicBlackoutIn 380ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    }
+    .cinematic-menu-exit {
+      animation: cinematicMenuExit 360ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    }
+    .cinematic-console-in {
+      animation: cinematicConsoleIn 320ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    }
+    .cinematic-console-out {
+      animation: cinematicConsoleOut 320ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    }
+    .cinematic-game-reveal {
+      animation: cinematicRevealFromBlack 650ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
     }
   </style>
 

@@ -2,6 +2,8 @@ import { defineConfig, PluginOption } from 'vite';
 import react from '@vitejs/plugin-react';
 import basicSsl from '@vitejs/plugin-basic-ssl';
 import fs from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
 
 // Resolve Windows junction / symlink paths to canonical path so esbuild and Vite's optimizeDeps cwd match
 try {
@@ -16,7 +18,59 @@ try {
   // Ignore fallback
 }
 
-const plugins: PluginOption[] = [react()];
+function collectDistAssets(dirPath: string, distRoot: string, acc: string[] = []): string[] {
+  if (!fs.existsSync(dirPath)) return acc;
+  const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+  for (const entry of entries) {
+    const fullPath = path.join(dirPath, entry.name);
+    if (entry.isDirectory()) {
+      collectDistAssets(fullPath, distRoot, acc);
+    } else if (entry.isFile() && /\.(js|css|wasm|webp|png|svg|woff2?)$/i.test(entry.name)) {
+      const rel = '/' + path.relative(distRoot, fullPath).replace(/\\/g, '/');
+      acc.push(rel);
+    }
+  }
+  return acc;
+}
+
+const swBuildManifestPlugin = (): PluginOption => ({
+  name: 'sw-build-manifest',
+  apply: 'build',
+  closeBundle() {
+    try {
+      const distRoot = path.resolve(process.cwd(), 'dist');
+      const swPath = path.join(distRoot, 'sw.js');
+      if (!fs.existsSync(swPath)) return;
+
+      const buildStamp = `${Date.now().toString(36)}-${crypto.randomBytes(3).toString('hex')}`;
+      const builtAssets = collectDistAssets(path.join(distRoot, 'assets'), distRoot).sort();
+
+      let swCode = fs.readFileSync(swPath, 'utf8');
+      swCode = swCode.replace(
+        /const CACHE_NAME = ['"][^'"]+['"];/,
+        `const CACHE_NAME = 'bugshot-roulette-${buildStamp}';`
+      );
+      swCode = swCode.replace(
+        /const RUNTIME_CACHE = ['"][^'"]+['"];/,
+        `const RUNTIME_CACHE = 'bugshot-roulette-runtime-${buildStamp}';`
+      );
+
+      if (builtAssets.length > 0) {
+        const assetLines = builtAssets.map((a) => `    '${a}',`).join('\n');
+        swCode = swCode.replace(
+          '// __VITE_BUILT_ASSETS_PLACEHOLDER__',
+          assetLines
+        );
+      }
+
+      fs.writeFileSync(swPath, swCode, 'utf8');
+    } catch (err) {
+      console.warn('[sw-build-manifest] Failed stamping dist/sw.js:', err);
+    }
+  }
+});
+
+const plugins: PluginOption[] = [react(), swBuildManifestPlugin()];
 if (process.env.HTTPS === 'true') {
   plugins.push(basicSsl());
 }

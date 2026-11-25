@@ -35,6 +35,7 @@ interface ControlsProps {
     activeTurnOwner?: TurnOwner;
     activePlayerName?: string;
     targetOpponentName?: string;
+    experimentalHoverLabel?: string | null;
 }
 
 const ControlsComponent: React.FC<ControlsProps> = ({
@@ -56,12 +57,47 @@ const ControlsComponent: React.FC<ControlsProps> = ({
     isLocalSplit = false,
     activeTurnOwner = 'PLAYER',
     activePlayerName,
-    targetOpponentName
+    targetOpponentName,
+    experimentalHoverLabel = null
 }) => {
     const isBalanced = !!settings?.balancedPerformance || !!settings?.ultraPerformance;
     const isPotato = !!settings?.ultraPerformance;
     const isCompact = isCompactProp ?? (typeof window !== 'undefined' && (window.innerWidth < 768 || window.innerHeight < 540));
     const isMobileTouch = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
+    const isExperimentalAim = Boolean(settings?.experimentalDirectAim);
+
+    if (isExperimentalAim) {
+        const promptText = isRecovering
+            ? 'WAIT — RECOVERING...'
+            : isProcessing
+            ? 'RESOLVING ACTION...'
+            : !isGunHeld
+            ? `${isLocalSplit && activePlayerName ? `${activePlayerName.toUpperCase()} • ` : ''}${isMobileTouch ? 'TAP' : 'CLICK'} SHOTGUN ON TABLE TO GRAB`
+            : experimentalHoverLabel
+            ? `${isMobileTouch ? 'TAP' : 'CLICK'}: ${experimentalHoverLabel}`
+            : (isThreePlayer || isFourPlayer)
+            ? `${isMobileTouch ? 'TAP' : 'CLICK'} ANY OPPONENT TO SHOOT • BOTTOM OF TABLE FOR SELF`
+            : `${isMobileTouch ? 'TAP' : 'CLICK'} ${(targetOpponentName || (isMultiplayer ? 'OPPONENT' : 'DEALER')).toUpperCase()} TO SHOOT • BOTTOM OF TABLE FOR SELF`;
+
+        return (
+            <div className={`w-full flex items-end justify-center pointer-events-none controls-enter ${isCompact ? 'pb-0.5' : 'flex-1 pb-1 lg:pb-3'}`}>
+                <div
+                    data-testid="experimental-aim-prompt"
+                    className={`pointer-events-none px-3 sm:px-4 py-1.5 rounded-full border font-mono font-black tracking-[0.14em] uppercase text-center transition-colors ${
+                        isCompact ? 'text-[9px]' : 'text-[10px] sm:text-xs'
+                    } ${
+                        experimentalHoverLabel?.includes('SHOOT')
+                            ? 'bg-red-950/75 border-red-500/70 text-red-200 shadow-[0_0_20px_rgba(239,68,68,0.25)]'
+                            : experimentalHoverLabel === 'GRAB SHOTGUN'
+                            ? 'bg-amber-950/75 border-amber-400/70 text-amber-200 shadow-[0_0_18px_rgba(245,158,11,0.25)]'
+                            : 'bg-black/65 border-amber-700/40 text-amber-200/90'
+                    }`}
+                >
+                    {promptText}
+                </div>
+            </div>
+        );
+    }
 
     const mpOpponents = isMultiplayer && mpGameState && mpMyPlayerId
         ? Object.values(mpGameState.players).filter(p => p.id !== mpMyPlayerId && p.isAlive !== false)

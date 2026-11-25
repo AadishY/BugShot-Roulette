@@ -599,8 +599,10 @@ export const initThreeScene = (container: HTMLElement, props: any): SceneContext
         const splitHp = props.gameState.localSplitConfig?.startingHp ?? 4;
         const player1Name = props.gameState.player1Name || 'PLAYER 1';
         const player2Name = props.gameState.opponentName || 'PLAYER 2';
+        const p1Model = props.settings?.debugPlayer1Model ?? 'DEFAULT';
+        const p2Model = props.settings?.debugHeadModel ?? 'DEFAULT';
 
-        // Seat B (-Z): Player 2 facing +Z using dealer.glb
+        // Seat B (-Z): Player 2 facing +Z
         dealerGroup = createPlayerAvatar(
             scene,
             new THREE.Vector3(0, -4.5, -8),
@@ -608,12 +610,12 @@ export const initThreeScene = (container: HTMLElement, props: any): SceneContext
             player2Name,
             splitHp,
             splitHp,
-            'DEFAULT'
+            p2Model
         );
         dealerGroup.name = 'DEALER';
         dealerGroup.visible = !isSplitSeatB;
 
-        // Seat A (+Z): Player 1 facing -Z using dealer.glb
+        // Seat A (+Z): Player 1 facing -Z
         const localPlayer1Group = createPlayerAvatar(
             scene,
             new THREE.Vector3(0, -4.5, 8),
@@ -621,7 +623,7 @@ export const initThreeScene = (container: HTMLElement, props: any): SceneContext
             player1Name,
             splitHp,
             splitHp,
-            'DEFAULT'
+            p1Model
         );
         localPlayer1Group.name = 'LOCAL_PLAYER1';
         localPlayer1Group.visible = isSplitSeatB;
@@ -645,10 +647,81 @@ export const initThreeScene = (container: HTMLElement, props: any): SceneContext
     // Pre-allocate bullet velocity scratch vector so no allocations occur during gun recoil / shot
     bMesh.userData.velocity = new THREE.Vector3();
 
-    // Add click listeners to Gun
-    gunGroup.children.forEach(c => {
-        c.userData.type = 'GUN';
+    // Add click listeners to Gun & invisible collider hitboxes for Experimental Direct 3D Aiming
+    const expHitboxMat = new THREE.MeshBasicMaterial({
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        colorWrite: false
     });
+
+    gunGroup.traverse((c) => {
+        c.userData.type = 'GUN';
+        c.userData.experimentalTarget = 'GUN';
+    });
+    const gunHitbox = new THREE.Mesh(new THREE.BoxGeometry(2.6, 2.4, 15.0), expHitboxMat);
+    gunHitbox.name = 'EXP_GUN_HITBOX';
+    gunHitbox.position.set(0, 0.2, 2.0);
+    gunHitbox.castShadow = false;
+    gunHitbox.receiveShadow = false;
+    gunHitbox.userData.type = 'GUN';
+    gunHitbox.userData.experimentalTarget = 'GUN';
+    gunGroup.add(gunHitbox);
+
+    const expOpponents: THREE.Object3D[] = [];
+    const attachOpponentHitbox = (
+        group: THREE.Group | undefined,
+        tag: 'FRONT_OPPONENT' | 'LOCAL_PLAYER1' | 'PLAYER3' | 'PLAYER4',
+        size: [number, number, number],
+        offset: [number, number, number]
+    ) => {
+        if (!group) return;
+        group.userData.experimentalTarget = tag;
+        const hitbox = new THREE.Mesh(new THREE.BoxGeometry(size[0], size[1], size[2]), expHitboxMat);
+        hitbox.name = `EXP_HITBOX_${tag}`;
+        hitbox.position.set(offset[0], offset[1], offset[2]);
+        hitbox.castShadow = false;
+        hitbox.receiveShadow = false;
+        hitbox.userData.experimentalTarget = tag;
+        group.add(hitbox);
+        expOpponents.push(hitbox, group);
+    };
+
+    const usesAvatarHitbox = Boolean(isMP || props.gameState?.isLocalSplit);
+    if (usesAvatarHitbox) {
+        attachOpponentHitbox(dealerGroup, 'FRONT_OPPONENT', [5.6, 9.5, 5.6], [0, 6.0, 0]);
+    } else {
+        // Singleplayer Dealer GLB shifts offset in child mesh toward z ~ -16.5 relative to dealerGroup
+        attachOpponentHitbox(dealerGroup, 'FRONT_OPPONENT', [7.2, 9.5, 9.0], [0, 1.2, -15.5]);
+    }
+    attachOpponentHitbox(scene.userData.cachedLocalPlayer1Group as THREE.Group | undefined, 'LOCAL_PLAYER1', [5.6, 9.5, 5.6], [0, 6.0, 0]);
+    attachOpponentHitbox(player3Group, 'PLAYER3', [5.6, 9.5, 5.6], [0, 6.0, 0]);
+    attachOpponentHitbox(player4Group, 'PLAYER4', [5.6, 9.5, 5.6], [0, 6.0, 0]);
+
+    const tableBottomA = new THREE.Mesh(new THREE.BoxGeometry(20, 1.6, 8.2), expHitboxMat);
+    tableBottomA.name = 'EXP_TABLE_BOTTOM_A';
+    tableBottomA.position.set(0, -0.5, 5.0);
+    tableBottomA.userData.experimentalTarget = 'TABLE_BOTTOM_A';
+    scene.add(tableBottomA);
+
+    const tableBottomB = new THREE.Mesh(new THREE.BoxGeometry(20, 1.6, 8.2), expHitboxMat);
+    tableBottomB.name = 'EXP_TABLE_BOTTOM_B';
+    tableBottomB.position.set(0, -0.5, -5.0);
+    tableBottomB.userData.experimentalTarget = 'TABLE_BOTTOM_B';
+    scene.add(tableBottomB);
+
+    const tableGroupObj = scene.getObjectByName('TABLE_GROUP');
+    if (tableGroupObj) {
+        tableGroupObj.userData.experimentalTarget = 'TABLE_SURFACE';
+        tableGroupObj.traverse((child) => {
+            child.userData.experimentalTarget = 'TABLE_SURFACE';
+        });
+    }
+
+    scene.userData.experimentalTargetRegistry = {
+        opponents: expOpponents,
+        tables: [tableBottomA, tableBottomB, ...(tableGroupObj ? [tableGroupObj] : [])]
+    };
 
     // Particles scaled per preset:
     // Preset 1 (Potato): minimal particles (10) for maximum FPS

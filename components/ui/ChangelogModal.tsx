@@ -96,73 +96,73 @@ export const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose 
                 }
             }}
         >
-            <div className="relative w-full max-w-3xl max-h-[94vh] sm:max-h-[90vh] bg-stone-950/95 border-2 border-stone-850 p-3.5 sm:p-6 md:p-8 rounded-xl shadow-[0_20px_50px_rgba(0,0,0,0.9)] font-mono flex flex-col overflow-hidden">
+            <div className="relative w-full max-w-3xl max-h-[95dvh] sm:max-h-[90dvh] bg-stone-950/95 border-2 border-stone-850 p-2 sm:p-5 md:p-6 rounded-xl shadow-[0_20px_50px_rgba(0,0,0,0.9)] font-mono flex flex-col overflow-hidden [@media(max-height:540px)]:p-2">
                 {/* Top Animated Scan Line */}
                 <div className="absolute top-0 left-0 w-full h-[2px] bg-red-650/40 animate-[scan-line-move_4s_linear_infinite]" />
 
-                {/* Top Close Button (Expanded touch target 44px+) */}
+                {/* Top Close Button */}
                 <button
                     onClick={() => {
                         audioManager.playSound('click');
                         onClose();
                     }}
-                    className="absolute top-2.5 right-2.5 sm:top-5 sm:right-5 text-stone-300 hover:text-red-400 bg-stone-900/80 hover:bg-red-955/30 border border-stone-800 hover:border-red-500/45 rounded-xl z-50 cursor-pointer flex items-center justify-center shadow-lg hover:shadow-[0_0_15px_rgba(239,68,68,0.25)] transition-all w-11 h-11 min-w-[44px] min-h-[44px] p-2"
+                    className="small-btn absolute top-1.5 right-1.5 sm:top-3.5 sm:right-3.5 [@media(max-height:540px)]:top-1.5 [@media(max-height:540px)]:right-1.5 text-stone-300 hover:text-red-400 bg-stone-900/80 hover:bg-red-955/30 border border-stone-800 hover:border-red-500/45 rounded-lg z-50 cursor-pointer flex items-center justify-center shadow-lg hover:shadow-[0_0_15px_rgba(239,68,68,0.25)] transition-all w-7 h-7 sm:w-9 sm:h-9 [@media(max-height:540px)]:w-7 [@media(max-height:540px)]:h-7 p-1"
                     title="Close Console"
                     aria-label="Close Console"
                 >
-                    <X size={18} />
+                    <X size={14} />
                 </button>
 
                 {/* Header */}
-                <div className="text-stone-300 font-black border-b border-stone-900 pb-2.5 mb-3 sm:pb-3.5 sm:mb-3 flex items-center justify-between uppercase tracking-wider text-xs sm:text-base">
-                    <span className="flex items-center gap-2">
-                        <Terminal size={15} className="text-red-500 sm:w-[18px] sm:h-[18px]" />
+                <div className="text-stone-300 font-black border-b border-stone-900 pb-1.5 mb-1.5 sm:pb-2.5 sm:mb-2.5 pr-9 sm:pr-12 [@media(max-height:540px)]:pr-9 [@media(max-height:540px)]:pb-1 [@media(max-height:540px)]:mb-1.5 flex items-center justify-between uppercase tracking-wider text-[10px] sm:text-sm md:text-base shrink-0">
+                    <span className="flex items-center gap-1.5 sm:gap-2">
+                        <Terminal size={12} className="text-red-500 sm:w-[16px] sm:h-[16px]" />
                         <span>System Changelog</span>
-                        <span className="text-red-400/90 text-[10px] sm:text-xs font-mono font-bold tracking-normal lowercase px-2 py-0.5 rounded bg-red-955/30 border border-red-900/50">
+                        <span className="text-red-400/90 text-[8.5px] sm:text-xs font-mono font-bold tracking-normal lowercase px-1.5 py-0.2 rounded bg-red-955/30 border border-red-900/50">
                             v{GAME_VERSION}
                         </span>
                     </span>
-                    <span className="text-red-500/80 animate-pulse flex items-center gap-1.5 text-[10px] sm:text-xs bg-red-955/20 border border-red-900/35 px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-lg mr-12 sm:mr-14">
+                    <span className="text-red-500/80 animate-pulse flex items-center gap-1 text-[8px] sm:text-[10px] bg-red-955/20 border border-red-900/35 px-1.5 py-0.5 sm:px-2.5 rounded-md">
                         <span className="w-1.5 h-1.5 bg-red-600 rounded-full" />
                         active
                     </span>
                 </div>
 
                 {/* Search Bar */}
-                <div className="relative mb-3 shrink-0">
-                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-500" />
+                <div className="relative mb-1.5 sm:mb-2.5 shrink-0 [@media(max-height:540px)]:mb-1.5">
+                    <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-500" />
                     <input
                         type="text"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="Filter system changelog (e.g. graphics, AI, mobile, firebase)..."
-                        className="w-full bg-stone-900/70 border border-stone-800/80 focus:border-red-500/60 rounded-xl pl-9 pr-9 py-2 min-h-[44px] text-[10px] sm:text-xs text-stone-200 placeholder-stone-500 outline-none transition-colors font-mono"
+                        placeholder="Filter changelog..."
+                        className="w-full bg-stone-900/70 border border-stone-800/80 focus:border-red-500/60 rounded-lg pl-7 pr-7 py-1 sm:py-1.5 min-h-[28px] sm:min-h-[36px] [@media(max-height:540px)]:min-h-[28px] [@media(max-height:540px)]:py-0.5 !text-[10px] sm:!text-xs text-stone-200 placeholder-stone-500 outline-none transition-colors font-mono"
                     />
                     {searchQuery && (
                         <button
                             onClick={() => setSearchQuery('')}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 text-stone-500 hover:text-stone-300 w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center cursor-pointer"
+                            className="small-btn absolute right-1 top-1/2 -translate-y-1/2 text-stone-500 hover:text-stone-300 w-6 h-6 flex items-center justify-center cursor-pointer"
                             title="Clear search"
                         >
-                            <X size={12} />
+                            <X size={10} />
                         </button>
                     )}
                 </div>
 
                 {/* Scrollable Changelog Feed */}
-                <div className="space-y-2.5 sm:space-y-3 text-left flex-1 min-h-0 overflow-y-auto pr-1.5 select-text scrollbar-thin text-[9px] sm:text-[10px] md:text-xs text-stone-400 custom-scrollbar">
+                <div className="space-y-1.5 sm:space-y-2 text-left flex-1 min-h-0 overflow-y-auto pr-1 select-text scrollbar-thin text-[8px] sm:text-[10px] md:text-xs text-stone-400 custom-scrollbar">
                     {/* Pinned Multiplayer Notice */}
                     {!searchQuery && (
-                        <div className="space-y-1.5 bg-cyan-950/20 border border-cyan-500/40 p-2.5 sm:p-3.5 rounded-lg shadow-[0_0_15px_rgba(6,182,212,0.15)] animate-[pulse_4s_ease-in-out_infinite]">
-                            <div className="flex items-center gap-2 border-b border-cyan-900 pb-1.5">
-                                <span className="px-2 py-0.5 bg-cyan-500 text-stone-950 text-[9px] font-black rounded uppercase tracking-widest select-none">
+                        <div className="space-y-0.5 bg-cyan-950/20 border border-cyan-500/40 p-1.5 sm:p-2.5 rounded-lg shadow-[0_0_15px_rgba(6,182,212,0.15)] animate-[pulse_4s_ease-in-out_infinite]">
+                            <div className="flex items-center gap-1.5 border-b border-cyan-900 pb-0.5">
+                                <span className="px-1 py-0.2 bg-cyan-500 text-stone-950 text-[7px] sm:text-[8.5px] font-black rounded uppercase tracking-widest select-none">
                                     PINNED
                                 </span>
-                                <span className="text-cyan-400 font-black text-[10px] sm:text-xs tracking-wider uppercase">
+                                <span className="text-cyan-400 font-black text-[8.5px] sm:text-[11px] tracking-wider uppercase">
                                     ONLINE &amp; SPLIT MULTIPLAYER LIVE!
                                 </span>
                             </div>
-                            <p className="leading-relaxed text-stone-300 text-[10px] sm:text-[11px]">
+                            <p className="leading-snug text-stone-300 text-[8px] sm:text-[10.5px]">
                                 Challenge friends online in real-time lobbies or duel head-to-head on a single device with Local Split Multiplayer, custom sliders, and smooth eased camera swaps.
                             </p>
                         </div>
@@ -170,7 +170,7 @@ export const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose 
 
                     {/* Releases List */}
                     {filteredReleases.length === 0 ? (
-                        <div className="text-center py-8 text-stone-500 text-xs font-mono">
+                        <div className="text-center py-6 text-stone-500 text-[10px] sm:text-xs font-mono">
                             No log entries matching &quot;{searchQuery}&quot;
                         </div>
                     ) : (
@@ -179,34 +179,34 @@ export const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose 
                             return (
                                 <div
                                     key={release.version}
-                                    className={`space-y-1.5 bg-stone-950 border p-2.5 sm:p-3.5 rounded-lg transition-all ${
+                                    className={`space-y-0.5 sm:space-y-1 bg-stone-950 border p-1.5 sm:p-2.5 rounded-lg transition-all ${
                                         isLatest
                                             ? 'border-stone-800 border-l-4 border-l-red-500 bg-red-955/10 shadow-[0_0_20px_rgba(239,68,68,0.08)]'
                                             : 'border-stone-900/60 opacity-90 hover:opacity-100'
                                     }`}
                                 >
-                                    <div className="border-b border-stone-900 pb-1.5 flex items-center justify-between flex-wrap gap-1">
-                                        <span className="text-stone-200 font-black text-[10px] sm:text-[11px] md:text-xs tracking-wider flex items-center gap-1.5">
-                                            {isLatest && <Sparkles size={12} className="text-red-400 animate-pulse shrink-0" />}
+                                    <div className="border-b border-stone-900 pb-0.5 sm:pb-1 flex items-center justify-between flex-wrap gap-1">
+                                        <span className="text-stone-200 font-black text-[8.5px] sm:text-[10.5px] md:text-xs tracking-wider flex items-center gap-1">
+                                            {isLatest && <Sparkles size={9} className="text-red-400 animate-pulse shrink-0 sm:w-3 sm:h-3" />}
                                             [{release.date} - {release.title} (v{release.version})]
                                         </span>
                                         {isLatest && (
-                                            <span className="px-1.5 py-0.5 bg-red-955/80 text-red-300 border border-red-600/60 rounded text-[7px] sm:text-[8px] font-black uppercase tracking-widest animate-pulse">
+                                            <span className="px-1 py-0.2 bg-red-955/80 text-red-300 border border-red-600/60 rounded text-[6px] sm:text-[7.5px] font-black uppercase tracking-widest animate-pulse">
                                                 LATEST
                                             </span>
                                         )}
                                     </div>
-                                    <ul className="list-none space-y-1.5 pl-0.5 pt-1">
+                                    <ul className="list-none space-y-0.5 sm:space-y-1 pl-0.5 pt-0.5">
                                         {release.items.map((item, itemIdx) => (
-                                            <li key={itemIdx} className="flex items-start gap-2.5">
+                                            <li key={itemIdx} className="flex items-start gap-1.5 sm:gap-2">
                                                 <span
-                                                    className={`px-1.5 py-0.5 border text-[7px] sm:text-[8px] font-black rounded-md uppercase tracking-widest shrink-0 select-none ${getTagBadgeStyle(
+                                                    className={`px-1 py-0.2 border text-[6px] sm:text-[7.5px] font-black rounded uppercase tracking-wider shrink-0 select-none mt-0.5 ${getTagBadgeStyle(
                                                         item.tag
                                                     )}`}
                                                 >
                                                     {item.tag}
                                                 </span>
-                                                <span className="leading-relaxed text-stone-300">
+                                                <span className="leading-snug text-stone-300 text-[8px] sm:text-[10.5px]">
                                                     {item.title && (
                                                         <strong className="text-stone-100 font-bold mr-1">
                                                             {item.title}:
@@ -224,24 +224,24 @@ export const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose 
 
                     {/* Pre-alpha archival note when not searching */}
                     {!searchQuery && (
-                        <div className="space-y-1.5 bg-stone-950 border border-stone-900/60 p-2.5 sm:p-3.5 rounded-lg opacity-75 hover:opacity-100 transition-opacity">
-                            <span className="text-stone-400 font-black block border-b border-stone-900 pb-1 text-[9px] sm:text-[10px] tracking-wider">
+                        <div className="space-y-0.5 bg-stone-950 border border-stone-900/60 p-1.5 sm:p-2.5 rounded-lg opacity-75 hover:opacity-100 transition-opacity">
+                            <span className="text-stone-400 font-black block border-b border-stone-900 pb-0.5 text-[8px] sm:text-[10px] tracking-wider">
                                 [Pre-Alpha Origin Releases]
                             </span>
-                            <ul className="list-none space-y-1.5 pl-0.5">
-                                <li className="flex items-start gap-2.5">
-                                    <span className="px-1.5 py-0.5 bg-cyan-950/50 border border-cyan-800/40 text-cyan-400 text-[7px] sm:text-[8px] font-black rounded-md uppercase tracking-widest shrink-0 select-none">
+                            <ul className="list-none space-y-0.5 pl-0.5">
+                                <li className="flex items-start gap-1.5 sm:gap-2">
+                                    <span className="px-1 py-0.2 bg-cyan-950/50 border border-cyan-800/40 text-cyan-400 text-[6px] sm:text-[7.5px] font-black rounded uppercase tracking-wider shrink-0 select-none mt-0.5">
                                         ORIGIN
                                     </span>
-                                    <span className="leading-relaxed">
+                                    <span className="leading-snug text-[8px] sm:text-[10.5px]">
                                         Implemented device-aware graphics profiles, 12-gauge turn engine, and browser 3D canvas pipeline.
                                     </span>
                                 </li>
-                                <li className="flex items-start gap-2.5">
-                                    <span className="px-1.5 py-0.5 bg-stone-900 border border-stone-700 text-stone-300 text-[7px] sm:text-[8px] font-black rounded-md uppercase tracking-widest shrink-0 select-none">
+                                <li className="flex items-start gap-1.5 sm:gap-2">
+                                    <span className="px-1 py-0.2 bg-stone-900 border border-stone-700 text-stone-300 text-[6px] sm:text-[7.5px] font-black rounded uppercase tracking-wider shrink-0 select-none mt-0.5">
                                         SYSTEM
                                     </span>
-                                    <span className="leading-relaxed">
+                                    <span className="leading-snug text-[8px] sm:text-[10.5px]">
                                         Added duplicate item reroll penalties and initial positional sound effects.
                                     </span>
                                 </li>
@@ -250,13 +250,13 @@ export const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose 
                     )}
                 </div>
 
-                {/* Bottom Close Button (Expanded touch target 40px+) */}
+                {/* Bottom Close Button */}
                 <button
                     onClick={() => {
                         audioManager.playSound('click');
                         onClose();
                     }}
-                    className="mt-3 sm:mt-5 w-full min-h-[44px] py-2.5 sm:py-3.5 bg-stone-900 border border-stone-800 hover:border-red-500/50 hover:text-white text-stone-400 font-bold text-[10px] sm:text-xs tracking-[0.4em] uppercase transition-all rounded-xl cursor-pointer active:scale-98 shadow-md flex items-center justify-center"
+                    className="small-btn mt-1.5 sm:mt-3 w-full min-h-[30px] sm:min-h-[40px] [@media(max-height:540px)]:min-h-[28px] [@media(max-height:540px)]:py-1 py-1.5 sm:py-2.5 bg-stone-900 border border-stone-800 hover:border-red-500/50 hover:text-white text-stone-400 font-bold text-[8.5px] sm:text-xs tracking-[0.25em] sm:tracking-[0.4em] uppercase transition-all rounded-lg sm:rounded-xl cursor-pointer active:scale-98 shadow-md flex items-center justify-center shrink-0"
                 >
                     Close Console
                 </button>

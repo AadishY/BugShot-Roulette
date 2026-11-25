@@ -41,7 +41,7 @@ export const getRandomItem = (isHardMode: boolean = false, isDealer: boolean = f
 
     if (isHardMode) {
         if (!isDealer) {
-            // Player Hard Mode: CONTRACT (7%), BEER (15%), CIGS (4%), GLASS (8%), CUFFS (8%), PHONE (8%), SAW (5%), INVERTER (8%), ADRENALINE (7%), CHOKE (5%), BIG_INVERTER (4%), LUCKYCHARM (4%), FLASHBANG (5%), CRUSHER (3%), MIRROR (4%), DECK_CARD (4%), TOTEM (1%), JACKPOT (1%)
+            // Player Hard Mode: TOTEM rare (0.4%), JACKPOT (0.6%)
             if (r < 7) return 'CONTRACT';
             if (r < 22) return 'BEER';
             if (r < 26) return 'CIGS';
@@ -58,69 +58,65 @@ export const getRandomItem = (isHardMode: boolean = false, isDealer: boolean = f
             if (r < 91) return 'CRUSHER';
             if (r < 95) return 'MIRROR';
             if (r < 99) return 'DECK_CARD';
-            if (r < 100) {
-                // equal rarity
-                if (Math.random() < 0.5) return 'TOTEM';
-                return 'JACKPOT';
-            }
-            return 'JACKPOT'; // fallback
+            if (r < 99.4) return 'TOTEM';
+            return 'JACKPOT';
         } else {
-            // Dealer Hard Mode (no contract, higher totem, no jackpot): BEER (15%), CIGS (4%), GLASS (8%), CUFFS (8%), PHONE (8%), SAW (5%), INVERTER (8%), ADRENALINE (7%), CHOKE (5%), BIG_INVERTER (4%), LUCKYCHARM (4%), FLASHBANG (5%), CRUSHER (3%), MIRROR (3%), DECK_CARD (3%), TOTEM (10%)
+            // Dealer Hard Mode: TOTEM rare (1.5%), shifted weight into tactical items
             if (r < 15) return 'BEER';
             if (r < 19) return 'CIGS';
-            if (r < 27) return 'GLASS';
-            if (r < 35) return 'CUFFS';
-            if (r < 43) return 'PHONE';
-            if (r < 48) return 'SAW';
-            if (r < 56) return 'INVERTER';
-            if (r < 63) return 'ADRENALINE';
-            if (r < 68) return 'CHOKE';
-            if (r < 72) return 'BIG_INVERTER';
-            if (r < 76) return 'LUCKYCHARM';
-            if (r < 81) return 'FLASHBANG';
-            if (r < 84) return 'CRUSHER';
-            if (r < 87) return 'MIRROR';
-            if (r < 90) return 'DECK_CARD';
+            if (r < 29) return 'GLASS';
+            if (r < 37) return 'CUFFS';
+            if (r < 45) return 'PHONE';
+            if (r < 50) return 'SAW';
+            if (r < 58) return 'INVERTER';
+            if (r < 65) return 'ADRENALINE';
+            if (r < 70) return 'CHOKE';
+            if (r < 74) return 'BIG_INVERTER';
+            if (r < 78) return 'LUCKYCHARM';
+            if (r < 83) return 'FLASHBANG';
+            if (r < 88) return 'CRUSHER';
+            if (r < 93.5) return 'MIRROR';
+            if (r < 98.5) return 'DECK_CARD';
             return 'TOTEM';
         }
     } else {
         if (!isDealer) {
-            // Player Normal Mode: CONTRACT (9%), BEER (10%), CIGS (9%), GLASS (7%), CUFFS (7%), PHONE (8%), SAW (5%), INVERTER (7%), ADRENALINE (7%), CHOKE (5%), BIG_INVERTER (4%), LUCKYCHARM (4%), FLASHBANG (5%), CRUSHER (3%), MIRROR (4%), DECK_CARD (3%), TOTEM (1%), JACKPOT (2%)
+            // Player Normal Mode: TOTEM rare (0.4%), JACKPOT (2.0%)
             if (r < 9) return 'CONTRACT';
             if (r < 19) return 'BEER';
             if (r < 28) return 'CIGS';
-            if (r < 35) return 'GLASS';
-            if (r < 42) return 'CUFFS';
-            if (r < 50) return 'PHONE';
-            if (r < 55) return 'SAW';
-            if (r < 62) return 'INVERTER';
-            if (r < 69) return 'ADRENALINE';
-            if (r < 74) return 'CHOKE';
-            if (r < 78) return 'BIG_INVERTER';
-            if (r < 82) return 'LUCKYCHARM';
-            if (r < 87) return 'FLASHBANG';
-            if (r < 90) return 'CRUSHER';
-            if (r < 94) return 'MIRROR';
-            if (r < 97) return 'DECK_CARD';
-            if (r < 98) return 'TOTEM';
+            if (r < 35.6) return 'GLASS';
+            if (r < 42.6) return 'CUFFS';
+            if (r < 50.6) return 'PHONE';
+            if (r < 55.6) return 'SAW';
+            if (r < 62.6) return 'INVERTER';
+            if (r < 69.6) return 'ADRENALINE';
+            if (r < 74.6) return 'CHOKE';
+            if (r < 78.6) return 'BIG_INVERTER';
+            if (r < 82.6) return 'LUCKYCHARM';
+            if (r < 87.6) return 'FLASHBANG';
+            if (r < 90.6) return 'CRUSHER';
+            if (r < 94.6) return 'MIRROR';
+            if (r < 97.6) return 'DECK_CARD';
+            if (r < 98.0) return 'TOTEM';
             return 'JACKPOT';
         } else {
-            // Dealer Normal Mode (no jackpot): BEER (15%), CIGS (14%), GLASS (7%), CUFFS (7%), PHONE (8%), SAW (5%), INVERTER (7%), ADRENALINE (7%), CHOKE (5%), BIG_INVERTER (4%), LUCKYCHARM (4%), FLASHBANG (5%), CRUSHER (3%), MIRROR (4%), DECK_CARD (4%), TOTEM (1%)
+            // Dealer Normal Mode: TOTEM rare (0.4%)
             if (r < 15) return 'BEER';
             if (r < 29) return 'CIGS';
-            if (r < 36) return 'GLASS';
-            if (r < 43) return 'CUFFS';
-            if (r < 51) return 'PHONE';
-            if (r < 56) return 'SAW';
-            if (r < 63) return 'INVERTER';
-            if (r < 70) return 'ADRENALINE';
-            if (r < 75) return 'CHOKE';
-            if (r < 79) return 'BIG_INVERTER';
-            if (r < 83) return 'LUCKYCHARM';
-            if (r < 88) return 'FLASHBANG';
-            if (r < 91) return 'CRUSHER';
-            if (r < 95) return 'MIRROR';
-            if (r < 99) return 'DECK_CARD';
+            if (r < 36.6) return 'GLASS';
+            if (r < 43.6) return 'CUFFS';
+            if (r < 51.6) return 'PHONE';
+            if (r < 56.6) return 'SAW';
+            if (r < 63.6) return 'INVERTER';
+            if (r < 70.6) return 'ADRENALINE';
+            if (r < 75.6) return 'CHOKE';
+            if (r < 79.6) return 'BIG_INVERTER';
+            if (r < 83.6) return 'LUCKYCHARM';
+            if (r < 88.6) return 'FLASHBANG';
+            if (r < 91.6) return 'CRUSHER';
+            if (r < 95.6) return 'MIRROR';
+            if (r < 99.6) return 'DECK_CARD';
             return 'TOTEM';
         }
     }
@@ -129,14 +125,13 @@ export const getRandomItem = (isHardMode: boolean = false, isDealer: boolean = f
 const getDealerCheatingItem = (hp: number): ItemType => {
     const r = Math.random();
 
-    // LOW HEALTH PANIC MODE (<= 2 HP)
-    // He wants to SURVIVE.
+    // LOW HEALTH PANIC MODE (<= 2 HP) — keep TOTEM rare (4%)
     if (hp <= 2) {
-        if (r < 0.35) return 'CIGS';       // 35% Cigs
-        if (r < 0.60) return 'TOTEM';      // 25% Totem
-        if (r < 0.70) return 'ADRENALINE';  // 10% Steal Cigs
-        if (r < 0.85) return 'CUFFS';       // 15% Cuffs
-        return 'INVERTER';                  // 15% Inverter
+        if (r < 0.40) return 'CIGS';       // 40% Cigs
+        if (r < 0.44) return 'TOTEM';      // 4% Totem
+        if (r < 0.54) return 'ADRENALINE'; // 10% Adrenaline
+        if (r < 0.80) return 'CUFFS';      // 26% Cuffs
+        return 'INVERTER';                 // 20% Inverter
     }
 
     // AGGRESSIVE MODE (hp > 2)
@@ -180,12 +175,12 @@ export const getContractLoot = (luckycharmsUsed: number = 0): ItemType[] => {
     return [item1, item2];
 };
 
-export const getMultiplayerDefaultWeights = (playerCount: number): Record<string, number> => {
+export const getMultiplayerDefaultWeights = (_playerCount: number): Record<string, number> => {
     return {
         CONTRACT: 9,
         BEER: 10,
         CIGS: 9,
-        GLASS: 7,
+        GLASS: 7.5,
         CUFFS: 7,
         PHONE: 8,
         SAW: 5,
@@ -199,8 +194,18 @@ export const getMultiplayerDefaultWeights = (playerCount: number): Record<string
         CRUSHER: 3,
         MIRROR: 4,
         DECK_CARD: 3,
-        TOTEM: 1,
+        TOTEM: 0.5,
         JACKPOT: 2
+    };
+};
+
+export const getSplitMultiplayerRoomSettings = (gameState?: Pick<GameState, 'roomSettings' | 'localSplitConfig'>): RoomSettings => {
+    return {
+        rounds: gameState?.localSplitConfig?.totalMatches ?? gameState?.roomSettings?.rounds ?? 3,
+        hp: gameState?.localSplitConfig?.startingHp ?? gameState?.roomSettings?.hp ?? 4,
+        itemsPerShipment: gameState?.localSplitConfig?.itemsPerShipment ?? gameState?.roomSettings?.itemsPerShipment ?? 4,
+        itemRule: gameState?.localSplitConfig?.itemRule ?? gameState?.roomSettings?.itemRule,
+        isAdvanced: false
     };
 };
 
@@ -293,8 +298,17 @@ export const generateLootBatch = (
         // Fallback if random keeps giving same unique item
         if (!item) {
             let fbTries = 0;
+            const fallbackWeights = roomSettings
+                ? {
+                    ...(roomSettings.isAdvanced && roomSettings.itemWeights
+                        ? roomSettings.itemWeights
+                        : getMultiplayerDefaultWeights(playerCount || 2)),
+                    REMOTE: 0
+                }
+                : null;
             do {
-                if (forDealer && isHardMode) item = getDealerCheatingItem(dealerHp);
+                if (fallbackWeights) item = getCustomWeightedItem(fallbackWeights);
+                else if (forDealer && isHardMode) item = getDealerCheatingItem(dealerHp);
                 else item = getRandomItem(isHardMode, forDealer);
                 fbTries++;
             } while ((item === 'REMOTE' || (UNIQUE_ITEMS.includes(item!) && ((existingItems || []).includes(item!) || batch.includes(item!)))) && fbTries < 20);
@@ -395,7 +409,7 @@ export const distributeItems = async (
 
     const generateLoot = (forDealer: boolean, currentItems: ItemType[]) => {
         if (gameState.isLocalSplit) {
-            // Both human players receive equal fair multiplayer loot weights
+            // Split multiplayer strictly uses 2-player multiplayer probability weights
             return generateLootBatch(
                 amount,
                 false,
@@ -405,7 +419,7 @@ export const distributeItems = async (
                 forDealer ? dealerLuckycharms : playerLuckycharms,
                 forDealer ? dealerHp : playerHp,
                 forDealer ? dealerMaxHp : playerMaxHp,
-                gameState.roomSettings,
+                getSplitMultiplayerRoomSettings(gameState),
                 2
             );
         }

@@ -146,6 +146,9 @@ export function updateItemAnimations(context: SceneContext, props: SceneProps, t
     const camera = context.camera;
     const animState = props.animState;
     const isPlayerTurn = props.turnOwner === 'PLAYER';
+    const isSplitMode = Boolean(props.gameState?.isLocalSplit);
+    const isSplitSeatB = isSplitMode && props.turnOwner === 'DEALER';
+    const isFirstPersonSeat = isPlayerTurn || isSplitSeatB;
 
     const easeOutBack = (t: number) => {
         const c1 = 1.70158;
@@ -205,9 +208,9 @@ export function updateItemAnimations(context: SceneContext, props: SceneProps, t
             if (activeItem) {
                 items.itemLight.position.copy(activeItem.position);
                 items.itemLight.position.y += 2;
-                items.itemLight.position.z += 3;
+                items.itemLight.position.z += isSplitSeatB ? -3 : 3;
 
-                const isDealerItem = activeItem.position.z < -2;
+                const isDealerItem = !isSplitSeatB && activeItem.position.z < -2;
                 const isHardMode = props.isHardMode;
 
                 if (isHardMode) {
@@ -255,17 +258,20 @@ export function updateItemAnimations(context: SceneContext, props: SceneProps, t
         if (glassTime >= 0 && glassTime < glassDuration) {
             items.itemGlass.visible = true;
 
-            if (isPlayerTurn) {
+            if (isFirstPersonSeat) {
+                items.itemGlass.scale.setScalar(1.0);
+                const zGlass = isSplitSeatB ? -6 : 6;
+                const yRot = isSplitSeatB ? Math.PI : 0;
                 if (glassTime < 0.5) {
                     const p = glassTime / 0.5;
                     const ease = easeOutBack(p);
-                    items.itemGlass.position.set(0.5 - ease * 0.3, -3 + ease * 4.5, 6);
-                    items.itemGlass.rotation.set(0, 0, 0);
+                    const xOffset = 0.5 - ease * 0.3;
+                    items.itemGlass.position.set(isSplitSeatB ? -xOffset : xOffset, -3 + ease * 4.5, zGlass);
+                    items.itemGlass.rotation.set(0, yRot, 0);
                 } else if (glassTime < 2.0) {
                     const hover = Math.sin((glassTime - 0.5) * 3);
-                    items.itemGlass.position.set(Math.sin(time) * 0.3, 1.5 + Math.cos(time * 2) * 0.1, 6);
-                    items.itemGlass.rotation.z = hover * 0.1;
-                    items.itemGlass.rotation.x = -0.2;
+                    items.itemGlass.position.set(Math.sin(time) * 0.3, 1.5 + Math.cos(time * 2) * 0.1, zGlass);
+                    items.itemGlass.rotation.set(isSplitSeatB ? 0.2 : -0.2, yRot, hover * 0.1);
                 } else {
                     items.itemGlass.position.y -= 0.15;
                     items.itemGlass.visible = false; // Early hide
@@ -311,24 +317,27 @@ export function updateItemAnimations(context: SceneContext, props: SceneProps, t
             // Larger for player
             items.itemBeer.scale.setScalar(2.2);
 
-            if (isPlayerTurn) {
+            if (isFirstPersonSeat) {
+                const zBeer = isSplitSeatB ? -5 : 5;
+                const yRot = isSplitSeatB ? Math.PI : 0;
+                const sideSign = isSplitSeatB ? -1 : 1;
                 if (drinkTime < 0.6) {
                     const p = drinkTime / 0.6;
                     const ease = easeOutBack(p);
-                    items.itemBeer.position.set(1.5 - ease * 1.2, -3 + ease * 4.5, 5);
-                    items.itemBeer.rotation.set(0, 0, ease * 0.2);
+                    items.itemBeer.position.set(sideSign * (1.5 - ease * 1.2), -3 + ease * 4.5, zBeer);
+                    items.itemBeer.rotation.set(0, yRot, sideSign * ease * 0.2);
                 } else if (drinkTime < 2.5) {
                     const sipPhase = (drinkTime - 0.6) / 1.9;
-                    const sipP = Math.min(1, sipPhase);
-                    // Shake with sip
-                    items.itemBeer.position.set(0.3 + (Math.random() - 0.5) * 0.02, 1.5 + Math.sin(drinkTime * 10) * 0.05, 5);
+                    const jitter = (Math.random() - 0.5) * 0.02;
+                    items.itemBeer.position.set(sideSign * 0.3 + jitter, 1.5 + Math.sin(drinkTime * 10) * 0.05, zBeer);
                     const tiltAmount = 0.4 + Math.sin(sipPhase * Math.PI) * 1.2;
-                    items.itemBeer.rotation.set(tiltAmount, 0, 0.1);
-                    camera.rotation.x = -0.2 * Math.sin(sipPhase * Math.PI); // Head tilt
+                    items.itemBeer.rotation.set(sideSign * tiltAmount, yRot, sideSign * 0.1);
+                    camera.rotateX(0.18 * Math.sin(sipPhase * Math.PI)); // Camera-space head tilt works at both Seat A & Seat B
                 } else {
-                    items.itemBeer.position.y -= 0.5; // Fast drop
-                    if (drinkTime > 2.8) items.itemBeer.visible = false;
-                    camera.rotation.x *= 0.9;
+                    const dropP = Math.min(1, (drinkTime - 2.5) / 0.35);
+                    items.itemBeer.position.set(sideSign * 0.3, 1.5 - dropP * 6.0, zBeer);
+                    items.itemBeer.rotation.set(sideSign * 0.4, yRot, sideSign * 0.1);
+                    if (drinkTime > 2.85) items.itemBeer.visible = false;
                 }
             } else {
                 // DEALER drinking beer - Organic Arc
@@ -364,13 +373,15 @@ export function updateItemAnimations(context: SceneContext, props: SceneProps, t
         }
         const rackTime = time - (scene.userData.rackStart || -999);
         if (rackTime < 0.4) {
-            context.gunGroup.position.z += (rackTime < 0.15) ? 0.35 : -0.15; // Snappier
-            context.gunGroup.rotation.z += (rackTime < 0.15) ? 0.15 : -0.05;
+            const rackDir = isSplitSeatB ? -1 : 1;
+            context.gunGroup.position.z += rackDir * ((rackTime < 0.15) ? 0.35 : -0.15); // Snappier
+            context.gunGroup.rotation.z += rackDir * ((rackTime < 0.15) ? 0.15 : -0.05);
         }
 
         // CIGARETTE
         const hasDebugHead = !!scene.userData.settings?.debugHeadModel && scene.userData.settings.debugHeadModel !== 'DEFAULT';
-        if (hasDebugHead) {
+        const suppressAiDealerCig = !isSplitMode && !props.gameState?.isMultiplayer && !isPlayerTurn && hasDebugHead;
+        if (suppressAiDealerCig) {
             items.itemCigs.visible = false;
             const smokePool = items.itemCigs.getObjectByName('SMOKE_POOL');
             if (smokePool) {
@@ -389,16 +400,19 @@ export function updateItemAnimations(context: SceneContext, props: SceneProps, t
             const healTime = time - (scene.userData.healStart || -999);
             if (healTime >= 0 && healTime < 4.0) {
                 items.itemCigs.visible = true;
-                if (isPlayerTurn) {
+                if (isFirstPersonSeat) {
+                    const zCigs = isSplitSeatB ? -4 : 4;
+                    const sideSign = isSplitSeatB ? -1 : 1;
+                    const baseYaw = isSplitSeatB ? Math.PI : 0;
                     items.itemCigs.scale.setScalar(2.0);
                     if (healTime < 0.8) {
                         const p = healTime / 0.8;
                         const ease = easeOutBack(p);
-                        items.itemCigs.position.set(2.0 * (1 - ease) + 0.5, -3 + ease * 4.5, 4);
-                        items.itemCigs.rotation.set(0.2, -0.3 + (1 - ease), 0);
+                        items.itemCigs.position.set(sideSign * (2.0 * (1 - ease) + 0.5), -3 + ease * 4.5, zCigs);
+                        items.itemCigs.rotation.set(sideSign * 0.2, baseYaw + sideSign * (-0.3 + (1 - ease)), 0);
                     } else if (healTime < 3.0) {
-                        items.itemCigs.position.set(0.5, 1.5 + Math.sin(time) * 0.05, 4);
-                        items.itemCigs.rotation.set(0.3 + Math.sin(time * 5) * 0.05, -0.2, 0.1);
+                        items.itemCigs.position.set(sideSign * 0.5, 1.5 + Math.sin(time) * 0.05, zCigs);
+                        items.itemCigs.rotation.set(sideSign * (0.3 + Math.sin(time * 5) * 0.05), baseYaw - sideSign * 0.2, sideSign * 0.1);
 
                         const tip = (items.itemCigs.userData._tipMesh || (items.itemCigs.userData._tipMesh = items.itemCigs.getObjectByName("CIG_TIP"))) as THREE.Mesh | undefined;
                         if (tip) {
@@ -414,14 +428,14 @@ export function updateItemAnimations(context: SceneContext, props: SceneProps, t
                                 if (offset < 2.0) {
                                     mesh.visible = true;
                                     (mesh.material as THREE.Material).opacity = 1.0 - (offset / 2.0);
-                                    mesh.position.set(0, offset * 0.5, offset * 0.2);
+                                    mesh.position.set(0, offset * 0.5, sideSign * offset * 0.2);
                                     mesh.scale.setScalar(1 + offset);
                                 } else {
                                     mesh.visible = false;
                                 }
                             }
                         }
-                        camera.rotation.z = Math.sin(time) * 0.005;
+                        camera.rotateZ(Math.sin(time) * 0.005);
                     } else {
                         items.itemCigs.visible = false;
                     }
@@ -511,6 +525,9 @@ export function updateItemAnimations(context: SceneContext, props: SceneProps, t
             if (isPlayerTurn) {
                 _v1.set(4, -4, 8); // Start wide
                 _v2.set(0, 2, -6);  // End at opponent
+            } else if (isSplitSeatB) {
+                _v1.set(-4, -4, -8);
+                _v2.set(0, 2, 6);
             } else {
                 _v1.set(-4, -2, -4.0); // Start wide
                 _v2.set(0, 0, 8); // End at player (on table/hands)
@@ -522,7 +539,7 @@ export function updateItemAnimations(context: SceneContext, props: SceneProps, t
                 items.itemCuffs.position.lerpVectors(_v1, _v2, ease);
                 items.itemCuffs.position.y += Math.sin(ease * Math.PI) * 4.0; // High arc
                 const scalePulse = 1.0 + Math.sin(ease * Math.PI) * 0.5;
-                items.itemCuffs.scale.setScalar((isPlayerTurn ? 1.0 : 1.3) * scalePulse);
+                items.itemCuffs.scale.setScalar((isFirstPersonSeat ? 1.0 : 1.3) * scalePulse);
                 items.itemCuffs.rotation.x = p * Math.PI * 4; // Fast spin
                 items.itemCuffs.rotation.z = p * Math.PI * 2;
             } else {
@@ -546,15 +563,18 @@ export function updateItemAnimations(context: SceneContext, props: SceneProps, t
             items.itemPhone.scale.setScalar(1.8);
             const screen = (items.itemPhone.userData._screenMesh || (items.itemPhone.userData._screenMesh = items.itemPhone.getObjectByName('PHONE_SCREEN'))) as THREE.Mesh | undefined;
 
-            if (isPlayerTurn) {
+            if (isFirstPersonSeat) {
+                const zPhone = isSplitSeatB ? -3.5 : 3.5;
+                const sideSign = isSplitSeatB ? -1 : 1;
+                const baseYaw = isSplitSeatB ? Math.PI : 0;
                 if (phoneTime < 0.6) {
                     const p = phoneTime / 0.6;
                     const ease = easeOutBack(p);
-                    items.itemPhone.position.set(0.2, -3 + ease * 4.5, 3.5);
-                    items.itemPhone.rotation.set(0.8 - ease * 0.3, 0, -0.2);
+                    items.itemPhone.position.set(sideSign * 0.2, -3 + ease * 4.5, zPhone);
+                    items.itemPhone.rotation.set(sideSign * (0.8 - ease * 0.3), baseYaw, sideSign * -0.2);
                 } else if (phoneTime < 3.0) {
-                    items.itemPhone.position.set(0.2, 1.5 + Math.sin(time * 2) * 0.03, 3.5);
-                    items.itemPhone.rotation.set(0.5, 0.1, -0.15);
+                    items.itemPhone.position.set(sideSign * 0.2, 1.5 + Math.sin(time * 2) * 0.03, zPhone);
+                    items.itemPhone.rotation.set(sideSign * 0.5, baseYaw + sideSign * 0.1, sideSign * -0.15);
                     if (screen) {
                         const glowPhase = (phoneTime - 0.5) / 2.5;
                         const mat = screen.material as THREE.MeshBasicMaterial;
@@ -605,15 +625,16 @@ export function updateItemAnimations(context: SceneContext, props: SceneProps, t
         const invTime = time - (scene.userData.inverterStart || -999);
         if (invTime < 2.5) {
             items.itemInverter.visible = true;
-            if (isPlayerTurn) {
+            if (isFirstPersonSeat) {
+                const zInv = isSplitSeatB ? -6 : 6;
                 if (invTime < 0.6) {
                     const p = invTime / 0.6;
                     const ease = easeOutBack(p);
-                    items.itemInverter.position.set(0, -3 + ease * 4.5, 6);
+                    items.itemInverter.position.set(0, -3 + ease * 4.5, zInv);
                     items.itemInverter.rotation.y = invTime * 15; // Fast spin
                 } else if (invTime < 2.0) {
                     const pulseY = 1.5 + Math.sin(invTime * 15) * 0.1;
-                    items.itemInverter.position.set(0, pulseY, 6);
+                    items.itemInverter.position.set(0, pulseY, zInv);
                     items.itemInverter.rotation.y += 0.5;
                     if (invTime > 0.8 && invTime < 1.5) {
                         scene.userData.cameraShake = 0.25;
@@ -668,19 +689,22 @@ export function updateItemAnimations(context: SceneContext, props: SceneProps, t
         const adrTime = time - (scene.userData.adrStart || -999);
         if (adrTime < 2.5) {
             items.itemAdrenaline.visible = true;
-            if (isPlayerTurn) {
+            if (isFirstPersonSeat) {
+                const zAdr = isSplitSeatB ? -7 : 7;
+                const sideSign = isSplitSeatB ? -1 : 1;
+                const baseYaw = isSplitSeatB ? Math.PI : 0;
                 if (adrTime < 0.5) {
                     const p = adrTime / 0.5;
                     const ease = easeOutBack(p);
-                    items.itemAdrenaline.position.set(2.0 - ease * 1.5, -3 + ease * 4.5, 7);
-                    items.itemAdrenaline.rotation.set(-0.5 + ease * 0.3, 0, -0.5 + ease * 0.3);
+                    items.itemAdrenaline.position.set(sideSign * (2.0 - ease * 1.5), -3 + ease * 4.5, zAdr);
+                    items.itemAdrenaline.rotation.set(sideSign * (-0.5 + ease * 0.3), baseYaw, sideSign * (-0.5 + ease * 0.3));
                 } else if (adrTime < 1.2) {
-                    items.itemAdrenaline.position.set(0.5, 1.5, 7);
-                    items.itemAdrenaline.rotation.set(-0.2, 0, -0.2);
+                    items.itemAdrenaline.position.set(sideSign * 0.5, 1.5, zAdr);
+                    items.itemAdrenaline.rotation.set(sideSign * -0.2, baseYaw, sideSign * -0.2);
                     // Jab effect
-                    items.itemAdrenaline.rotation.z = Math.PI / 2 * (1 - Math.exp(-(adrTime - 0.5) * 10));
+                    items.itemAdrenaline.rotation.z = sideSign * (Math.PI / 2) * (1 - Math.exp(-(adrTime - 0.5) * 10));
                 } else if (adrTime < 2.0) {
-                    items.itemAdrenaline.position.set(0.5, 1.2, 7);
+                    items.itemAdrenaline.position.set(sideSign * 0.5, 1.2, zAdr);
                     camera.position.x += (Math.random() - 0.5) * 0.2;
                     camera.position.y += (Math.random() - 0.5) * 0.15;
                 } else {
@@ -768,15 +792,16 @@ export function updateItemAnimations(context: SceneContext, props: SceneProps, t
         const bigInvTime = time - (scene.userData.bigInverterStart || -999);
         if (bigInvTime < 3.0) { // S Slightly longer
             items.itemBigInverter.visible = true;
-            if (isPlayerTurn) {
+            if (isFirstPersonSeat) {
+                const zBig = isSplitSeatB ? -6 : 6;
                 if (bigInvTime < 0.6) {
                     const p = bigInvTime / 0.6;
                     const ease = easeOutBack(p);
-                    items.itemBigInverter.position.set(0, -3 + ease * 4.5, 6);
+                    items.itemBigInverter.position.set(0, -3 + ease * 4.5, zBig);
                     items.itemBigInverter.rotation.y = bigInvTime * 20; // Faster spin
                 } else if (bigInvTime < 2.5) {
                     const pulseY = 1.5 + Math.sin(bigInvTime * 25) * 0.15;
-                    items.itemBigInverter.position.set(0, pulseY, 6);
+                    items.itemBigInverter.position.set(0, pulseY, zBig);
                     items.itemBigInverter.rotation.y += 0.8;
 
                     if (bigInvTime > 0.8 && bigInvTime < 2.0) {
@@ -824,17 +849,18 @@ export function updateItemAnimations(context: SceneContext, props: SceneProps, t
         const conTime = time - (scene.userData.contractStart || -999);
         if (conTime < 3.0) {
             items.itemContract.visible = true;
-            if (isPlayerTurn) {
+            if (isFirstPersonSeat) {
+                const zCon = isSplitSeatB ? -5 : 5;
+                const sideSign = isSplitSeatB ? -1 : 1;
+                const baseYaw = isSplitSeatB ? Math.PI : 0;
                 if (conTime < 0.8) {
                     const p = conTime / 0.8;
                     const ease = easeOutBack(p);
-                    items.itemContract.position.set(0.5, -3 + ease * 4.0, 5);
-                    items.itemContract.rotation.set(0.1, 0, 0);
+                    items.itemContract.position.set(sideSign * 0.5, -3 + ease * 4.0, zCon);
+                    items.itemContract.rotation.set(sideSign * 0.1, baseYaw, 0);
                 } else if (conTime < 2.2) {
-                    items.itemContract.position.set(0.5, 1.0 + Math.sin(time) * 0.05, 5);
-                    // Signing effect? Or dissolving?
-                    // Let's make it burn / dissolve
-                    items.itemContract.rotation.y = Math.sin(time);
+                    items.itemContract.position.set(sideSign * 0.5, 1.0 + Math.sin(time) * 0.05, zCon);
+                    items.itemContract.rotation.y = baseYaw + Math.sin(time);
                     items.itemContract.scale.setScalar(2.5 - (conTime - 0.8) * 0.5);
                 } else {
                     items.itemContract.visible = false;
@@ -871,15 +897,16 @@ export function updateItemAnimations(context: SceneContext, props: SceneProps, t
         if (lcTime < 2.5) {
             items.itemLuckycharm.visible = true;
             items.itemLuckycharm.scale.setScalar(2.0);
-            if (isPlayerTurn) {
+            if (isFirstPersonSeat) {
+                const zLc = isSplitSeatB ? -6 : 6;
                 if (lcTime < 0.6) {
                     const p = lcTime / 0.6;
                     const ease = easeOutBack(p);
-                    items.itemLuckycharm.position.set(0, -3 + ease * 4.5, 6);
+                    items.itemLuckycharm.position.set(0, -3 + ease * 4.5, zLc);
                     items.itemLuckycharm.rotation.y = lcTime * 15; // Spin up
                 } else if (lcTime < 2.0) {
                     const pulseY = 1.5 + Math.sin(lcTime * 10) * 0.1;
-                    items.itemLuckycharm.position.set(0, pulseY, 6);
+                    items.itemLuckycharm.position.set(0, pulseY, zLc);
                     items.itemLuckycharm.rotation.y += 0.05;
                 } else {
                     items.itemLuckycharm.visible = false;
@@ -926,11 +953,12 @@ export function updateItemAnimations(context: SceneContext, props: SceneProps, t
                 audioManager.playSound('flashbang');
             }
 
-            if (isPlayerTurn) {
+            if (isFirstPersonSeat) {
+                const zFb = isSplitSeatB ? -6.0 : 6.0;
                 if (fbTime < 0.6) {
                     const p = fbTime / 0.6;
                     const ease = easeOutBack(p);
-                    items.itemFlashbang.position.set(0, -3 + ease * 4.5, 6.0);
+                    items.itemFlashbang.position.set(0, -3 + ease * 4.5, zFb);
                     items.itemFlashbang.rotation.y = fbTime * 15;
                     items.itemFlashbang.rotation.x = 0;
                     items.itemFlashbang.rotation.z = 0;
@@ -938,7 +966,7 @@ export function updateItemAnimations(context: SceneContext, props: SceneProps, t
                     // Cook/shake in front of camera
                     const shakeX = Math.sin(fbTime * 50) * 0.03;
                     const shakeY = Math.cos(fbTime * 45) * 0.03;
-                    items.itemFlashbang.position.set(shakeX, 1.5 + shakeY, 6.0);
+                    items.itemFlashbang.position.set(shakeX, 1.5 + shakeY, zFb);
                     items.itemFlashbang.rotation.y += 0.1;
                     items.itemFlashbang.rotation.x = 0;
                     items.itemFlashbang.rotation.z = 0;
@@ -979,29 +1007,32 @@ export function updateItemAnimations(context: SceneContext, props: SceneProps, t
             items.itemCrusher.visible = true;
 
             // Handle positions and movements
-            if (isPlayerTurn) {
-                // Player crushes Dealer's item. Hammer slams down on Dealer's side.
+            if (isFirstPersonSeat) {
+                const crushSign = isSplitSeatB ? -1 : 1;
+                const yaw = isSplitSeatB ? Math.PI : 0;
                 if (crusherTime < 0.8) {
                     // Wind up: rise up and tilt back
                     const p = crusherTime / 0.8;
                     const ease = easeOutBack(p);
-                    items.itemCrusher.position.set(0, -3 + ease * 7.5, -3.0 - p * 3.0); // Rise and pull back
-                    items.itemCrusher.rotation.x = -p * 1.5; // Tilt back
-                    items.itemCrusher.rotation.y = 0;
+                    items.itemCrusher.position.set(0, -3 + ease * 7.5, crushSign * (-3.0 - p * 3.0));
+                    items.itemCrusher.rotation.x = -p * 1.5;
+                    items.itemCrusher.rotation.y = yaw;
                     items.itemCrusher.rotation.z = 0;
                 } else if (crusherTime < 1.1) {
                     // Hover and shake before slamming
                     const shakeX = Math.sin(crusherTime * 60) * 0.05;
                     const shakeY = Math.cos(crusherTime * 50) * 0.05;
-                    items.itemCrusher.position.set(shakeX, 4.5 + shakeY, -6.0);
+                    items.itemCrusher.position.set(shakeX, 4.5 + shakeY, crushSign * -6.0);
                     items.itemCrusher.rotation.x = -1.5;
+                    items.itemCrusher.rotation.y = yaw;
                 } else if (crusherTime < 1.35) {
                     // Fast slam down!
                     const p = (crusherTime - 1.1) / 0.25;
                     const curY = 4.5 - p * 4.4;
-                    const curZ = -6.0 - p * 1.5;
+                    const curZ = crushSign * (-6.0 - p * 1.5);
                     items.itemCrusher.position.set(0, curY, curZ);
-                    items.itemCrusher.rotation.x = -1.5 + p * 2.0; // Rotate forward to hit flat
+                    items.itemCrusher.rotation.x = -1.5 + p * 2.0;
+                    items.itemCrusher.rotation.y = yaw;
 
                     // Detonate slam at impact point (t = 1.3s or p = 0.8)
                     if (crusherTime >= 1.3 && !scene.userData.crusherSlammed) {
@@ -1012,8 +1043,9 @@ export function updateItemAnimations(context: SceneContext, props: SceneProps, t
                 } else {
                     // Stay down on the table, then fade out (slowly sink)
                     const p = (crusherTime - 1.35) / 0.85;
-                    items.itemCrusher.position.set(0, 0.1 - p * 4.0, -7.5);
+                    items.itemCrusher.position.set(0, 0.1 - p * 4.0, crushSign * -7.5);
                     items.itemCrusher.rotation.x = 0.5;
+                    items.itemCrusher.rotation.y = yaw;
                 }
             } else {
                 // Dealer crushes Player's item. Hammer slams down on Player's side.
@@ -1130,8 +1162,7 @@ export function updateItemAnimations(context: SceneContext, props: SceneProps, t
             items.itemMirror.rotation.y = time * 8.0;
             items.itemMirror.rotation.x = Math.sin(time * 4.0) * 0.3;
             
-            const isPlayerTarget = isPlayerTurn;
-            const targetZ = isPlayerTarget ? 5.2 : -2.2;
+            const targetZ = isSplitSeatB ? -5.2 : (isPlayerTurn ? 5.2 : -2.2);
             
             if (mirrorTime < 0.6) {
                 const p = mirrorTime / 0.6;
@@ -1161,7 +1192,7 @@ export function updateItemAnimations(context: SceneContext, props: SceneProps, t
             scene.userData.lastJackpot = jackpotTriggerVal;
             scene.userData.jackpotStart = time;
             items.itemJackpot.visible = true;
-            items.itemJackpot.position.set(0, -1.2, 5.2);
+            items.itemJackpot.position.set(0, -1.2, isSplitSeatB ? -5.2 : 5.2);
             // Reset lever arm position
             if (items.itemJackpot.userData.arm) {
                 items.itemJackpot.userData.arm.rotation.z = Math.PI / 6;
@@ -1172,8 +1203,8 @@ export function updateItemAnimations(context: SceneContext, props: SceneProps, t
         if (jackpotTime < 4.0) {
             items.itemJackpot.visible = true;
             
-            const isPlayerTarget = isPlayerTurn;
-            const targetZ = isPlayerTarget ? 5.2 : -2.2;
+            const targetZ = isSplitSeatB ? -5.2 : (isPlayerTurn ? 5.2 : -2.2);
+            items.itemJackpot.rotation.y = isSplitSeatB ? Math.PI : 0;
             
             // Rise up
             if (jackpotTime < 0.6) {

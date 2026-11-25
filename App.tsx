@@ -23,9 +23,16 @@ import { MultiplayerSelection } from './components/MultiplayerSelection';
 import { generateLootBatch, resolveJackpotOutcome } from './utils/game/inventory';
 import { randomInt } from './utils/gameUtils';
 import { ShellType, ItemType, TurnOwner, AimTarget, LocalSplitConfig } from './types';
-import { resolveSplitSetupConfig } from './utils/splitMode';
+import { resolveSplitSetupConfig, buildLocalSplitMatchPlayers } from './utils/splitMode';
 import { stripHeavySyncGameState, computeSyncFingerprint } from './utils/syncOptimizer';
 import { getCurrentUserProfile, UserProfile } from './utils/firebaseService';
+import {
+  MENU_LAUNCH_DURATION_MS,
+  GAME_REVEAL_DURATION_MS,
+  resolveTransitionDelay,
+  shouldTriggerGameReveal,
+} from './utils/cinematicTransition';
+import { ExperimentalTargetOwner, isExperimentalTurnActive } from './utils/three/experimentalAim';
 
 const urlParams = new URLSearchParams(window.location.search);
 
@@ -82,6 +89,9 @@ export default function App() {
   const lastSyncHashRef = useRef<string>('');
   const syncTrailingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const gameStartTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const menuLaunchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const gameRevealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevAppStateForRevealRef = useRef<AppState>('MENU');
   const audioInitializedRef = useRef(false);
 
   // Refs for latest game/multiplayer state inside long-lived socket & round callbacks
@@ -103,6 +113,14 @@ export default function App() {
       if (syncTrailingTimerRef.current) {
         clearTimeout(syncTrailingTimerRef.current);
         syncTrailingTimerRef.current = null;
+      }
+      if (menuLaunchTimerRef.current) {
+        clearTimeout(menuLaunchTimerRef.current);
+        menuLaunchTimerRef.current = null;
+      }
+      if (gameRevealTimerRef.current) {
+        clearTimeout(gameRevealTimerRef.current);
+        gameRevealTimerRef.current = null;
       }
     };
   }, []);
@@ -406,25 +424,55 @@ export default function App() {
   const [isScoreboardOpen, setIsScoreboardOpen] = useState(false);
   const [showPerformancePopup, setShowPerformancePopup] = useState(false);
   const [detectedLowFps, setDetectedLowFps] = useState(0);
+  const [isMenuLaunching, setIsMenuLaunching] = useState(false);
+  const [showGameReveal, setShowGameReveal] = useState(false);
+  const [experimentalHoverLabel, setExperimentalHoverLabel] = useState<string | null>(null);
 
   const [settings, setSettings] = useState<GameSettings>(() => {
     const saved = localStorage.getItem('aadish_roulette_settings');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        // Always reset debug mode on fresh session
+        // Always reset debug mode on fresh session and default experimental direct aim to false unless explicitly saved true
         parsed.debugMode = false;
+        parsed.debugPlayer1Model = parsed.debugPlayer1Model || 'DEFAULT';
+        parsed.experimentalDirectAim = Boolean(parsed.experimentalDirectAim);
         return parsed;
       } catch (e) { }
     }
     return DEFAULT_SETTINGS;
   });
 
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+
   useEffect(() => {
     localStorage.setItem('aadish_roulette_settings', JSON.stringify(settings));
     audioManager.updateVolumes(settings);
 
   }, [settings]);
+
+  useEffect(() => {
+    if (appState !== 'GAME' || !settings.experimentalDirectAim || (spGame.cameraView !== 'GUN' && spGame.isProcessing)) {
+      setExperimentalHoverLabel(null);
+    }
+  }, [appState, settings.experimentalDirectAim, spGame.cameraView, spGame.isProcessing]);
+
+  useEffect(() => {
+    const prev = prevAppStateForRevealRef.current;
+    prevAppStateForRevealRef.current = appState;
+    if (!shouldTriggerGameReveal(prev, appState) || isUltraPerf(settingsRef.current)) {
+      return;
+    }
+    setShowGameReveal(true);
+    if (gameRevealTimerRef.current) {
+      clearTimeout(gameRevealTimerRef.current);
+    }
+    gameRevealTimerRef.current = setTimeout(() => {
+      gameRevealTimerRef.current = null;
+      setShowGameReveal(false);
+    }, GAME_REVEAL_DURATION_MS + 50);
+  }, [appState]);
 
   // Handle Music Logic
   useEffect(() => {
@@ -493,14 +541,35 @@ export default function App() {
     audioManager.playMusic('menu');
   }, []);
 
+  const triggerMenuLaunchTransition = useCallback((onReady: () => void) => {
+    if (menuLaunchTimerRef.current) {
+      clearTimeout(menuLaunchTimerRef.current);
+      menuLaunchTimerRef.current = null;
+    }
+    const delay = resolveTransitionDelay(MENU_LAUNCH_DURATION_MS, isUltraPerf(settingsRef.current));
+    if (delay === 0 || appStateRef.current !== 'MENU') {
+      setIsMenuLaunching(false);
+      onReady();
+      return;
+    }
+    setIsMenuLaunching(true);
+    menuLaunchTimerRef.current = setTimeout(() => {
+      menuLaunchTimerRef.current = null;
+      setIsMenuLaunching(false);
+      onReady();
+    }, delay);
+  }, []);
+
   const handleStartSP = useCallback((name: string, hardMode: boolean = false) => {
     pendingSplitConfigRef.current = null;
     setIsHardModeSelected(hardMode);
     if (name) spGameRef.current.setPlayerName(name);
 
     audioManager.stopMusic();
-    setAppState('LOADING_SP');
-  }, []);
+    triggerMenuLaunchTransition(() => {
+      setAppState('LOADING_SP');
+    });
+  }, [triggerMenuLaunchTransition]);
 
   const handleStartLocalSplit = useCallback((config: LocalSplitConfig) => {
     pendingSplitConfigRef.current = config;
@@ -519,18 +588,22 @@ export default function App() {
       localSplitConfig: config,
     }));
     audioManager.stopMusic();
-    setAppState('LOADING_SP');
-  }, []);
+    triggerMenuLaunchTransition(() => {
+      setAppState('LOADING_SP');
+    });
+  }, [triggerMenuLaunchTransition]);
 
   const handleStartMP = useCallback((name: string) => {
     pendingSplitConfigRef.current = null;
     spGameRef.current.setPlayerName(name);
-    setAppState('LOADING_MP');
-    mp.connect(name);
-  }, [mp.connect]);
+    triggerMenuLaunchTransition(() => {
+      setAppState('LOADING_MP');
+      mp.connect(name);
+    });
+  }, [mp.connect, triggerMenuLaunchTransition]);
 
   // Broadcast local actions to server
-  const handleFireShot = useCallback(async (target: TurnOwner) => {
+  const handleFireShot = useCallback(async (target: TurnOwner, bypassMobileConfirm: boolean = false) => {
     const game = spGameRef.current;
     const currentRoom = mpRoomRef.current;
     const currentPlayerId = mpPlayerIdRef.current;
@@ -558,7 +631,7 @@ export default function App() {
       const intendedAim: AimTarget = target === 'PLAYER'
         ? 'SELF'
         : (target === 'PLAYER3' ? 'LEFT' : (target === 'PLAYER4' ? 'RIGHT' : 'OPPONENT'));
-      if (isMobile && game.aimTarget !== intendedAim) {
+      if (!bypassMobileConfirm && isMobile && game.aimTarget !== intendedAim) {
         game.setAimTarget(intendedAim);
         game.setCameraView('GUN');
         if (currentRoom) {
@@ -577,7 +650,7 @@ export default function App() {
     const intendedAim: AimTarget = target === activeShooter ? 'SELF' : 'OPPONENT';
     const hoverTargetId = target === 'PLAYER' ? myId : opponentId;
 
-    if (isMobile && game.aimTarget !== intendedAim) {
+    if (!bypassMobileConfirm && isMobile && game.aimTarget !== intendedAim) {
       game.setAimTarget(intendedAim);
       game.setCameraView('GUN');
       
@@ -592,6 +665,10 @@ export default function App() {
     }
     await game.fireShot(activeShooter, target);
   }, [mp.sendImmediateAction]);
+
+  const handleExperimentalShoot = useCallback((target: ExperimentalTargetOwner) => {
+    void handleFireShot(target, true);
+  }, [handleFireShot]);
 
   const handleUseItem = useCallback(async (index: number, targetPlayerId?: string) => {
     const game = spGameRef.current;
@@ -1761,8 +1838,12 @@ export default function App() {
   const onLoadingComplete = useCallback(() => {
     const currentAppState = appStateRef.current;
     if (currentAppState === 'LOADING_SP') {
-      // Only mutate settings if a debug head model override was actually active (avoids re-initing ThreeScene)
-      setSettings(prev => (prev.debugHeadModel === 'DEFAULT' ? prev : { ...prev, debugHeadModel: 'DEFAULT' }));
+      // Only mutate settings if a debug head/body model override was actually active (avoids re-initing ThreeScene)
+      setSettings(prev => (
+        prev.debugHeadModel === 'DEFAULT' && (prev.debugPlayer1Model ?? 'DEFAULT') === 'DEFAULT'
+          ? prev
+          : { ...prev, debugHeadModel: 'DEFAULT', debugPlayer1Model: 'DEFAULT' }
+      ));
       if (pendingSplitConfigRef.current) {
         const splitConfig = pendingSplitConfigRef.current;
         pendingSplitConfigRef.current = null;
@@ -1781,10 +1862,21 @@ export default function App() {
   }, []);
 
   const handleBackToMenu = useCallback(() => {
+    if (menuLaunchTimerRef.current) {
+      clearTimeout(menuLaunchTimerRef.current);
+      menuLaunchTimerRef.current = null;
+    }
+    if (gameRevealTimerRef.current) {
+      clearTimeout(gameRevealTimerRef.current);
+      gameRevealTimerRef.current = null;
+    }
     if (gameStartTimeoutRef.current) {
       clearTimeout(gameStartTimeoutRef.current);
       gameStartTimeoutRef.current = null;
     }
+    setIsMenuLaunching(false);
+    setShowGameReveal(false);
+    setExperimentalHoverLabel(null);
     setAbortedByName(null);
     setNameTags([]);
     mp.disconnect();
@@ -2022,7 +2114,30 @@ export default function App() {
     }
   }, []);
 
-  const handleGunClick = useCallback(() => {}, []);
+  const handleGunClick = useCallback(() => {
+    if (!settingsRef.current.experimentalDirectAim) return;
+    if (appStateRef.current !== 'GAME') return;
+    const game = spGameRef.current;
+    if (game.cameraView === 'GUN') return;
+    const isRecoveringNow = Boolean(
+      game.animState.playerHit ||
+      game.animState.playerRecovering ||
+      game.animState.dealerDropping ||
+      game.animState.dealerRecovering
+    );
+    const active = isExperimentalTurnActive({
+      phase: game.gameState.phase,
+      turnOwner: game.gameState.turnOwner,
+      isLocalSplit: game.gameState.isLocalSplit,
+      isMultiplayer: game.gameState.isMultiplayer,
+      isMyTurn: game.gameState.turnOwner === 'PLAYER',
+      isProcessing: game.isProcessing,
+      isRecovering: isRecoveringNow,
+    });
+    if (!active) return;
+    audioManager.playSound('click');
+    handlePickupGun();
+  }, [handlePickupGun]);
 
   const handleLowPerformance = useCallback((fps: number) => {
     if (sessionStorage.getItem('aadish_roulette_perf_warning_shown') === 'true') return;
@@ -2195,22 +2310,7 @@ export default function App() {
         isMultiplayer: true,
         isLocalSplit: true,
         result: p1Won ? 'WIN' : 'LOSS',
-        mpPlayers: [
-          {
-            name: p1Name,
-            id: 'local-split-p1',
-            isHost: true,
-            isMe: true,
-            result: p1Won ? ('WIN' as const) : ('LOSS' as const),
-          },
-          {
-            name: p2Name,
-            id: 'local-split-p2',
-            isHost: false,
-            isMe: false,
-            result: p1Won ? ('LOSS' as const) : ('WIN' as const),
-          }
-        ]
+        mpPlayers: buildLocalSplitMatchPlayers(p1Name, p2Name, spGame.gameState.winner),
       };
     }
     if (spGame.gameState.isMultiplayer && mp.room) {
@@ -2317,6 +2417,11 @@ export default function App() {
           onLowPerformance={handleLowPerformance}
           isPaused={false}
           onUpdateNameTags={handleUpdateNameTags}
+          isProcessing={spGame.isProcessing}
+          isRecovering={spGame.animState.playerHit || spGame.animState.playerRecovering || spGame.animState.dealerDropping || spGame.animState.dealerRecovering}
+          onExperimentalShoot={handleExperimentalShoot}
+          onExperimentalHover={setExperimentalHoverLabel}
+          onHoverTarget={handleHoverTarget}
         />
       )}
 
@@ -2367,6 +2472,8 @@ export default function App() {
         mpMyPlayerId={mp.playerId}
         stickers={stickersList}
         hideIntro={appState !== 'MENU'}
+        experimentalHoverLabel={experimentalHoverLabel}
+        isMenuLaunching={isMenuLaunching}
       />
 
       {appState === 'LOBBY' && mp.room && (
@@ -2663,6 +2770,22 @@ export default function App() {
       {/* Crisp HTML Player Name Tags (Multiplayer & Local Split) */}
       {appState === 'GAME' && (spGame.gameState.isMultiplayer || spGame.gameState.isLocalSplit) && nameTags.length > 0 && (
         <NameTagsOverlay nameTags={nameTags} isMobileNameTag={isMobileNameTag} />
+      )}
+
+      {/* Cinematic Menu -> Loading blackout exit curtain */}
+      {isMenuLaunching && (
+        <div
+          data-testid="cinematic-exit-curtain"
+          className="fixed inset-0 z-[295] bg-black pointer-events-auto cinematic-blackout-in"
+        />
+      )}
+
+      {/* Cinematic Loading -> Game / Lobby reveal curtain */}
+      {showGameReveal && (
+        <div
+          data-testid="cinematic-reveal-curtain"
+          className="fixed inset-0 z-[290] bg-black pointer-events-none cinematic-game-reveal"
+        />
       )}
     </div>
   );

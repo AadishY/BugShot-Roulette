@@ -560,7 +560,8 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
                                     .filter(item => item !== 'REMOTE')
                                     .map((item) => {
                                         const weight = itemWeights[item] !== undefined ? itemWeights[item] : defaultWeights[item];
-                                        const percentage = totalWeight > 0 ? Math.round((weight / totalWeight) * 100) : 0;
+                                        const rawPct = totalWeight > 0 ? (weight / totalWeight) * 100 : 0;
+                                        const pctLabel = weight <= 0 ? '0%' : (rawPct < 1 ? '<1%' : `${Math.round(rawPct)}%`);
                                         return (
                                             <div key={item} className="flex flex-col gap-1 p-2 bg-stone-950 border border-stone-850 rounded-lg">
                                                 <div className="flex justify-between items-center min-w-0 gap-1 text-left">
@@ -568,17 +569,18 @@ export const MultiplayerLobby: React.FC<MultiplayerLobbyProps> = ({
                                                         {item.replace('_', ' ')}
                                                     </span>
                                                     <span className="text-[7.5px] sm:text-[8px] font-mono text-cyan-400 font-bold shrink-0 tabular-nums">
-                                                        {weight === 0 ? '0%' : `${percentage}%`}
+                                                        {pctLabel}
                                                     </span>
                                                 </div>
                                                 <input
                                                     type="range"
                                                     min="0"
                                                     max="10"
+                                                    step="0.5"
                                                     value={weight}
                                                     disabled={!isHost}
                                                     onChange={(e) => {
-                                                        const val = parseInt(e.target.value, 10);
+                                                        const val = parseFloat(e.target.value);
                                                         const currentWeights = roomSettings.itemWeights || defaultWeights;
                                                         persistAndEmitSettings({
                                                             ...roomSettings,

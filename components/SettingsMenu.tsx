@@ -366,6 +366,37 @@ export const SettingsMenu: React.FC<SettingsMenuProps> = ({ settings, onUpdateSe
                         </div>
                     </div>
 
+                    {/* Experimental Group */}
+                    <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                            <h3 className="text-amber-400 font-extrabold tracking-[0.2em] uppercase text-[9px] sm:text-[10px]">Experimental</h3>
+                            <div className="h-[1px] flex-1 bg-amber-900/30" />
+                        </div>
+
+                        <div className="flex items-center justify-between gap-3 p-2.5 sm:p-3 bg-amber-950/15 border border-amber-800/35 rounded-xl">
+                            <div className="min-w-0">
+                                <span className="text-stone-200 font-bold tracking-widest text-[9px] sm:text-[10px] uppercase block">
+                                    Direct 3D Gun &amp; Table Aiming
+                                </span>
+                                <span className="text-[8px] sm:text-[9px] text-stone-400 font-bold tracking-wider block mt-0.5 leading-relaxed">
+                                    Removes Grab &amp; Shoot HUD buttons. Click the shotgun to pick it up, click the front opponent to shoot them, or click the bottom of the table to shoot yourself.
+                                </span>
+                            </div>
+                            <button
+                                type="button"
+                                data-testid="toggle-experimental-direct-aim"
+                                onClick={() => handleChange('experimentalDirectAim', !settings.experimentalDirectAim)}
+                                className={`px-3.5 py-2 min-h-[44px] text-[9px] sm:text-[10px] font-black tracking-widest uppercase transition-all rounded-lg border active:scale-95 cursor-pointer flex items-center justify-center shrink-0 touch-manipulation ${
+                                    settings.experimentalDirectAim
+                                        ? 'bg-amber-600 hover:bg-amber-500 text-stone-950 border-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.35)]'
+                                        : 'bg-transparent hover:bg-stone-900 text-stone-400 border-stone-800'
+                                }`}
+                            >
+                                {settings.experimentalDirectAim ? 'Enabled' : 'Disabled'}
+                            </button>
+                        </div>
+                    </div>
+
                     {/* Debug Group */}
                     {(!isMultiplayer || (() => {
                         const loggedInUser = localStorage.getItem('aadish_roulette_logged_in_user');

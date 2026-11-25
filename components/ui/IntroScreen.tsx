@@ -58,6 +58,7 @@ import { GAME_VERSION, ANNOUNCEMENT_VERSION } from '../../constants';
 import { setUserActiveStats, clearActiveStatsSession, emptyStats } from '../../utils/statsManager';
 import { useOnlineStatus } from '../../hooks/useOnlineStatus';
 import { showAlert } from '../../utils/modalService';
+import { computeMenuScaleMetrics } from '../../utils/menuLayout';
 
 const AUTH_QUOTES = [
     "The odds are equal, the consequences are not.",
@@ -104,6 +105,7 @@ interface IntroScreenProps {
     onOpenScoreboard: () => void;
     onStartMultiplayer: (name: string, roomId?: string) => void;
     onStartLocalSplit?: (config: LocalSplitConfig) => void;
+    isLaunching?: boolean;
 }
 
 interface BindSoulOverlayProps {
@@ -180,6 +182,8 @@ interface DesktopCommsPanelProps {
     currentUser: UserProfile | null;
     isOnline: boolean;
     reduceEffects: boolean;
+    isCompact: boolean;
+    viewportWidth: number;
     notificationCounts: NotificationCounts;
     friends: FriendUser[];
     onOpenMessages: (targetUsername: string | null) => void;
@@ -191,6 +195,8 @@ const DesktopCommsPanel: React.FC<DesktopCommsPanelProps> = React.memo(({
     currentUser,
     isOnline,
     reduceEffects,
+    isCompact,
+    viewportWidth,
     notificationCounts,
     friends,
     onOpenMessages,
@@ -233,10 +239,23 @@ const DesktopCommsPanel: React.FC<DesktopCommsPanelProps> = React.memo(({
     }, [currentUser, friends, lastSigRef.current]);
 
     const blurXl = '';
+    const isNarrowCorner = viewportWidth < 680;
+    const maxVisibleFriends = isNarrowCorner ? 1 : (isCompact ? 2 : 4);
+    const cornerOffset = isCompact ? 8 : 18;
 
     return (
-        <div className="absolute top-4 left-4 sm:top-6 sm:left-6 z-[60] hidden sm:flex flex-col items-start gap-2.5 pointer-events-auto">
+        <div
+            className={`absolute z-[60] hidden min-[500px]:flex flex-col items-start pointer-events-auto ${
+                isCompact ? 'gap-1.5' : 'gap-2.5'
+            }`}
+            style={{
+                top: `max(env(safe-area-inset-top, 0px), ${cornerOffset}px)`,
+                left: `max(env(safe-area-inset-left, 0px), ${cornerOffset}px)`
+            }}
+        >
             <button
+                type="button"
+                data-testid="menu-messages-btn"
                 onClick={() => {
                     audioManager.playSound('click');
                     if (!isOnline) {
@@ -249,72 +268,78 @@ const DesktopCommsPanel: React.FC<DesktopCommsPanelProps> = React.memo(({
                     }
                     onOpenMessages(null);
                 }}
-                className={`group/msg flex items-center gap-2.5 bg-stone-950/90 hover:bg-stone-900/95 border border-stone-800 hover:border-cyan-500/60 py-2 px-3.5 rounded-2xl ${blurXl} hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer text-left shadow-[0_8px_30px_rgba(0,0,0,0.6)] ${
-                    !isOnline ? 'opacity-50 grayscale' : ''
-                }`}
+                className={`group/msg small-btn flex items-center bg-stone-950/95 hover:bg-stone-900/95 border border-stone-800 hover:border-cyan-500/60 ${blurXl} hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer text-left shadow-[0_8px_30px_rgba(0,0,0,0.6)] touch-manipulation ${
+                    isNarrowCorner ? 'gap-1.5 py-1 px-2 rounded-xl' : isCompact ? 'gap-2 py-1.5 px-2.5 rounded-xl' : 'gap-2.5 py-2 px-3.5 rounded-2xl'
+                } ${!isOnline ? 'opacity-85 border-stone-700/80' : ''}`}
                 title={!isOnline ? "Offline - Internet required for comms" : "Direct Messages & Encrypted Comms"}
             >
                 <div className="relative">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center p-0.5 transition-all ${
+                    <div className={`rounded-full flex items-center justify-center p-0.5 transition-all ${
+                        isNarrowCorner ? 'w-5 h-5' : isCompact ? 'w-6 h-6' : 'w-8 h-8'
+                    } ${
                         notificationCounts.total > 0
                             ? 'bg-red-955/60 ring-2 ring-red-500 shadow-[0_0_15px_rgba(239,68,68,0.5)]'
                             : 'bg-cyan-955/30 ring-1 ring-cyan-700/40 group-hover/msg:ring-cyan-400 group-hover/msg:bg-cyan-955/60 shadow-[0_0_12px_rgba(6,182,212,0.15)]'
                     }`}>
-                        <Mail className={`w-4 h-4 transition-transform ${
+                        <Mail className={`${isNarrowCorner ? 'w-2.5 h-2.5' : isCompact ? 'w-3 h-3' : 'w-4 h-4'} transition-transform ${
                             notificationCounts.total > 0
                                 ? 'text-red-400 group-hover/msg:scale-110'
                                 : 'text-cyan-400 group-hover/msg:scale-110'
                         }`} />
                     </div>
                     {notificationCounts.total > 0 ? (
-                        <span className={`absolute -top-1.5 -right-1.5 px-1.5 py-0.2 bg-red-600 border border-red-300 text-white text-[9px] font-black rounded-full shadow-[0_0_12px_rgba(220,38,38,0.9)] ${reduceEffects ? '' : 'animate-pulse'} flex items-center justify-center min-w-[18px]`}>
+                        <span className={`absolute -top-1.5 -right-1.5 px-1 py-0.2 bg-red-600 border border-red-300 text-white ${isCompact ? 'text-[7.5px] min-w-[14px]' : 'text-[9px] min-w-[18px]'} font-black rounded-full shadow-[0_0_12px_rgba(220,38,38,0.9)] ${reduceEffects ? '' : 'animate-pulse'} flex items-center justify-center`}>
                             {notificationCounts.total > 9 ? '9+' : notificationCounts.total}
                         </span>
                     ) : !isOnline ? (
-                        <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-red-500 border-2 border-stone-950 shadow-sm" />
+                        <span className={`absolute bottom-0 right-0 rounded-full bg-red-500 border-2 border-stone-950 shadow-sm ${isCompact ? 'w-2 h-2' : 'w-2.5 h-2.5'}`} />
                     ) : (
-                        <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-cyan-400 border-2 border-stone-950 shadow-sm ${reduceEffects ? '' : 'animate-pulse'}`} />
+                        <span className={`absolute bottom-0 right-0 rounded-full bg-cyan-400 border-2 border-stone-950 shadow-sm ${isCompact ? 'w-2 h-2' : 'w-2.5 h-2.5'} ${reduceEffects ? '' : 'animate-pulse'}`} />
                     )}
                 </div>
                 <div className="flex flex-col">
-                    <span className={`text-[12px] font-mono font-bold tracking-wider leading-tight transition-colors ${
+                    <span className={`${isNarrowCorner ? 'text-[9.5px]' : isCompact ? 'text-[10px]' : 'text-[12px]'} font-mono font-bold tracking-wider leading-tight transition-colors whitespace-nowrap ${
                         notificationCounts.total > 0 ? 'text-red-300 group-hover/msg:text-white' : 'text-stone-200 group-hover/msg:text-cyan-300'
                     }`}>
-                        Messages {!isOnline && <span className="text-[7.5px] text-red-400 uppercase font-mono tracking-widest">[OFF]</span>}
+                        Messages {!isOnline && <span className="text-[7px] text-red-400 uppercase font-mono tracking-widest">[OFF]</span>}
                     </span>
                     {notificationCounts.total > 0 && isOnline && (
-                        <span className="text-[8px] font-mono font-bold text-red-400 tracking-wider">
+                        <span className={`${isCompact ? 'text-[7px]' : 'text-[8px]'} font-mono font-bold text-red-400 tracking-wider`}>
                             {notificationCounts.unreadDMs > 0 && `${notificationCounts.unreadDMs} New DM`}
                             {notificationCounts.unreadDMs > 0 && notificationCounts.pendingRequests > 0 && ' • '}
-                            {notificationCounts.pendingRequests > 0 && `${notificationCounts.pendingRequests} Request`}
+                            {notificationCounts.pendingRequests > 0 && `${notificationCounts.pendingRequests} Req`}
                         </span>
                     )}
                 </div>
             </button>
 
             {currentUser && isOnline && (
-                <div className={`w-56 bg-stone-950/90 hover:bg-stone-900/90 border border-stone-800 rounded-2xl p-2.5 ${blurXl} shadow-[0_8px_30px_rgba(0,0,0,0.6)] transition-all animate-in fade-in duration-200`}>
-                    <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-stone-850 px-1">
-                        <div className="flex items-center gap-1.5">
-                            <span className={`w-2 h-2 rounded-full ${onlineFriends.length > 0 ? `bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] ${reduceEffects ? '' : 'animate-pulse'}` : 'bg-stone-500'}`} />
-                            <span className="text-[9px] font-mono font-bold tracking-wider text-stone-300 uppercase">
+                <div className={`${
+                    isNarrowCorner ? 'w-32 p-1 rounded-xl' : isCompact ? 'w-36 p-1.5 rounded-xl' : 'w-56 p-2.5 rounded-2xl'
+                } bg-stone-950/90 hover:bg-stone-900/90 border border-stone-800 ${blurXl} shadow-[0_8px_30px_rgba(0,0,0,0.6)] transition-all animate-in fade-in duration-200`}>
+                    <div className={`flex items-center justify-between border-b border-stone-850 ${
+                        isCompact ? 'pb-1 mb-1 px-0.5' : 'pb-1.5 mb-1.5 px-1'
+                    }`}>
+                        <div className="flex items-center gap-1 min-w-0">
+                            <span className={`rounded-full shrink-0 ${isCompact ? 'w-1.5 h-1.5' : 'w-2 h-2'} ${onlineFriends.length > 0 ? `bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] ${reduceEffects ? '' : 'animate-pulse'}` : 'bg-stone-500'}`} />
+                            <span className={`${isCompact ? 'text-[7.5px]' : 'text-[9px]'} font-mono font-bold tracking-wider text-stone-300 uppercase truncate`}>
                                 ONLINE FRIENDS
                             </span>
                         </div>
-                        <span className="text-[9px] font-mono font-black text-cyan-400 bg-cyan-955/40 px-1.5 py-0.2 rounded border border-cyan-800/40">
+                        <span className={`${isCompact ? 'text-[7.5px] px-1' : 'text-[9px] px-1.5'} font-mono font-black text-cyan-400 bg-cyan-955/40 py-0.2 rounded border border-cyan-800/40 shrink-0`}>
                             {onlineFriends.length}
                         </span>
                     </div>
 
                     {onlineFriends.length === 0 ? (
-                        <div className="py-1.5 px-1 text-center">
-                            <p className="text-[8.5px] font-mono text-stone-500 uppercase tracking-wider">
+                        <div className={isCompact ? 'py-1 px-0.5 text-center' : 'py-1.5 px-1 text-center'}>
+                            <p className={`${isCompact ? 'text-[7px]' : 'text-[8.5px]'} font-mono text-stone-500 uppercase tracking-wider`}>
                                 {friends.length === 0 ? 'NO FRIENDS ADDED' : 'NO FRIENDS ONLINE'}
                             </p>
                         </div>
                     ) : (
-                        <div className="flex flex-col gap-1 max-h-56 overflow-y-auto pr-0.5 custom-scrollbar">
-                            {(isFriendsExpanded ? onlineFriends : onlineFriends.slice(0, 4)).map((friend) => {
+                        <div className={`flex flex-col gap-0.5 ${isCompact ? 'max-h-24' : 'max-h-56 gap-1'} overflow-y-auto pr-0.5 custom-scrollbar`}>
+                            {(isFriendsExpanded ? onlineFriends : onlineFriends.slice(0, maxVisibleFriends)).map((friend) => {
                                 const presence = presenceClient.getPresence(friend.username);
                                 const status = presence?.status || 'online';
                                 const isMatch = status === 'in_match';
@@ -334,7 +359,9 @@ const DesktopCommsPanel: React.FC<DesktopCommsPanelProps> = React.memo(({
                                             audioManager.playSound('click');
                                             onOpenMessages(friend.username);
                                         }}
-                                        className="group/f flex items-center gap-2 p-1.5 rounded-xl hover:bg-white/5 border border-transparent hover:border-white/10 transition-all text-left cursor-pointer w-full"
+                                        className={`group/f small-btn flex items-center hover:bg-white/5 border border-transparent hover:border-white/10 transition-all text-left cursor-pointer w-full ${
+                                            isCompact ? 'gap-1.5 p-1 rounded-lg' : 'gap-2 p-1.5 rounded-xl'
+                                        }`}
                                         title={`Direct message @${friend.displayName || friend.username} (${statusLabel})`}
                                     >
                                         <div className="relative shrink-0">
@@ -343,35 +370,37 @@ const DesktopCommsPanel: React.FC<DesktopCommsPanelProps> = React.memo(({
                                                 alt={friend.displayName || friend.username}
                                                 loading="lazy"
                                                 decoding="async"
-                                                className="w-6 h-6 rounded-full object-cover bg-stone-900 border border-white/10"
+                                                className={`${isCompact ? 'w-4 h-4' : 'w-6 h-6'} rounded-full object-cover bg-stone-900 border border-white/10`}
                                                 onError={(e) => {
                                                     (e.target as HTMLImageElement).src = '/image/favicon/android-chrome-192x192.png';
                                                 }}
                                             />
-                                            <span className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-stone-950 ${dotColor}`} />
+                                            <span className={`absolute -bottom-0.5 -right-0.5 ${isCompact ? 'w-1.5 h-1.5' : 'w-2 h-2'} rounded-full border border-stone-950 ${dotColor}`} />
                                         </div>
                                         <div className="flex flex-col min-w-0 flex-1">
-                                            <span className="text-[10px] font-mono font-bold text-stone-200 group-hover/f:text-white truncate">
+                                            <span className={`${isCompact ? 'text-[8.5px]' : 'text-[10px]'} font-mono font-bold text-stone-200 group-hover/f:text-white truncate leading-tight`}>
                                                 {friend.displayName || friend.username}
                                             </span>
-                                            <span className={`text-[7.5px] font-mono font-medium ${statusTextColor} tracking-wide truncate`}>
+                                            <span className={`${isCompact ? 'text-[6.5px]' : 'text-[7.5px]'} font-mono font-medium ${statusTextColor} tracking-wide truncate leading-tight`}>
                                                 {statusLabel}
                                             </span>
                                         </div>
-                                        <MessageSquare className="w-3 h-3 text-stone-500 group-hover/f:text-cyan-400 opacity-0 group-hover/f:opacity-100 transition-opacity shrink-0 mr-0.5" />
+                                        {!isCompact && (
+                                            <MessageSquare className="w-3 h-3 text-stone-500 group-hover/f:text-cyan-400 opacity-0 group-hover/f:opacity-100 transition-opacity shrink-0 mr-0.5" />
+                                        )}
                                     </button>
                                 );
                             })}
 
-                            {onlineFriends.length > 4 && (
+                            {onlineFriends.length > maxVisibleFriends && (
                                 <button
                                     onClick={() => {
                                         audioManager.playSound('click');
                                         setIsFriendsExpanded((prev) => !prev);
                                     }}
-                                    className="flex items-center justify-center gap-1 py-1 px-2 mt-0.5 rounded-lg bg-white/5 hover:bg-white/10 text-[8px] font-mono font-bold text-stone-400 hover:text-white transition-all cursor-pointer border border-white/5"
+                                    className="small-btn flex items-center justify-center gap-1 py-0.5 px-1.5 mt-0.5 rounded-lg bg-white/5 hover:bg-white/10 text-[7.5px] font-mono font-bold text-stone-400 hover:text-white transition-all cursor-pointer border border-white/5"
                                 >
-                                    <span>{isFriendsExpanded ? 'COLLAPSE' : `+${onlineFriends.length - 4} MORE`}</span>
+                                    <span>{isFriendsExpanded ? 'COLLAPSE' : `+${onlineFriends.length - maxVisibleFriends} MORE`}</span>
                                     {isFriendsExpanded ? <ChevronUp className="w-2.5 h-2.5" /> : <ChevronDown className="w-2.5 h-2.5" />}
                                 </button>
                             )}
@@ -388,6 +417,8 @@ interface DesktopProfileBadgeProps {
     currentUser: UserProfile | null;
     isDeveloper: boolean;
     reduceEffects: boolean;
+    isCompact: boolean;
+    viewportWidth: number;
     onOpenAdmin: () => void;
     onOpenProfile: () => void;
     onOpenLogin: () => void;
@@ -397,116 +428,155 @@ const DesktopProfileBadge: React.FC<DesktopProfileBadgeProps> = React.memo(({
     currentUser,
     isDeveloper,
     reduceEffects,
+    isCompact,
+    viewportWidth,
     onOpenAdmin,
     onOpenProfile,
     onOpenLogin
 }) => {
     const blurXl = '';
     const blurMd = '';
+    const isNarrowCorner = viewportWidth < 680;
+    const cornerOffset = isCompact ? 8 : 18;
+
+    const profileCard = currentUser ? (
+        <button
+            type="button"
+            data-testid="menu-profile-btn"
+            onClick={() => {
+                audioManager.playSound('click');
+                onOpenProfile();
+            }}
+            className={`group/profile small-btn flex items-center bg-stone-950/95 hover:bg-stone-900 border border-stone-800 hover:border-stone-700 ${blurXl} shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer text-left touch-manipulation ${
+                isNarrowCorner ? 'gap-1.5 p-1 pl-1.5 pr-2 rounded-xl' : isCompact ? 'gap-2 p-1 pl-1.5 pr-2.5 rounded-xl' : 'gap-3 p-1.5 pl-2.5 pr-4 rounded-2xl'
+            }`}
+            title="View and Edit Profile"
+        >
+            <div className="relative shrink-0">
+                <div className={`rounded-full overflow-hidden bg-stone-900 ring-1 ring-stone-700 p-0.5 ${
+                    isCompact ? 'w-7 h-7' : 'w-9 h-9'
+                }`}>
+                    <img
+                        src={resolvePlayerAvatar(currentUser)}
+                        alt={currentUser.username}
+                        loading="lazy"
+                        decoding="async"
+                        className="w-full h-full object-cover rounded-full group-hover/profile:scale-105 transition-transform"
+                    />
+                </div>
+                <span className={`absolute bottom-0 right-0 rounded-full border-2 border-stone-950 shadow-sm ${
+                    isCompact ? 'w-2 h-2' : 'w-2.5 h-2.5'
+                } ${
+                    isLegacyUpstashUser(currentUser) ? `bg-amber-400 ${reduceEffects ? '' : 'animate-ping'}` : 'bg-emerald-500'
+                }`} />
+            </div>
+            <div className="flex flex-col text-left">
+                <div className="flex items-center gap-1">
+                    <span className={`${isCompact ? 'text-[10px]' : 'text-[11px]'} text-stone-200 font-mono font-bold uppercase tracking-wider leading-none`}>
+                        {currentUser.displayName || currentUser.username}
+                    </span>
+                    {isLegacyUpstashUser(currentUser) ? (
+                        <span className={`px-1 py-0.2 bg-amber-955 border border-amber-600 text-amber-300 text-[6px] font-black rounded uppercase ${reduceEffects ? '' : 'animate-pulse'}`}>
+                            LINK GMAIL
+                        </span>
+                    ) : currentUser.isDeveloper ? (
+                        <span className={`px-1 py-0.2 bg-red-955 border border-red-800 text-red-400 ${isCompact ? 'text-[6px]' : 'text-[7px]'} font-bold tracking-widest rounded uppercase`}>
+                            DEV
+                        </span>
+                    ) : (
+                        <span className="px-1 py-0.2 bg-stone-900 border border-stone-800 text-stone-400 text-[6px] font-bold rounded uppercase">
+                            PLAYER
+                        </span>
+                    )}
+                </div>
+                <div className={`flex items-center gap-1 ${isCompact ? 'mt-0.5' : 'mt-1'}`}>
+                    <span className={`${isCompact ? 'text-[7.5px]' : 'text-[8.5px]'} text-stone-400 font-bold uppercase tracking-wider leading-none font-mono`}>
+                        {getPlayerId(currentUser)}
+                    </span>
+                </div>
+            </div>
+        </button>
+    ) : null;
+
+    const adminButton = isDeveloper ? (
+        <button
+            onClick={() => {
+                audioManager.playSound('click');
+                onOpenAdmin();
+            }}
+            className={`group/admin small-btn flex items-center bg-gradient-to-r from-red-955/95 via-stone-900 to-red-955/95 hover:from-red-900 hover:to-red-950 border border-red-600/80 hover:border-red-400 ${blurXl} shadow-[0_0_18px_rgba(220,38,38,0.4)] hover:shadow-[0_0_30px_rgba(220,38,38,0.65)] hover:scale-[1.03] active:scale-[0.98] transition-all cursor-pointer text-left ${
+                isCompact ? 'gap-2 p-1 pl-2 pr-2.5 rounded-xl' : 'gap-2.5 p-1.5 pl-3 pr-3.5 rounded-2xl'
+            }`}
+            title="Developer System Admin Control Center"
+        >
+            <div className="relative shrink-0">
+                <div className={`rounded-full bg-red-955 border border-red-600/70 flex items-center justify-center text-red-400 group-hover/admin:text-white transition-colors ${
+                    isCompact ? 'w-6 h-6' : 'w-8 h-8'
+                }`}>
+                    <ShieldAlert size={isCompact ? 13 : 16} className="group-hover/admin:rotate-12 transition-transform duration-300" />
+                </div>
+                <span className={`absolute -top-0.5 -right-0.5 flex ${isCompact ? 'h-1.5 w-1.5' : 'h-2 w-2'}`}>
+                    {!reduceEffects && (
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                    )}
+                    <span className={`relative inline-flex rounded-full bg-red-500 ${isCompact ? 'h-1.5 w-1.5' : 'h-2 w-2'}`} />
+                </span>
+            </div>
+            <div className="flex flex-col text-left">
+                <div className="flex items-center gap-1">
+                    <span className={`${isCompact ? 'text-[9.5px]' : 'text-[11px]'} text-red-200 font-mono font-black uppercase tracking-wider leading-none`}>
+                        ADMIN
+                    </span>
+                    <span className="px-1 py-0.2 bg-red-650 text-white text-[6px] font-black tracking-widest rounded uppercase">
+                        ROOT
+                    </span>
+                </div>
+                <span className={`${isCompact ? 'text-[6.5px]' : 'text-[7.5px]'} text-red-400 font-mono tracking-wider font-semibold mt-0.5`}>
+                    DEV CONSOLE
+                </span>
+            </div>
+        </button>
+    ) : null;
 
     return (
-        <div className="absolute top-4 right-4 sm:top-6 sm:right-6 z-[60] hidden sm:flex items-center gap-2.5">
+        <div
+            className="absolute z-[60] hidden min-[500px]:flex"
+            style={{
+                top: `max(env(safe-area-inset-top, 0px), ${cornerOffset}px)`,
+                right: `max(env(safe-area-inset-right, 0px), ${cornerOffset}px)`
+            }}
+        >
             {currentUser ? (
-                <div className="flex items-center gap-2">
-                    {isDeveloper && (
-                        <button
-                            onClick={() => {
-                                audioManager.playSound('click');
-                                onOpenAdmin();
-                            }}
-                            className={`group/admin flex items-center gap-2.5 bg-gradient-to-r from-red-955/95 via-stone-900 to-red-955/95 hover:from-red-900 hover:to-red-950 border border-red-600/80 hover:border-red-400 p-1.5 pl-3 pr-3.5 rounded-2xl ${blurXl} shadow-[0_0_22px_rgba(220,38,38,0.45)] hover:shadow-[0_0_35px_rgba(220,38,38,0.7)] hover:scale-[1.03] active:scale-[0.98] transition-all cursor-pointer text-left`}
-                            title="Developer System Admin Control Center"
-                        >
-                            <div className="relative">
-                                <div className="w-8 h-8 rounded-full bg-red-955 border border-red-600/70 flex items-center justify-center text-red-400 group-hover/admin:text-white transition-colors">
-                                    <ShieldAlert size={16} className="group-hover/admin:rotate-12 transition-transform duration-300" />
-                                </div>
-                                <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2">
-                                    {!reduceEffects && (
-                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-                                    )}
-                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
-                                </span>
-                            </div>
-                            <div className="flex flex-col text-left">
-                                <div className="flex items-center gap-1.5">
-                                    <span className="text-[11px] text-red-200 font-mono font-black uppercase tracking-wider leading-none">
-                                        ADMIN
-                                    </span>
-                                    <span className="px-1 py-0.2 bg-red-650 text-white text-[6.5px] font-black tracking-widest rounded uppercase">
-                                        ROOT
-                                    </span>
-                                </div>
-                                <span className="text-[7.5px] text-red-400 font-mono tracking-wider font-semibold mt-0.5">
-                                    DEV CONSOLE
-                                </span>
-                            </div>
-                        </button>
-                    )}
-                    <button
-                        onClick={() => {
-                            audioManager.playSound('click');
-                            onOpenProfile();
-                        }}
-                        className={`group/profile flex items-center gap-3 bg-stone-950/95 hover:bg-stone-900 border border-stone-800 hover:border-stone-700 p-1.5 pl-2.5 pr-4 rounded-2xl ${blurXl} shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer text-left`}
-                        title="View and Edit Profile"
-                    >
-                        <div className="relative">
-                            <div className="w-9 h-9 rounded-full overflow-hidden bg-stone-900 ring-1 ring-stone-700 p-0.5">
-                                <img
-                                    src={resolvePlayerAvatar(currentUser)}
-                                    alt={currentUser.username}
-                                    loading="lazy"
-                                    decoding="async"
-                                    className="w-full h-full object-cover rounded-full group-hover/profile:scale-105 transition-transform"
-                                />
-                            </div>
-                            <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-stone-950 shadow-sm ${
-                                isLegacyUpstashUser(currentUser) ? `bg-amber-400 ${reduceEffects ? '' : 'animate-ping'}` : 'bg-emerald-500'
-                            }`} />
-                        </div>
-                        <div className="flex flex-col text-left">
-                            <div className="flex items-center gap-1.5">
-                                <span className="text-[11px] text-stone-200 font-mono font-bold uppercase tracking-wider leading-none">
-                                    {currentUser.displayName || currentUser.username}
-                                </span>
-                                {isLegacyUpstashUser(currentUser) ? (
-                                    <span className={`px-1.5 py-0.2 bg-amber-955 border border-amber-600 text-amber-300 text-[6.5px] font-black rounded uppercase ${reduceEffects ? '' : 'animate-pulse'}`}>
-                                        LINK GMAIL
-                                    </span>
-                                ) : currentUser.isDeveloper ? (
-                                    <span className="px-1.5 py-0.2 bg-red-955 border border-red-800 text-red-400 text-[7px] font-bold tracking-widest rounded uppercase">
-                                        DEV
-                                    </span>
-                                ) : (
-                                    <span className="px-1 py-0.2 bg-stone-900 border border-stone-800 text-stone-400 text-[6.5px] font-bold rounded uppercase">
-                                        PLAYER
-                                    </span>
-                                )}
-                            </div>
-                            <div className="flex items-center gap-1.5 mt-1">
-                                <span className="text-[8.5px] text-stone-400 font-bold uppercase tracking-wider leading-none font-mono">
-                                    {getPlayerId(currentUser)}
-                                </span>
-                            </div>
-                        </div>
-                    </button>
-                </div>
+                isCompact ? (
+                    <div className="flex flex-col items-end gap-1.5">
+                        {profileCard}
+                        {adminButton}
+                    </div>
+                ) : (
+                    <div className="flex items-center gap-2">
+                        {adminButton}
+                        {profileCard}
+                    </div>
+                )
             ) : (
                 <button
+                    type="button"
+                    data-testid="menu-signin-btn"
                     onClick={() => {
                         audioManager.playSound('click');
                         onOpenLogin();
                     }}
-                    className={`group/signin px-4 py-2 sm:px-5 sm:py-2.5 bg-gradient-to-r from-red-955/80 to-stone-950/90 border border-red-700/50 text-red-400 hover:text-white hover:border-red-500 font-mono font-black text-[9px] sm:text-[10px] tracking-[0.2em] rounded-xl ${blurMd} transition-all shadow-[0_0_25px_rgba(220,38,38,0.15)] hover:shadow-[0_0_40px_rgba(220,38,38,0.3)] hover:scale-105 active:scale-95 uppercase flex items-center gap-2 cursor-pointer small-btn`}
+                    className={`group/signin small-btn bg-gradient-to-r from-red-955/80 to-stone-950/95 border border-red-700/60 text-red-400 hover:text-white hover:border-red-500 font-mono font-black tracking-[0.16em] rounded-xl ${blurMd} transition-all shadow-[0_0_25px_rgba(220,38,38,0.15)] hover:shadow-[0_0_40px_rgba(220,38,38,0.3)] hover:scale-105 active:scale-95 uppercase flex items-center gap-2 cursor-pointer whitespace-nowrap touch-manipulation ${
+                        isNarrowCorner ? 'px-2.5 py-1.5 text-[8px]' : isCompact ? 'px-3 py-1.5 text-[8.5px]' : 'px-4 py-2 sm:px-5 sm:py-2.5 text-[9px] sm:text-[10px]'
+                    }`}
                 >
-                    <span className="relative flex h-1.5 w-1.5 sm:h-2 sm:w-2">
+                    <span className="relative flex h-1.5 w-1.5 sm:h-2 sm:w-2 shrink-0">
                         {!reduceEffects && (
                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75" />
                         )}
                         <span className="relative inline-flex rounded-full h-1.5 w-1.5 sm:h-2 sm:w-2 bg-red-650" />
                     </span>
-                    Sign In / Register
+                    <span>Sign In / Register</span>
                 </button>
             )}
         </div>
@@ -539,8 +609,10 @@ const MobileStatusRow: React.FC<MobileStatusRowProps> = React.memo(({
     onOpenAdmin,
     onOfflineToast
 }) => (
-    <div className="sm:hidden mb-3 flex justify-center items-center gap-2 shrink-0 flex-wrap">
+    <div className="min-[500px]:hidden mb-2 flex flex-wrap justify-center items-start gap-1.5 max-w-full shrink-0">
         <button
+            type="button"
+            data-testid="mobile-messages-btn"
             onClick={() => {
                 audioManager.playSound('click');
                 if (!isOnline) {
@@ -553,9 +625,9 @@ const MobileStatusRow: React.FC<MobileStatusRowProps> = React.memo(({
                 }
                 onOpenMessages();
             }}
-            className={`flex items-center gap-2 bg-stone-950/90 border min-h-[44px] py-1.5 px-3 rounded-xl shadow-md cursor-pointer transition-all text-left touch-manipulation active:scale-95 ${
+            className={`small-btn flex items-center gap-1.5 bg-stone-950/95 border min-h-[36px] py-1 px-2.5 rounded-xl shadow-md cursor-pointer transition-all text-left touch-manipulation active:scale-95 ${
                 !isOnline
-                    ? 'border-stone-850 opacity-50 grayscale'
+                    ? 'border-stone-700 opacity-85'
                     : notificationCounts.total > 0
                     ? 'border-red-600/80 bg-red-955/20'
                     : 'border-stone-800 hover:border-cyan-800/60'
@@ -563,94 +635,100 @@ const MobileStatusRow: React.FC<MobileStatusRowProps> = React.memo(({
             title={!isOnline ? "Offline - Internet required for comms" : "Direct Messages & Encrypted Comms"}
         >
             <div className="relative">
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
+                <div className={`w-5 h-5 rounded-full flex items-center justify-center ${
                     notificationCounts.total > 0
                         ? 'bg-red-955/60 ring-1 ring-red-500'
                         : 'bg-cyan-955/40 ring-1 ring-cyan-700/50'
                 }`}>
-                    <Mail className={`w-3.5 h-3.5 ${notificationCounts.total > 0 ? 'text-red-400' : 'text-cyan-400'}`} />
+                    <Mail className={`w-3 h-3 ${notificationCounts.total > 0 ? 'text-red-400' : 'text-cyan-400'}`} />
                 </div>
                 {notificationCounts.total > 0 ? (
                     <span className={`absolute -top-1.5 -right-1.5 px-1 py-0.2 bg-red-600 border border-red-300 text-white text-[8px] font-black rounded-full ${reduceEffects ? '' : 'animate-pulse'} min-w-[16px] text-center`}>
                         {notificationCounts.total > 9 ? '9+' : notificationCounts.total}
                     </span>
                 ) : (
-                    <span className="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-cyan-400 border border-stone-950" />
+                    <span className={`absolute bottom-0 right-0 w-2 h-2 rounded-full border border-stone-950 ${!isOnline ? 'bg-red-500' : 'bg-cyan-400'}`} />
                 )}
             </div>
-            <span className={`text-[11px] font-mono font-bold tracking-wider leading-none ${
+            <span className={`text-[10px] font-mono font-bold tracking-wider leading-none whitespace-nowrap ${
                 notificationCounts.total > 0 ? 'text-red-300' : 'text-stone-200'
             }`}>
-                Messages{notificationCounts.total > 0 ? ` (${notificationCounts.total})` : ''}
+                Messages{notificationCounts.total > 0 ? ` (${notificationCounts.total})` : ''}{!isOnline ? ' [OFF]' : ''}
             </span>
         </button>
 
-        {currentUser ? (
-            <button
-                onClick={() => {
-                    audioManager.playSound('click');
-                    onOpenProfileOrMigration();
-                }}
-                className="flex items-center gap-2 bg-stone-950/90 border border-stone-800 min-h-[44px] p-1.5 pl-2 pr-3 rounded-xl shadow-md cursor-pointer hover:border-stone-700 transition-all text-left touch-manipulation active:scale-95"
-            >
-                <div className="relative">
-                    <img
-                        src={resolvePlayerAvatar(currentUser)}
-                        alt={currentUser.username}
-                        loading="lazy"
-                        decoding="async"
-                        className="w-6 h-6 rounded-full bg-stone-900 border border-stone-750 object-cover shrink-0"
-                    />
-                    <span className={`absolute bottom-0 right-0 w-2 h-2 rounded-full border border-stone-950 ${
-                        isLegacyUpstashUser(currentUser) ? 'bg-amber-400' : 'bg-emerald-500'
-                    }`} />
-                </div>
-                <div className="flex flex-col text-left">
-                    <div className="flex items-center gap-1">
-                        <span className="text-[10px] text-stone-200 font-mono font-bold uppercase tracking-wider leading-none truncate max-w-[90px]">
-                            {currentUser.displayName || currentUser.username}
-                        </span>
-                        {isLegacyUpstashUser(currentUser) ? (
-                            <span className="px-1 py-0.2 bg-amber-955 border border-amber-600 text-amber-300 text-[5.5px] font-black rounded uppercase">LINK</span>
-                        ) : currentUser.isDeveloper ? (
-                            <span className="px-1 py-0.2 bg-red-955 border border-red-800 text-red-400 text-[6px] font-bold rounded uppercase">DEV</span>
-                        ) : null}
+        <div className="flex flex-col items-end gap-1">
+            {currentUser ? (
+                <button
+                    type="button"
+                    data-testid="mobile-profile-btn"
+                    onClick={() => {
+                        audioManager.playSound('click');
+                        onOpenProfileOrMigration();
+                    }}
+                    className="small-btn flex items-center gap-2 bg-stone-950/90 border border-stone-800 min-h-[38px] p-1 pl-2 pr-2.5 rounded-xl shadow-md cursor-pointer hover:border-stone-700 transition-all text-left touch-manipulation active:scale-95"
+                >
+                    <div className="relative">
+                        <img
+                            src={resolvePlayerAvatar(currentUser)}
+                            alt={currentUser.username}
+                            loading="lazy"
+                            decoding="async"
+                            className="w-6 h-6 rounded-full bg-stone-900 border border-stone-750 object-cover shrink-0"
+                        />
+                        <span className={`absolute bottom-0 right-0 w-2 h-2 rounded-full border border-stone-950 ${
+                            isLegacyUpstashUser(currentUser) ? 'bg-amber-400' : 'bg-emerald-500'
+                        }`} />
                     </div>
-                    <span className="text-[7px] text-stone-500 font-bold uppercase tracking-widest leading-none mt-0.5 font-mono">
-                        {getPlayerId(currentUser)}
+                    <div className="flex flex-col text-left">
+                        <div className="flex items-center gap-1">
+                            <span className="text-[10px] text-stone-200 font-mono font-bold uppercase tracking-wider leading-none truncate max-w-[90px]">
+                                {currentUser.displayName || currentUser.username}
+                            </span>
+                            {isLegacyUpstashUser(currentUser) ? (
+                                <span className="px-1 py-0.2 bg-amber-955 border border-amber-600 text-amber-300 text-[5.5px] font-black rounded uppercase">LINK</span>
+                            ) : currentUser.isDeveloper ? (
+                                <span className="px-1 py-0.2 bg-red-955 border border-red-800 text-red-400 text-[6px] font-bold rounded uppercase">DEV</span>
+                            ) : null}
+                        </div>
+                        <span className="text-[7px] text-stone-500 font-bold uppercase tracking-widest leading-none mt-0.5 font-mono">
+                            {getPlayerId(currentUser)}
+                        </span>
+                    </div>
+                </button>
+            ) : (
+                <button
+                    type="button"
+                    data-testid="mobile-signin-btn"
+                    onClick={() => {
+                        audioManager.playSound('click');
+                        onOpenLogin();
+                    }}
+                    className="group/signin small-btn px-2.5 py-1.5 min-h-[36px] bg-gradient-to-r from-red-955/80 to-stone-950 border border-red-700/60 text-red-400 hover:text-white font-mono font-black text-[9px] tracking-[0.16em] rounded-xl transition-all shadow-md active:scale-95 uppercase flex items-center gap-1.5 cursor-pointer touch-manipulation whitespace-nowrap"
+                >
+                    <span className="relative flex h-1.5 w-1.5">
+                        <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-650" />
                     </span>
-                </div>
-            </button>
-        ) : (
-            <button
-                onClick={() => {
-                    audioManager.playSound('click');
-                    onOpenLogin();
-                }}
-                className="group/signin px-3.5 py-2 min-h-[44px] bg-gradient-to-r from-red-955/80 to-stone-950 border border-red-700/60 text-red-400 hover:text-white font-mono font-black text-[9px] tracking-[0.2em] rounded-xl transition-all shadow-md active:scale-95 uppercase flex items-center gap-2 cursor-pointer touch-manipulation"
-            >
-                <span className="relative flex h-1.5 w-1.5">
-                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-650" />
-                </span>
-                Sign In / Register
-            </button>
-        )}
+                    Sign In / Register
+                </button>
+            )}
 
-        {isDeveloper && (
-            <button
-                onClick={() => {
-                    audioManager.playSound('click');
-                    onOpenAdmin();
-                }}
-                className="flex items-center gap-1.5 bg-gradient-to-r from-red-955 via-stone-900 to-red-955 border border-red-600/80 hover:border-red-400 min-h-[44px] py-1.5 px-3 rounded-xl shadow-md cursor-pointer text-left active:scale-95 transition-all touch-manipulation"
-                title="Admin Console"
-            >
-                <ShieldAlert size={14} className="text-red-400 shrink-0" />
-                <span className="text-[10px] text-red-200 font-mono font-black uppercase tracking-wider">
-                    ADMIN
-                </span>
-            </button>
-        )}
+            {isDeveloper && (
+                <button
+                    onClick={() => {
+                        audioManager.playSound('click');
+                        onOpenAdmin();
+                    }}
+                    className="small-btn flex items-center gap-1.5 bg-gradient-to-r from-red-955 via-stone-900 to-red-955 border border-red-600/80 hover:border-red-400 py-1 px-2.5 rounded-xl shadow-md cursor-pointer text-left active:scale-95 transition-all touch-manipulation"
+                    title="Admin Console"
+                >
+                    <ShieldAlert size={12} className="text-red-400 shrink-0" />
+                    <span className="text-[9.5px] text-red-200 font-mono font-black uppercase tracking-wider">
+                        ADMIN
+                    </span>
+                </button>
+            )}
+        </div>
     </div>
 ));
 MobileStatusRow.displayName = 'MobileStatusRow';
@@ -663,11 +741,17 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
     onOpenGuide,
     onOpenScoreboard,
     onStartMultiplayer,
-    onStartLocalSplit
+    onStartLocalSplit,
+    isLaunching = false
 }) => {
     const nameInputRef = useRef<HTMLInputElement>(null);
+    const menuContentRef = useRef<HTMLDivElement>(null);
     const isOnline = useOnlineStatus();
     const [scale, setScale] = useState(1);
+    const [viewportSize, setViewportSize] = useState(() => ({
+        w: typeof window !== 'undefined' ? window.innerWidth : 1024,
+        h: typeof window !== 'undefined' ? window.innerHeight : 768
+    }));
     const [showHardModeWarning, setShowHardModeWarning] = useState(false);
     const [showSplitSetup, setShowSplitSetup] = useState(false);
     const [hasBoundSoul, setHasBoundSoul] = useState(false);
@@ -989,7 +1073,9 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
         };
     }, [hasBoundSoul]);
 
-    // Device detection, RAF-throttled viewport scaling & PWA install listeners
+    const isCompactView = isMobile || isTouchDevice || viewportSize.h < 580 || viewportSize.w < 1024;
+
+    // Device detection, RAF-throttled single-screen viewport scaling & PWA install listeners
     useEffect(() => {
         const isS = window.matchMedia('(display-mode: standalone)').matches ||
             (window.navigator as any).standalone ||
@@ -1007,19 +1093,23 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
             resizeRafId = null;
             const h = window.innerHeight;
             const w = window.innerWidth;
-            let nextScale = 1;
-            if (h < 560) {
-                nextScale = Math.max(0.58, Math.min(0.92, (h - 16) / 565));
-            } else if (w < 500) {
-                const hScale = Math.min(1.0, Math.max(0.82, (h - 20) / 680));
-                const wScale = Math.min(1.0, Math.max(0.82, (w - 16) / 380));
-                nextScale = Math.min(hScale, wScale);
-            } else if (w >= 1024) {
-                nextScale = Math.max(0.82, Math.min(1.18, h / 840));
-            } else {
-                nextScale = Math.max(0.75, Math.min(1.05, Math.min(h / 680, w / 520)));
-            }
-            setScale((prev) => (Math.abs(prev - nextScale) > 0.005 ? nextScale : prev));
+            setViewportSize((prev) => (prev.w === w && prev.h === h ? prev : { w, h }));
+
+            const compact = isMobileUA || hasTouch || h < 580 || w < 1024;
+            const measuredH = menuContentRef.current?.scrollHeight || (w < 500 ? 590 : 520);
+            const measuredW = Math.min(menuContentRef.current?.scrollWidth || 400, 448);
+
+            const { scale: nextScale } = computeMenuScaleMetrics({
+                viewportW: w,
+                viewportH: h,
+                measuredW,
+                measuredH,
+                isCompact: compact,
+                isMobileUA,
+                hasTouch
+            });
+
+            setScale((prev) => (Math.abs(prev - nextScale) > 0.004 ? nextScale : prev));
         };
 
         const handleResize = () => {
@@ -1029,6 +1119,12 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
 
         window.addEventListener('resize', handleResize);
         computeScale();
+
+        let contentObserver: ResizeObserver | null = null;
+        if (typeof ResizeObserver !== 'undefined' && menuContentRef.current) {
+            contentObserver = new ResizeObserver(handleResize);
+            contentObserver.observe(menuContentRef.current);
+        }
 
         if ((window as any).deferredPWAPrompt) {
             setDeferredPrompt((window as any).deferredPWAPrompt);
@@ -1061,13 +1157,14 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
 
         return () => {
             if (resizeRafId !== null) cancelAnimationFrame(resizeRafId);
+            contentObserver?.disconnect();
             window.removeEventListener('resize', handleResize);
             window.removeEventListener('beforeinstallprompt', beforeInstallPromptHandler as any);
             window.removeEventListener('pwa-prompt-available' as any, globalPwaHandler);
             window.removeEventListener('appinstalled', appInstalledHandler);
             window.removeEventListener('pwa-appinstalled' as any, appInstalledHandler);
         };
-    }, []);
+    }, [hasBoundSoul, isOnline, isStandalone, currentUser?.username]);
 
     // Enforce Gmail linking & cloud upgrade for legacy Upstash users
     useEffect(() => {
@@ -1399,54 +1496,56 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
 
     return (
         <div
-            className="absolute inset-0 z-50 flex flex-col items-center justify-start sm:justify-center overflow-y-auto sm:overflow-hidden custom-scrollbar pointer-events-auto bg-black/55 p-2 sm:p-4 select-none"
+            className="fixed inset-0 h-[100dvh] z-50 flex flex-col items-center justify-center overflow-hidden pointer-events-auto bg-black/55 p-1 sm:p-4 select-none"
             style={{
-                paddingTop: 'max(env(safe-area-inset-top, 0px), 8px)',
-                paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 8px)',
-                paddingLeft: 'max(env(safe-area-inset-left, 0px), 8px)',
-                paddingRight: 'max(env(safe-area-inset-right, 0px), 8px)'
+                paddingTop: 'max(env(safe-area-inset-top, 0px), 4px)',
+                paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 4px)',
+                paddingLeft: 'max(env(safe-area-inset-left, 0px), 6px)',
+                paddingRight: 'max(env(safe-area-inset-right, 0px), 6px)'
             }}
         >
-            {/* Top Left Messages & Online Friends Section (Desktop) */}
-            {!isMobile && (
-                <DesktopCommsPanel
-                    currentUser={currentUser}
-                    isOnline={isOnline}
-                    reduceEffects={reduceEffects}
-                    notificationCounts={notificationCounts}
-                    friends={friends}
-                    onOpenMessages={handleOpenMessagesFromPanel}
-                    onRequireLogin={handleOpenLogin}
-                    onOfflineToast={setMessagesToast}
-                />
-            )}
+            {/* Top Left Messages & Online Friends Section (Landscape / >= 500px) */}
+            <DesktopCommsPanel
+                currentUser={currentUser}
+                isOnline={isOnline}
+                reduceEffects={reduceEffects}
+                isCompact={isCompactView}
+                viewportWidth={viewportSize.w}
+                notificationCounts={notificationCounts}
+                friends={friends}
+                onOpenMessages={handleOpenMessagesFromPanel}
+                onRequireLogin={handleOpenLogin}
+                onOfflineToast={setMessagesToast}
+            />
 
             {/* Messages Notification Toast */}
             {messagesToast && (
-                <div className="fixed top-20 left-4 sm:left-6 z-[120] max-w-sm p-3 bg-stone-950/95 border border-cyan-800/80 text-cyan-300 text-[10px] font-mono rounded-xl shadow-[0_0_30px_rgba(6,182,212,0.25)] animate-in fade-in slide-in-from-top-2 duration-200 flex items-center gap-2">
+                <div className={`fixed left-3 sm:left-6 z-[120] max-w-xs sm:max-w-sm p-2.5 sm:p-3 bg-stone-950/95 border border-cyan-800/80 text-cyan-300 text-[9px] sm:text-[10px] font-mono rounded-xl shadow-[0_0_30px_rgba(6,182,212,0.25)] animate-in fade-in slide-in-from-top-2 duration-200 flex items-center gap-2 ${
+                    isCompactView ? 'top-14' : 'top-20'
+                }`}>
                     <Mail className="w-4 h-4 text-cyan-400 shrink-0" />
                     <span>{messagesToast}</span>
                 </div>
             )}
 
-            {/* Top Right User Profile Badge Section (Desktop) */}
-            {!isMobile && (
-                <DesktopProfileBadge
-                    currentUser={currentUser}
-                    isDeveloper={isDeveloper}
-                    reduceEffects={reduceEffects}
-                    onOpenAdmin={handleOpenAdmin}
-                    onOpenProfile={handleOpenProfile}
-                    onOpenLogin={handleOpenLogin}
-                />
-            )}
+            {/* Top Right User Profile Badge & Admin Section (Landscape / >= 500px) */}
+            <DesktopProfileBadge
+                currentUser={currentUser}
+                isDeveloper={isDeveloper}
+                reduceEffects={reduceEffects}
+                isCompact={isCompactView}
+                viewportWidth={viewportSize.w}
+                onOpenAdmin={handleOpenAdmin}
+                onOpenProfile={handleOpenProfile}
+                onOpenLogin={handleOpenLogin}
+            />
 
             {/* Bottom Right Floating Control Buttons (Changelog) */}
             <div
                 className="absolute z-[60] flex items-center gap-2"
                 style={{
-                    bottom: 'max(env(safe-area-inset-bottom, 0px), 16px)',
-                    right: 'max(env(safe-area-inset-right, 0px), 16px)'
+                    bottom: `max(env(safe-area-inset-bottom, 0px), ${isCompactView ? 10 : 16}px)`,
+                    right: `max(env(safe-area-inset-right, 0px), ${isCompactView ? 10 : 16}px)`
                 }}
             >
                 <button
@@ -1454,20 +1553,22 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                         audioManager.playSound('click');
                         setShowChangelog(true);
                     }}
-                    className={`w-11 h-11 min-w-[44px] min-h-[44px] p-2.5 sm:p-3 bg-gradient-to-br from-stone-900/95 to-stone-950/95 border border-stone-700/50 text-stone-300 hover:text-amber-400 hover:border-amber-600/50 rounded-full shadow-[0_10px_30px_rgba(0,0,0,0.8)] ${blurMd} transition-all hover:scale-110 active:scale-95 flex items-center justify-center cursor-pointer hover:shadow-[0_0_30px_rgba(245,158,11,0.15)] touch-manipulation`}
+                    className={`small-btn bg-gradient-to-br from-stone-900/95 to-stone-950/95 border border-stone-700/50 text-stone-300 hover:text-amber-400 hover:border-amber-600/50 rounded-full shadow-[0_10px_30px_rgba(0,0,0,0.8)] ${blurMd} transition-all hover:scale-110 active:scale-95 flex items-center justify-center cursor-pointer hover:shadow-[0_0_30px_rgba(245,158,11,0.15)] touch-manipulation ${
+                        isCompactView ? 'w-9 h-9 p-2' : 'w-11 h-11 p-3'
+                    }`}
                     title="System Changelog & Version History"
                     aria-label="System Changelog & Version History"
                 >
-                    <BookOpen size={18} className="transition-transform duration-300" />
+                    <BookOpen size={isCompactView ? 15 : 18} className="transition-transform duration-300" />
                 </button>
             </div>
 
-            {/* Bottom Left Announcement Panel Button (Hidden on mobile) */}
+            {/* Bottom Left Announcement Panel Button */}
             <div
-                className="absolute z-[60] hidden sm:block"
+                className="absolute z-[60]"
                 style={{
-                    bottom: 'max(env(safe-area-inset-bottom, 0px), 16px)',
-                    left: 'max(env(safe-area-inset-left, 0px), 16px)'
+                    bottom: `max(env(safe-area-inset-bottom, 0px), ${isCompactView ? 10 : 16}px)`,
+                    left: `max(env(safe-area-inset-left, 0px), ${isCompactView ? 10 : 16}px)`
                 }}
             >
                 <button
@@ -1475,10 +1576,13 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                         audioManager.playSound('click');
                         setShowAnnouncement(true);
                     }}
-                    className={`group/an p-3.5 sm:p-4 bg-gradient-to-br from-stone-900/95 to-stone-950/95 border border-stone-700/50 text-stone-400 hover:text-cyan-300 hover:border-cyan-600/50 rounded-full shadow-[0_10px_30px_rgba(0,0,0,0.8)] ${blurMd} transition-all hover:scale-110 active:scale-95 flex items-center justify-center cursor-pointer hover:shadow-[0_0_30px_rgba(45,212,191,0.15)] small-btn`}
+                    className={`group/an small-btn bg-gradient-to-br from-stone-900/95 to-stone-950/95 border border-stone-700/50 text-stone-400 hover:text-cyan-300 hover:border-cyan-600/50 rounded-full shadow-[0_10px_30px_rgba(0,0,0,0.8)] ${blurMd} transition-all hover:scale-110 active:scale-95 flex items-center justify-center cursor-pointer hover:shadow-[0_0_30px_rgba(45,212,191,0.15)] ${
+                        isCompactView ? 'w-9 h-9 p-2' : 'w-11 h-11 p-3'
+                    }`}
                     title="View Announcement"
+                    aria-label="View Announcement"
                 >
-                    <Bell size={20} className="group-hover/an:rotate-[-8deg] transition-transform duration-300" />
+                    <Bell size={isCompactView ? 15 : 19} className="group-hover/an:rotate-[-8deg] transition-transform duration-300" />
                 </button>
             </div>
 
@@ -2051,11 +2155,14 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
 
             {/* Menu Center Frame Area */}
             <div
-                className="relative z-10 text-center max-w-md w-full p-3 sm:p-5 flex flex-col justify-center origin-center transition-transform duration-200 my-auto animate-in fade-in-50"
+                ref={menuContentRef}
+                className={`relative z-10 text-center w-full flex flex-col justify-center origin-center transition-transform duration-200 animate-in fade-in-50 ${
+                    isCompactView ? 'max-w-[390px] p-2 sm:p-3' : 'max-w-md p-3 sm:p-5'
+                } ${isLaunching ? 'cinematic-menu-exit pointer-events-none' : ''}`}
                 style={{ transform: `scale(${scale})` }}
             >
-                <div className="mb-2 sm:mb-3 relative select-none">
-                    <h1 className={`text-4xl sm:text-5xl md:text-6xl font-black mb-0 text-white tracking-tighter leading-[0.88] ${
+                <div className={`${isCompactView ? 'mb-1.5' : 'mb-2 sm:mb-3'} relative select-none`}>
+                    <h1 className={`${isCompactView ? 'text-4xl sm:text-[44px]' : 'text-4xl sm:text-5xl md:text-6xl'} font-black mb-0 text-white tracking-tighter leading-[0.88] ${
                         reduceEffects ? '' : 'drop-shadow-[0_0_35px_rgba(255,255,255,0.2)]'
                     }`}>
                         BUGSHOT<br />
@@ -2419,11 +2526,11 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                     document.body
                 ) : null}
 
-                <div className="mt-2 sm:mt-3 flex flex-col items-center gap-1.5 select-none">
+                <div className={`${isCompactView ? 'mt-1.5' : 'mt-2 sm:mt-3'} flex flex-col items-center gap-1 select-none`}>
                     {!isStandalone ? (
                         <button
                             onClick={handleInstallClick}
-                            className={`group flex items-center gap-1.5 px-3 py-1 sm:px-3.5 sm:py-1 rounded-full bg-cyan-955/30 hover:bg-cyan-900/40 border border-cyan-700/40 hover:border-cyan-400/80 text-cyan-300 hover:text-white text-[8px] sm:text-[9px] font-mono font-bold tracking-[0.15em] uppercase ${blurMd} shadow-[0_0_15px_rgba(6,182,212,0.12)] hover:shadow-[0_0_20px_rgba(6,182,212,0.3)] transition-all active:scale-95 cursor-pointer`}
+                            className={`group small-btn flex items-center gap-1.5 px-3 py-1 sm:px-3.5 sm:py-1 rounded-full bg-cyan-955/30 hover:bg-cyan-900/40 border border-cyan-700/40 hover:border-cyan-400/80 text-cyan-300 hover:text-white text-[8px] sm:text-[9px] font-mono font-bold tracking-[0.15em] uppercase ${blurMd} shadow-[0_0_15px_rgba(6,182,212,0.12)] hover:shadow-[0_0_20px_rgba(6,182,212,0.3)] transition-all active:scale-95 cursor-pointer`}
                             title="Install BugShot Roulette as a native App (PWA)"
                         >
                             <Download size={10} className="text-cyan-400 group-hover:scale-110 transition-transform shrink-0" />

@@ -240,6 +240,7 @@ export interface GameSettings {
   sfxVolume: number;
   debugMode?: boolean;
   debugHeadModel?: PlayerModelKey;
+  debugPlayer1Model?: PlayerModelKey;
   debugPlayerModels?: {
     DEALER?: PlayerModelKey;
     PLAYER3?: PlayerModelKey;
@@ -248,6 +249,7 @@ export interface GameSettings {
   graphicsMode?: 'ultra' | 'high' | 'balanced' | 'low' | 'potato';
   ultraPerformance?: boolean;
   balancedPerformance?: boolean;
+  experimentalDirectAim?: boolean;
 }
 
 export interface SceneContext {

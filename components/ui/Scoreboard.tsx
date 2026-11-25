@@ -585,12 +585,17 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ onClose, stats: initialS
                                         </span>
                                         <div className="space-y-1">
                                             {selectedMatch.mpPlayers.map((player: any, idx: number) => {
-                                                const pName = player.displayName || player.name || player.username || 'Agent';
-                                                const pId = player.playerId || getPlayerId({ username: player.username || pName });
-                                                const isDev = pName.toLowerCase() === 'aadish' || (player.username && player.username.toLowerCase() === 'aadish');
-                                                const avatarUrl = isDev 
-                                                    ? 'https://avatars.githubusercontent.com/u/101470733' 
-                                                    : (player.avatarUrl || getDicebearUrl(player.avatarStyle || 'thumbs', player.username || pName));
+                                                const isAnonymous = Boolean(player.isAnonymous);
+                                                const pName = player.displayName || player.name || player.username || (isAnonymous ? 'Guest' : 'Agent');
+                                                const pId = isAnonymous
+                                                    ? 'ANONYMOUS'
+                                                    : (player.playerId || getPlayerId({ username: player.username || pName }));
+                                                const isDev = !isAnonymous && (pName.toLowerCase() === 'aadish' || (player.username && player.username.toLowerCase() === 'aadish'));
+                                                const avatarUrl = isDev
+                                                    ? 'https://avatars.githubusercontent.com/u/101470733'
+                                                    : isAnonymous
+                                                        ? getDicebearUrl('thumbs', `anonymous-${pName}`)
+                                                        : (player.avatarUrl || getDicebearUrl(player.avatarStyle || 'thumbs', player.username || pName));
 
                                                 return (
                                                     <div key={idx} className="flex justify-between items-center p-2 bg-stone-900/25 border border-stone-850 rounded-xl text-[9.5px]">
@@ -600,7 +605,7 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ onClose, stats: initialS
                                                             </div>
                                                             <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
                                                                 <span className="font-bold text-stone-200 truncate">{pName}</span>
-                                                                <span className="text-[7.5px] text-stone-400 font-mono tracking-wider bg-stone-950 px-1.5 py-0.5 rounded border border-stone-800">{pId}</span>
+                                                                <span className={`text-[7.5px] font-mono tracking-wider bg-stone-950 px-1.5 py-0.5 rounded border ${isAnonymous ? 'text-stone-500 border-stone-800/80' : 'text-stone-400 border-stone-800'}`}>{pId}</span>
                                                                 {player.isHost && (
                                                                     <span className="text-[6.5px] bg-red-955 border border-red-800 text-red-400 px-1 py-0.2 rounded font-bold">HOST</span>
                                                                 )}

@@ -177,3 +177,40 @@ export const resolveSplitWinnerName = (
   if (winner === 'DEALER') return p2;
   return 'UNKNOWN';
 };
+
+export interface LocalSplitMatchPlayerRecord {
+  name: string;
+  isHost: boolean;
+  isMe: boolean;
+  isAnonymous?: boolean;
+  result: 'WIN' | 'LOSS';
+}
+
+/**
+ * Builds the match roster saved into stats for Local Split games.
+ * Player 2 is strictly recorded with their entered name as an anonymous guest (no user/player ID).
+ */
+export const buildLocalSplitMatchPlayers = (
+  player1Name: string | undefined,
+  player2Name: string | undefined,
+  winner: string | null | undefined
+): LocalSplitMatchPlayerRecord[] => {
+  const p1 = (player1Name || 'PLAYER 1').trim().toUpperCase() || 'PLAYER 1';
+  const p2 = (player2Name || 'PLAYER 2').trim().toUpperCase() || 'PLAYER 2';
+  const p1Won = winner === 'PLAYER';
+  return [
+    {
+      name: p1,
+      isHost: true,
+      isMe: true,
+      result: p1Won ? 'WIN' : 'LOSS',
+    },
+    {
+      name: p2,
+      isHost: false,
+      isMe: false,
+      isAnonymous: true,
+      result: p1Won ? 'LOSS' : 'WIN',
+    },
+  ];
+};

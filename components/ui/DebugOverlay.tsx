@@ -61,7 +61,10 @@ export const DebugOverlay: React.FC<DebugOverlayProps> = ({
         }
     } catch (e) {}
 
-    if (gameState.isMultiplayer) {
+    if (gameState.isLocalSplit) {
+        playerDisplayName = (gameState.player1Name || playerDisplayName || 'PLAYER 1').toUpperCase();
+        dealerDisplayName = (gameState.opponentName || 'PLAYER 2').toUpperCase();
+    } else if (gameState.isMultiplayer) {
         const size = gameState.isFourPlayer ? 4 : (gameState.isThreePlayer ? 3 : 2);
         dealerDisplayName = (gameState.opponentName || 'OPPONENT').toUpperCase();
 
@@ -554,17 +557,34 @@ export const DebugOverlay: React.FC<DebugOverlayProps> = ({
                                 </div>
                             </div>
                         )}
-                        <div className="space-y-2 md:space-y-3 pt-1 border-t border-stone-900">
-                            <span className="font-extrabold tracking-widest text-stone-500 uppercase text-[6.5px] md:text-[8px] block">Local Head Model</span>
-                            <div className="flex items-center justify-between gap-1 bg-stone-900/50 px-1 py-1 rounded border border-stone-800">
-                                <span className="font-bold text-[7px] md:text-[8px] uppercase text-stone-300">Dealer Head</span>
+                        <div className="space-y-1.5 md:space-y-2 pt-1.5 border-t border-stone-900">
+                            <span className="font-extrabold tracking-widest text-stone-500 uppercase text-[6.5px] md:text-[8px] block">Player Bodies &amp; Models</span>
+                            <div className="flex items-center justify-between gap-1 bg-stone-900/50 px-1.5 py-1 rounded border border-stone-800">
+                                <span className="font-bold text-[6.5px] md:text-[7.5px] uppercase text-stone-300 truncate">{playerDisplayName} Body</span>
                                 <select
+                                    data-testid="debug-p1-body-select"
+                                    value={settings.debugPlayer1Model || 'DEFAULT'}
+                                    onChange={(e) => setSettings({
+                                        ...settings,
+                                        debugPlayer1Model: e.target.value as PlayerModelKey
+                                    })}
+                                    className="bg-stone-950 border border-stone-700 text-[6px] md:text-[7px] text-stone-200 rounded px-1 py-0.5 font-bold uppercase cursor-pointer"
+                                >
+                                    {modelOptions.map((option) => (
+                                        <option key={option.value} value={option.value}>{option.label}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="flex items-center justify-between gap-1 bg-stone-900/50 px-1.5 py-1 rounded border border-stone-800">
+                                <span className="font-bold text-[6.5px] md:text-[7.5px] uppercase text-stone-300 truncate">{dealerDisplayName} Body</span>
+                                <select
+                                    data-testid="debug-p2-body-select"
                                     value={settings.debugHeadModel || 'DEFAULT'}
                                     onChange={(e) => setSettings({
                                         ...settings,
                                         debugHeadModel: e.target.value as PlayerModelKey
                                     })}
-                                    className="bg-stone-950 border border-stone-700 text-[6.5px] md:text-[7.5px] text-stone-200 rounded px-1 py-0.5 font-bold uppercase cursor-pointer"
+                                    className="bg-stone-950 border border-stone-700 text-[6px] md:text-[7px] text-stone-200 rounded px-1 py-0.5 font-bold uppercase cursor-pointer"
                                 >
                                     {modelOptions.map((option) => (
                                         <option key={option.value} value={option.value}>{option.label}</option>

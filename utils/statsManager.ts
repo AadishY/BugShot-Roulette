@@ -69,7 +69,7 @@ const createMatchHistorySignature = (entry: any): string => {
         .join('|');
 
     const mpPlayers = Array.isArray(entry?.mpPlayers)
-        ? entry.mpPlayers.map((player: any) => `${player?.id || ''}:${player?.name || ''}:${player?.result || ''}`).join('~')
+        ? entry.mpPlayers.map((player: any) => `${player?.isAnonymous ? 'anon' : (player?.id || '')}:${player?.name || ''}:${player?.result || ''}`).join('~')
         : '';
 
     return [
