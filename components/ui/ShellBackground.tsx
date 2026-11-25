@@ -48,10 +48,13 @@ const ShellBackground: React.FC<ShellBackgroundProps> = React.memo(({ active = t
     const modalPausedRef = useRef(false);
     const isRunningRef = useRef(false);
     const startAnimateRef = useRef<(() => void) | null>(null);
+    const stopLoopRef = useRef<(() => void) | null>(null);
 
     useEffect(() => {
         activeRef.current = active;
-        if (active && !modalPausedRef.current && !document.hidden && !isRunningRef.current && startAnimateRef.current) {
+        if (!active) {
+            stopLoopRef.current?.();
+        } else if (!modalPausedRef.current && !document.hidden && !isRunningRef.current && startAnimateRef.current) {
             startAnimateRef.current();
         }
     }, [active]);
@@ -62,19 +65,42 @@ const ShellBackground: React.FC<ShellBackgroundProps> = React.memo(({ active = t
         camera: THREE.PerspectiveCamera;
         renderer: THREE.WebGLRenderer;
         disposables: { dispose: () => void }[];
+        renderStatic: () => void;
     } | null>(null);
 
     useEffect(() => {
         if (!containerRef.current) return;
 
         const container = containerRef.current;
+        let disposed = false;
         let frameId: number | null = null;
         let timeoutId: ReturnType<typeof setTimeout> | null = null;
         let resizeRafId: number | null = null;
+        let resizeTimeoutId: ReturnType<typeof setTimeout> | null = null;
         let resizeObserver: ResizeObserver | null = null;
+        let contextLostHandler: ((e: Event) => void) | null = null;
+
+        let lastWidth = 0;
+        let lastHeight = 0;
+        let lastPixelScale = 0;
+
+        const canRunLoop = () =>
+            !disposed && activeRef.current && !modalPausedRef.current && !document.hidden;
+
+        const computePixelScale = (
+            isSoftwareGl: boolean,
+            isLowEnd: boolean,
+            isMob: boolean,
+            isTab: boolean
+        ) => {
+            if (isSoftwareGl) return 6.0;
+            if (isLowEnd) return 5.2;
+            if (isMob) return 4.5;
+            return isTab ? 4.0 : 4.0;
+        };
 
         const initThree = () => {
-            if (sceneRef.current) return;
+            if (disposed || sceneRef.current) return;
 
             const width = container.clientWidth;
             const height = container.clientHeight;
@@ -84,7 +110,9 @@ const ShellBackground: React.FC<ShellBackgroundProps> = React.memo(({ active = t
             const isMob = device === 'mobile';
             const isTab = device === 'tablet';
             const isLowPerf = isLowPerfDeviceOrSetting();
-            const isLowEnd = isLowPerf || (isMob && (width < 600 || (window.devicePixelRatio || 1) < 2));
+            const hwCores = typeof navigator !== 'undefined' ? (navigator.hardwareConcurrency || 8) : 8;
+            const devMem = typeof navigator !== 'undefined' ? ((navigator as unknown as { deviceMemory?: number }).deviceMemory || 8) : 8;
+            const isLowEnd = isLowPerf || (isMob && (width < 600 || (window.devicePixelRatio || 1) < 2 || hwCores <= 4 || devMem <= 3));
             const reducedMotion = isReducedMotionPreferred();
 
             const scene = new THREE.Scene();
@@ -103,18 +131,30 @@ const ShellBackground: React.FC<ShellBackgroundProps> = React.memo(({ active = t
                 stencil: false
             });
 
-            const isSoftwareGl = detectSoftwareWebGL(renderer.getContext());
-            const shellCount = isSoftwareGl
-                ? 8
-                : isLowPerf
-                    ? 6
-                    : isMob
-                        ? 10
-                        : isTab
-                            ? 14
-                            : 22;
+            contextLostHandler = (e: Event) => {
+                e.preventDefault();
+                stopLoop();
+            };
+            renderer.domElement.addEventListener('webglcontextlost', contextLostHandler, false);
 
-            const pixelScale = isSoftwareGl ? 6.0 : isMob ? 4.5 : isTab ? 4.0 : 4.0;
+            const isSoftwareGl = detectSoftwareWebGL(renderer.getContext());
+            const shellCount = isLowPerf
+                ? 6
+                : isLowEnd
+                    ? 7
+                    : isSoftwareGl
+                        ? 8
+                        : isMob
+                            ? 10
+                            : isTab
+                                ? 14
+                                : 22;
+
+            const pixelScale = computePixelScale(isSoftwareGl, isLowEnd, isMob, isTab);
+            lastWidth = width;
+            lastHeight = height;
+            lastPixelScale = pixelScale;
+
             renderer.setSize(
                 Math.max(1, Math.floor(width / pixelScale)),
                 Math.max(1, Math.floor(height / pixelScale)),
@@ -158,7 +198,7 @@ const ShellBackground: React.FC<ShellBackgroundProps> = React.memo(({ active = t
             const blankColor = new THREE.Color(0x3b4860);
 
             const shells: ShellInstanceData[] = [];
-            const spawnWidth = isMob ? 14 : 46;
+            const spawnWidth = isMob ? (width < height ? 11 : 14) : 46;
             const dummy = new THREE.Object3D();
 
             for (let i = 0; i < shellCount; i++) {
@@ -207,12 +247,26 @@ const ShellBackground: React.FC<ShellBackgroundProps> = React.memo(({ active = t
             scene.add(bodyInstanced);
             scene.add(baseInstanced);
 
-            const disposables = [bodyGeo, baseGeo, bodyMat, baseMat, bodyInstanced, baseInstanced];
-            sceneRef.current = { scene, camera, renderer, disposables };
-
-            if (reducedMotion) {
+            const renderStatic = () => {
+                if (disposed) return;
                 camera.lookAt(0, 0, 0);
                 renderer.render(scene, camera);
+            };
+
+            const disposables: { dispose: () => void }[] = [
+                bodyGeo,
+                baseGeo,
+                bodyMat,
+                baseMat,
+                bodyInstanced,
+                baseInstanced,
+                ambientLight,
+                keyLight
+            ];
+            sceneRef.current = { scene, camera, renderer, disposables, renderStatic };
+
+            if (reducedMotion) {
+                renderStatic();
                 return;
             }
 
@@ -222,13 +276,17 @@ const ShellBackground: React.FC<ShellBackgroundProps> = React.memo(({ active = t
             let lastRenderTime = performance.now();
 
             const scheduleNext = () => {
-                if (!activeRef.current || document.hidden) {
+                if (!canRunLoop()) {
                     isRunningRef.current = false;
                     return;
                 }
                 if (isSoftwareGl) {
                     timeoutId = setTimeout(() => {
                         timeoutId = null;
+                        if (!canRunLoop()) {
+                            isRunningRef.current = false;
+                            return;
+                        }
                         frameId = requestAnimationFrame(animate);
                     }, Math.round(frameIntervalMs));
                 } else {
@@ -238,13 +296,13 @@ const ShellBackground: React.FC<ShellBackgroundProps> = React.memo(({ active = t
 
             const animate = (time: number) => {
                 frameId = null;
-                if (!activeRef.current || document.hidden) {
+                if (!canRunLoop() || isReducedMotionPreferred()) {
                     isRunningRef.current = false;
                     return;
                 }
 
                 const elapsed = time - lastRenderTime;
-                if (!isSoftwareGl && elapsed < frameIntervalMs) {
+                if (elapsed < frameIntervalMs) {
                     scheduleNext();
                     return;
                 }
@@ -288,21 +346,22 @@ const ShellBackground: React.FC<ShellBackgroundProps> = React.memo(({ active = t
             };
 
             startAnimateRef.current = () => {
+                if (isReducedMotionPreferred()) return;
                 lastRenderTime = performance.now();
-                if (!isRunningRef.current && activeRef.current && !document.hidden) {
+                if (!isRunningRef.current && canRunLoop()) {
                     isRunningRef.current = true;
                     frameId = requestAnimationFrame(animate);
                 }
             };
 
-            if (activeRef.current && !document.hidden) {
+            if (canRunLoop()) {
                 startAnimateRef.current();
             }
         };
 
         const applyResize = () => {
             resizeRafId = null;
-            if (!container || !sceneRef.current) return;
+            if (disposed || !container || !sceneRef.current) return;
             const w = container.clientWidth;
             const h = container.clientHeight;
             if (w === 0 || h === 0) return;
@@ -310,10 +369,22 @@ const ShellBackground: React.FC<ShellBackgroundProps> = React.memo(({ active = t
             const device = getDeviceType();
             const isMob = device === 'mobile';
             const isTab = device === 'tablet';
+            const isLowPerf = isLowPerfDeviceOrSetting();
+            const hwCores = typeof navigator !== 'undefined' ? (navigator.hardwareConcurrency || 8) : 8;
+            const devMem = typeof navigator !== 'undefined' ? ((navigator as unknown as { deviceMemory?: number }).deviceMemory || 8) : 8;
+            const isLowEnd = isLowPerf || (isMob && (w < 600 || (window.devicePixelRatio || 1) < 2 || hwCores <= 4 || devMem <= 3));
+            const isSoftwareGl = detectSoftwareWebGL(sceneRef.current.renderer.getContext());
+            const pxScale = computePixelScale(isSoftwareGl, isLowEnd, isMob, isTab);
+
+            if (w === lastWidth && h === lastHeight && pxScale === lastPixelScale) {
+                return;
+            }
+            lastWidth = w;
+            lastHeight = h;
+            lastPixelScale = pxScale;
 
             sceneRef.current.camera.aspect = w / h;
             sceneRef.current.camera.updateProjectionMatrix();
-            const pxScale = isMob ? 4.5 : isTab ? 4.0 : 4.0;
             sceneRef.current.renderer.setSize(
                 Math.max(1, Math.floor(w / pxScale)),
                 Math.max(1, Math.floor(h / pxScale)),
@@ -321,11 +392,23 @@ const ShellBackground: React.FC<ShellBackgroundProps> = React.memo(({ active = t
             );
             sceneRef.current.renderer.domElement.style.width = '100.5%';
             sceneRef.current.renderer.domElement.style.height = '100.5%';
+
+            // Keep static frame visible when resizing under reducedMotion or paused state
+            if (!isRunningRef.current && activeRef.current && !document.hidden) {
+                sceneRef.current.renderStatic();
+            }
         };
 
         const handleResize = () => {
-            if (resizeRafId !== null) return;
-            resizeRafId = requestAnimationFrame(applyResize);
+            if (disposed) return;
+            if (resizeTimeoutId !== null) {
+                clearTimeout(resizeTimeoutId);
+            }
+            resizeTimeoutId = setTimeout(() => {
+                resizeTimeoutId = null;
+                if (disposed || resizeRafId !== null) return;
+                resizeRafId = requestAnimationFrame(applyResize);
+            }, 120);
         };
 
         const stopLoop = () => {
@@ -339,11 +422,12 @@ const ShellBackground: React.FC<ShellBackgroundProps> = React.memo(({ active = t
             }
             isRunningRef.current = false;
         };
+        stopLoopRef.current = stopLoop;
 
         const handleVisibilityChange = () => {
-            if (document.hidden || modalPausedRef.current) {
+            if (document.hidden || modalPausedRef.current || !activeRef.current) {
                 stopLoop();
-            } else if (activeRef.current && startAnimateRef.current && !isRunningRef.current) {
+            } else if (startAnimateRef.current && !isRunningRef.current) {
                 startAnimateRef.current();
             }
         };
@@ -353,7 +437,7 @@ const ShellBackground: React.FC<ShellBackgroundProps> = React.memo(({ active = t
             modalPausedRef.current = isOpen;
             if (isOpen) {
                 stopLoop();
-            } else if (activeRef.current && !document.hidden && startAnimateRef.current && !isRunningRef.current) {
+            } else if (canRunLoop() && startAnimateRef.current && !isRunningRef.current) {
                 startAnimateRef.current();
             }
         };
@@ -367,6 +451,7 @@ const ShellBackground: React.FC<ShellBackgroundProps> = React.memo(({ active = t
         }
 
         resizeObserver = new ResizeObserver(() => {
+            if (disposed) return;
             if (sceneRef.current) {
                 handleResize();
             } else if (container.clientWidth > 0 && container.clientHeight > 0) {
@@ -380,15 +465,33 @@ const ShellBackground: React.FC<ShellBackgroundProps> = React.memo(({ active = t
         document.addEventListener('visibilitychange', handleVisibilityChange);
 
         return () => {
+            disposed = true;
             if (initRafId !== null) cancelAnimationFrame(initRafId);
             stopLoop();
-            if (resizeRafId !== null) cancelAnimationFrame(resizeRafId);
+            stopLoopRef.current = null;
+            if (resizeTimeoutId !== null) {
+                clearTimeout(resizeTimeoutId);
+                resizeTimeoutId = null;
+            }
+            if (resizeRafId !== null) {
+                cancelAnimationFrame(resizeRafId);
+                resizeRafId = null;
+            }
             startAnimateRef.current = null;
             window.removeEventListener('resize', handleResize);
             window.removeEventListener('bugshot_menu_modal_state', handleMenuModalState);
             document.removeEventListener('visibilitychange', handleVisibilityChange);
-            if (resizeObserver) resizeObserver.disconnect();
+            if (resizeObserver) {
+                resizeObserver.disconnect();
+                resizeObserver = null;
+            }
             if (sceneRef.current) {
+                if (contextLostHandler) {
+                    try {
+                        sceneRef.current.renderer.domElement.removeEventListener('webglcontextlost', contextLostHandler, false);
+                    } catch {}
+                    contextLostHandler = null;
+                }
                 sceneRef.current.disposables.forEach((d) => {
                     try { d.dispose(); } catch {}
                 });
@@ -398,6 +501,10 @@ const ShellBackground: React.FC<ShellBackgroundProps> = React.memo(({ active = t
                         sceneRef.current.renderer.renderLists.dispose();
                     }
                     sceneRef.current.renderer.dispose();
+                    const gl = sceneRef.current.renderer.getContext();
+                    if (gl && typeof gl.isContextLost === 'function' && !gl.isContextLost()) {
+                        sceneRef.current.renderer.forceContextLoss();
+                    }
                     sceneRef.current.renderer.domElement.remove();
                 } catch {}
                 sceneRef.current = null;

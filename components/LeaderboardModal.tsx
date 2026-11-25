@@ -61,13 +61,21 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
     useEffect(() => {
         if (!isOpen) return;
         const handleProfileUpdated = () => setProfileVersion(v => v + 1);
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                audioManager.playSound('click');
+                onClose();
+            }
+        };
         window.addEventListener('bugshot_profile_updated', handleProfileUpdated);
+        window.addEventListener('keydown', handleKeyDown);
         const unsubPresence = presenceClient.subscribe(() => setProfileVersion(v => v + 1));
         return () => {
             window.removeEventListener('bugshot_profile_updated', handleProfileUpdated);
+            window.removeEventListener('keydown', handleKeyDown);
             unsubPresence();
         };
-    }, [isOpen]);
+    }, [isOpen, onClose]);
 
     const processedLeaderboard = useMemo((): EnrichedLeaderboardEntry[] => {
         if (!isOpen) return [];
@@ -193,7 +201,7 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
 
     return (
         <div
-            className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-black/88 p-2 sm:p-4 overflow-hidden font-mono select-none"
+            className="fixed inset-0 h-[100dvh] z-[100] flex flex-col items-center justify-center bg-black/92 md:bg-black/88 p-2 sm:p-4 overflow-hidden overscroll-contain font-mono select-none"
             role="dialog"
             aria-modal="true"
             aria-label="Global Leaderboard"
@@ -210,37 +218,37 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
                 }
             }}
         >
-            <div className="relative w-full max-w-2xl h-[88vh] max-h-[92vh] bg-stone-950 border-2 border-stone-800 p-3 sm:p-5 rounded-2xl shadow-[0_28px_90px_rgba(0,0,0,0.95)] flex flex-col overflow-hidden my-auto">
+            <div className="relative w-full max-w-2xl h-[92dvh] max-h-[92dvh] sm:h-[88dvh] sm:max-h-[90dvh] bg-stone-950 border-2 border-stone-800 p-2.5 sm:p-5 rounded-2xl shadow-[0_28px_90px_rgba(0,0,0,0.95)] flex flex-col overflow-hidden my-auto">
                 {/* Close Button */}
                 <button
                     onClick={() => {
                         audioManager.playSound('click');
                         onClose();
                     }}
-                    className="absolute top-3 right-3 text-stone-400 hover:text-white bg-stone-900 hover:bg-stone-800 border border-stone-700 w-9 h-9 min-w-[36px] min-h-[36px] rounded-xl z-50 cursor-pointer flex items-center justify-center transition-colors"
+                    className="absolute top-2.5 right-2.5 sm:top-3 sm:right-3 text-stone-400 hover:text-white bg-stone-900 hover:bg-stone-800 border border-stone-700 w-11 h-11 min-w-[44px] min-h-[44px] rounded-xl z-50 cursor-pointer touch-manipulation flex items-center justify-center transition-colors"
                     title="Close Leaderboard"
                     aria-label="Close Leaderboard"
                 >
-                    <X size={17} />
+                    <X size={18} />
                 </button>
 
                 {/* Header */}
-                <div className="border-b border-stone-850 pb-2.5 mb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shrink-0 pr-11">
-                    <div className="flex items-center gap-2.5">
-                        <div className="p-2 bg-amber-950/40 border border-amber-800/50 rounded-xl text-amber-400">
+                <div className="border-b border-stone-850 pb-2.5 mb-2.5 sm:mb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shrink-0 sm:pr-12">
+                    <div className="flex items-center gap-2.5 min-w-0 pr-12 sm:pr-0">
+                        <div className="p-2 bg-amber-950/40 border border-amber-800/50 rounded-xl text-amber-400 shrink-0">
                             <Trophy size={18} />
                         </div>
-                        <div>
-                            <span className="text-sm sm:text-base font-black text-white tracking-widest block uppercase">LEADERBOARD</span>
-                            <span className="text-[8.5px] text-stone-500 font-bold uppercase tracking-wider block">
+                        <div className="min-w-0">
+                            <span className="text-sm sm:text-base font-black text-white tracking-widest block uppercase truncate">LEADERBOARD</span>
+                            <span className="text-[8.5px] text-stone-500 font-bold uppercase tracking-wider block truncate">
                                 Click any player for full stats
                             </span>
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                        <div className="relative flex items-center flex-1 sm:flex-initial">
-                            <Search size={12} className="absolute left-2.5 text-stone-500" />
+                    <div className="flex items-center gap-2 min-w-0">
+                        <div className="relative flex items-center flex-1 sm:flex-initial min-w-0">
+                            <Search size={12} className="absolute left-2.5 text-stone-500 pointer-events-none" />
                             <input
                                 type="text"
                                 value={searchQuery}
@@ -249,7 +257,7 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
                                     setPage(1);
                                 }}
                                 placeholder="Search player..."
-                                className="bg-stone-900 border border-stone-800 focus:border-amber-500/60 pl-7 pr-2.5 py-2 min-h-[38px] text-[10px] text-stone-200 uppercase rounded-xl outline-none w-full sm:w-44 tracking-wider placeholder-stone-600"
+                                className="bg-stone-900 border border-stone-800 focus:border-amber-500/60 pl-7 pr-2.5 py-2 min-h-[44px] text-[10px] text-stone-200 uppercase rounded-xl outline-none w-full sm:w-44 tracking-wider placeholder-stone-600"
                             />
                         </div>
 
@@ -258,36 +266,36 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
                                 audioManager.playSound('click');
                                 onRefresh();
                             }}
-                            className="w-9 h-9 min-w-[36px] min-h-[36px] flex items-center justify-center bg-stone-900 hover:bg-stone-800 border border-stone-800 text-stone-400 hover:text-white rounded-xl cursor-pointer transition-colors shrink-0"
+                            className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center bg-stone-900 hover:bg-stone-800 border border-stone-800 text-stone-400 hover:text-white rounded-xl cursor-pointer touch-manipulation transition-colors shrink-0"
                             title="Refresh Leaderboard"
                             aria-label="Refresh Leaderboard"
                         >
-                            <RotateCw size={14} className={isLoading ? 'animate-spin text-amber-400' : ''} />
+                            <RotateCw size={15} className={isLoading ? 'animate-spin text-amber-400' : ''} />
                         </button>
                     </div>
                 </div>
 
                 {/* Filter Tabs */}
-                <div className="grid grid-cols-4 gap-1.5 mb-3 shrink-0">
+                <div className="grid grid-cols-4 gap-1 sm:gap-1.5 mb-2.5 sm:mb-3 shrink-0">
                     {tabs.map((tab) => (
                         <button
                             key={tab.id}
                             type="button"
                             onClick={() => handleTabChange(tab.id)}
-                            className={`flex items-center justify-center gap-1.5 px-2 py-2 min-h-[36px] rounded-xl border text-[8.5px] sm:text-[9.5px] font-black tracking-wider uppercase transition-colors cursor-pointer whitespace-nowrap ${
+                            className={`flex items-center justify-center gap-1 sm:gap-1.5 px-1.5 sm:px-2 py-2 min-h-[44px] rounded-xl border text-[8px] sm:text-[9.5px] font-black tracking-wider uppercase transition-colors cursor-pointer touch-manipulation whitespace-nowrap min-w-0 ${
                                 currentTab === tab.id
                                     ? tab.activeCls
                                     : 'bg-stone-900/50 border-stone-850 text-stone-500 hover:text-stone-200'
                             }`}
                         >
-                            {tab.icon}
+                            <span className="shrink-0">{tab.icon}</span>
                             <span className="truncate">{tab.label}</span>
                         </button>
                     ))}
                 </div>
 
                 {/* Single-Row Clean Entries List */}
-                <div className="space-y-1.5 flex-1 overflow-y-auto pr-1 select-none custom-scrollbar tabular-nums">
+                <div className="space-y-1.5 flex-1 min-h-0 overflow-y-auto overscroll-contain pr-1 select-none custom-scrollbar tabular-nums">
                     {isLoading ? (
                         <div className="flex flex-col items-center justify-center py-16 gap-3">
                             <div className="w-8 h-8 border-2 border-stone-700 border-t-amber-400 rounded-full animate-spin" />
@@ -377,7 +385,7 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
                                             audioManager.playSound('click');
                                             onSelectProfile(entry);
                                         }}
-                                        className="w-full px-3 py-2.5 text-left transition-colors cursor-pointer flex items-center gap-2.5 sm:gap-3 group/row"
+                                        className="w-full min-h-[44px] px-3 py-2.5 text-left transition-colors cursor-pointer touch-manipulation flex items-center gap-2.5 sm:gap-3 group/row"
                                     >
                                         {/* Rank */}
                                         <div className="w-11 flex justify-center shrink-0">
@@ -452,7 +460,7 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
                                 setPage((p) => Math.max(1, p - 1));
                             }}
                             disabled={safePage <= 1}
-                            className="px-2.5 py-1.5 min-h-[34px] bg-stone-900 hover:bg-stone-800 disabled:opacity-30 border border-stone-800 text-stone-300 hover:text-white rounded-lg text-[9.5px] font-bold flex items-center gap-1 transition-colors cursor-pointer disabled:cursor-not-allowed"
+                            className="px-2.5 py-1.5 min-h-[44px] bg-stone-900 hover:bg-stone-800 disabled:opacity-30 border border-stone-800 text-stone-300 hover:text-white rounded-lg text-[9.5px] font-bold flex items-center gap-1 transition-colors cursor-pointer touch-manipulation disabled:cursor-not-allowed"
                         >
                             <ChevronLeft size={13} />
                             <span>PREV</span>
@@ -468,7 +476,7 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
                                 setPage((p) => Math.min(totalPages, p + 1));
                             }}
                             disabled={safePage >= totalPages}
-                            className="px-2.5 py-1.5 min-h-[34px] bg-stone-900 hover:bg-stone-800 disabled:opacity-30 border border-stone-800 text-stone-300 hover:text-white rounded-lg text-[9.5px] font-bold flex items-center gap-1 transition-colors cursor-pointer disabled:cursor-not-allowed"
+                            className="px-2.5 py-1.5 min-h-[44px] bg-stone-900 hover:bg-stone-800 disabled:opacity-30 border border-stone-800 text-stone-300 hover:text-white rounded-lg text-[9.5px] font-bold flex items-center gap-1 transition-colors cursor-pointer touch-manipulation disabled:cursor-not-allowed"
                         >
                             <span>NEXT</span>
                             <ChevronRight size={13} />
@@ -480,7 +488,7 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
                             audioManager.playSound('click');
                             onClose();
                         }}
-                        className="px-4 py-1.5 min-h-[34px] bg-stone-900 hover:bg-stone-800 border border-stone-700 text-stone-200 hover:text-white font-bold text-[10px] tracking-wider uppercase transition-colors rounded-xl cursor-pointer flex items-center justify-center shrink-0"
+                        className="px-4 py-1.5 min-h-[44px] bg-stone-900 hover:bg-stone-800 border border-stone-700 text-stone-200 hover:text-white font-bold text-[10px] tracking-wider uppercase transition-colors rounded-xl cursor-pointer touch-manipulation flex items-center justify-center shrink-0"
                     >
                         Close
                     </button>

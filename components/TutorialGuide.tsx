@@ -312,7 +312,7 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
                         🃏 Draw one of 6 randomly presented cards for active or passive effects.
                     </p>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 md:gap-2.5 max-h-[48vh] overflow-y-auto pr-1 custom-scrollbar">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 md:gap-2.5">
                         <ItemCard
                             icon={<Icons.DeckCard />}
                             name="THE MAGICIAN"
@@ -418,7 +418,7 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
                             <h4 className="text-[10px] md:text-xs font-black text-red-500 tracking-wider uppercase border-b border-red-950/30 pb-1">
                                 Player Drop Rates
                             </h4>
-                            <div className="overflow-x-auto border border-stone-850 rounded-lg bg-stone-900/20">
+                            <div className="overflow-x-auto overscroll-x-contain border border-stone-850 rounded-lg bg-stone-900/20">
                                 <table className="w-full text-left border-collapse text-[9px] md:text-[10px]">
                                     <thead>
                                         <tr className="border-b border-stone-850 bg-stone-950/85 text-stone-400 uppercase font-black text-[8px] md:text-[9px]">
@@ -813,7 +813,7 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
                                 </p>
 
                                 {/* Split Screen Comparison Table */}
-                                <div className="overflow-x-auto custom-scrollbar">
+                                <div className="overflow-x-auto overscroll-x-contain custom-scrollbar">
                                     <table className="w-full text-left font-mono text-[8.5px] md:text-[9.5px] border-collapse min-w-[550px]">
                                         <thead>
                                             <tr className="border-b border-stone-800 text-[8px] uppercase tracking-widest text-stone-500 bg-stone-950/60">
@@ -1039,9 +1039,9 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
                                 href="https://github.com/AadishY"
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="flex items-center gap-3 md:gap-4 bg-stone-800/80 border border-stone-600 p-3 md:p-4 hover:bg-stone-700 hover:border-stone-400 transition-all group rounded-sm"
+                                className="flex items-center gap-3 md:gap-4 min-h-[44px] bg-stone-800/80 border border-stone-600 p-3 md:p-4 hover:bg-stone-700 hover:border-stone-400 transition-all group rounded-sm touch-manipulation"
                             >
-                                <div className="w-10 h-10 md:w-12 md:h-12 bg-[#24292e] border border-stone-500 flex items-center justify-center group-hover:border-white transition-colors rounded-sm">
+                                <div className="w-10 h-10 md:w-12 md:h-12 bg-[#24292e] border border-stone-500 flex items-center justify-center group-hover:border-white transition-colors rounded-sm shrink-0">
                                     <Github size={20} className="text-white" />
                                 </div>
                                 <div className="flex-1 min-w-0">
@@ -1055,9 +1055,9 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
                                 href="https://www.instagram.com/yo.akatsuki/"
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="flex items-center gap-3 md:gap-4 bg-stone-800/80 border border-stone-600 p-3 md:p-4 hover:bg-gradient-to-r hover:from-purple-900/40 hover:to-pink-900/40 hover:border-pink-500 transition-all group rounded-sm"
+                                className="flex items-center gap-3 md:gap-4 min-h-[44px] bg-stone-800/80 border border-stone-600 p-3 md:p-4 hover:bg-gradient-to-r hover:from-purple-900/40 hover:to-pink-900/40 hover:border-pink-500 transition-all group rounded-sm touch-manipulation"
                             >
-                                <div className="w-10 h-10 md:w-12 md:h-12 bg-gradient-to-br from-purple-600 via-pink-500 to-orange-400 flex items-center justify-center rounded-sm">
+                                <div className="w-10 h-10 md:w-12 md:h-12 bg-gradient-to-br from-purple-600 via-pink-500 to-orange-400 flex items-center justify-center rounded-sm shrink-0">
                                     <Instagram size={20} className="text-white" />
                                 </div>
                                 <div className="flex-1 min-w-0">
@@ -1110,11 +1110,11 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [currentPage]);
+    }, [currentPage, onClose]);
 
     return (
         <div 
-            className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-black/85 backdrop-blur-md p-2 sm:p-4 overflow-y-auto custom-scrollbar select-none animate-in fade-in duration-300"
+            className="fixed inset-0 h-[100dvh] z-[200] flex flex-col items-center justify-center bg-black/92 md:bg-black/85 md:backdrop-blur-md p-2 sm:p-4 overflow-hidden overscroll-contain select-none animate-in fade-in duration-300"
             role="dialog"
             aria-modal="true"
             aria-label="Tactical Manual"
@@ -1131,7 +1131,7 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
             }}
         >
             <div
-                className="w-[96vw] h-[92vh] max-w-[96vw] max-h-[92vh] md:w-[88vw] md:h-[88vh] md:max-w-[88vw] md:max-h-[88vh] bg-stone-950/95 backdrop-blur-2xl border-2 border-stone-700/80 shadow-[0_30px_90px_rgba(0,0,0,0.85)] relative flex flex-col overflow-hidden rounded-2xl ring-1 ring-white/10 my-auto text-stone-200"
+                className="w-[96vw] h-[92dvh] max-w-[96vw] max-h-[92dvh] md:w-[88vw] md:h-[88dvh] md:max-w-[88vw] md:max-h-[88dvh] bg-stone-950 md:bg-stone-950/95 md:backdrop-blur-2xl border-2 border-stone-700/80 shadow-[0_30px_90px_rgba(0,0,0,0.85)] relative flex flex-col overflow-hidden rounded-2xl ring-1 ring-white/10 my-auto text-stone-200"
                 onTouchStart={onTouchStart}
                 onTouchMove={onTouchMove}
                 onTouchEnd={onTouchEnd}
@@ -1140,16 +1140,16 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
                 <div className="absolute top-0 left-0 w-full h-[1.5px] bg-gradient-to-r from-transparent via-red-500/30 to-transparent z-50" />
 
                 {/* Header */}
-                <div className="flex justify-between items-center p-3 sm:p-4 border-b border-stone-800/50 bg-stone-950/50 shrink-0">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 min-w-[40px] min-h-[40px] bg-stone-900/80 rounded-xl border border-stone-800 flex items-center justify-center text-red-500 shadow-inner">
+                <div className="flex justify-between items-center gap-2 p-2.5 sm:p-4 border-b border-stone-800/50 bg-stone-950/80 shrink-0">
+                    <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+                        <div className="w-10 h-10 min-w-[40px] min-h-[40px] bg-stone-900/80 rounded-xl border border-stone-800 flex items-center justify-center text-red-500 shadow-inner shrink-0">
                             {pages[currentPage].icon}
                         </div>
-                        <div>
-                            <h2 className="text-sm sm:text-lg font-black text-white tracking-[0.25em] uppercase leading-tight">
+                        <div className="min-w-0">
+                            <h2 className="text-sm sm:text-lg font-black text-white tracking-[0.2em] sm:tracking-[0.25em] uppercase leading-tight truncate">
                                 Tactical Manual
                             </h2>
-                            <p className="text-[8px] sm:text-[9px] text-stone-500 font-bold tracking-[0.4em] uppercase">VER {GAME_VERSION} • DEPLOYMENT SPEC</p>
+                            <p className="text-[8px] sm:text-[9px] text-stone-500 font-bold tracking-[0.28em] sm:tracking-[0.4em] uppercase truncate">VER {GAME_VERSION} • DEPLOYMENT SPEC</p>
                         </div>
                     </div>
                     <button
@@ -1157,7 +1157,7 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
                             audioManager.playSound('click');
                             onClose();
                         }}
-                        className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center text-stone-400 hover:text-white hover:bg-white/10 rounded-full transition-all active:scale-95 cursor-pointer border border-transparent hover:border-white/10"
+                        className="w-11 h-11 min-w-[44px] min-h-[44px] shrink-0 flex items-center justify-center text-stone-400 hover:text-white hover:bg-white/10 rounded-full transition-all active:scale-95 cursor-pointer touch-manipulation border border-transparent hover:border-white/10"
                         aria-label="Close guide"
                     >
                         <X size={20} />
@@ -1167,7 +1167,7 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
                 {/* Split Navigation & Content Container */}
                 <div className="flex flex-col sm:flex-row flex-1 min-h-0 overflow-hidden">
                     {/* Navigation Bar / Sidebar */}
-                    <div className="flex flex-row sm:flex-col overflow-x-auto sm:overflow-y-auto bg-stone-950/80 border-b sm:border-b-0 sm:border-r border-stone-800 p-2 md:p-3 gap-1.5 shrink-0 select-none custom-scrollbar w-full sm:w-48 sm:min-w-[12rem] items-center sm:items-stretch">
+                    <div className="flex flex-row sm:flex-col overflow-x-auto sm:overflow-y-auto overscroll-contain bg-stone-950/80 border-b sm:border-b-0 sm:border-r border-stone-800 p-2 md:p-3 gap-1.5 shrink-0 select-none custom-scrollbar w-full sm:w-48 sm:min-w-[12rem] items-center sm:items-stretch">
                         {pages.map((page, idx) => {
                             const isActive = idx === currentPage;
                             return (
@@ -1177,7 +1177,7 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
                                         audioManager.playSound('click');
                                         goToPage(idx);
                                     }}
-                                    className={`flex items-center justify-center sm:justify-start gap-2 px-3 py-2 min-h-[44px] border text-left transition-all shrink-0 rounded-xl cursor-pointer ${
+                                    className={`flex items-center justify-center sm:justify-start gap-2 px-3 py-2 min-h-[44px] border text-left transition-all shrink-0 rounded-xl cursor-pointer touch-manipulation ${
                                         isActive
                                         ? 'bg-red-500/15 border-red-500/50 text-white font-black shadow-[0_0_15px_rgba(239,68,68,0.1)]'
                                         : 'bg-stone-900/40 border-stone-850 text-stone-300 hover:text-white hover:bg-stone-900/80'
@@ -1194,7 +1194,7 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
                     </div>
 
                     {/* Content Area */}
-                    <div className="flex-1 min-h-0 min-w-0 overflow-y-auto p-4 sm:p-6 overscroll-contain custom-scrollbar bg-stone-950/60 text-stone-200">
+                    <div className="flex-1 min-h-0 min-w-0 overflow-y-auto p-3 sm:p-5 overscroll-contain custom-scrollbar bg-stone-950/60 text-stone-200">
                         <div className="max-w-4xl mx-auto space-y-4">
                             {pages[currentPage].content}
                         </div>
@@ -1202,24 +1202,24 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
                 </div>
  
                 {/* Footer - Navigation Stepper */}
-                <div className="shrink-0 p-2.5 sm:p-3 border-t border-stone-800/50 bg-stone-950/40 backdrop-blur-xl">
-                    <div className="max-w-4xl mx-auto flex items-center justify-between">
+                <div className="shrink-0 p-2 sm:p-3 border-t border-stone-800/50 bg-stone-950/95 md:bg-stone-950/40 md:backdrop-blur-xl">
+                    <div className="max-w-4xl mx-auto flex items-center justify-between gap-2">
                         <button
                             onClick={() => {
                                 audioManager.playSound('click');
                                 prevPage();
                             }}
                             disabled={currentPage === 0}
-                            className={`flex items-center gap-1.5 px-4 py-2 min-h-[44px] font-black tracking-[0.2em] transition-all text-[8px] sm:text-[9px] rounded-xl border ${currentPage === 0
+                            className={`flex items-center gap-1.5 px-3 sm:px-4 py-2 min-h-[44px] font-black tracking-[0.2em] transition-all text-[8px] sm:text-[9px] rounded-xl border touch-manipulation shrink-0 ${currentPage === 0
                                 ? 'border-transparent text-transparent pointer-events-none'
-                                : 'border-stone-800 text-stone-400 hover:text-white hover:bg-white/5 hover:border-stone-600'
+                                : 'border-stone-800 text-stone-400 hover:text-white hover:bg-white/5 hover:border-stone-600 cursor-pointer'
                                 }`}
                         >
                             <ChevronLeft size={16} />
                             BACK
                         </button>
  
-                        <div className="flex items-center gap-2 justify-center">
+                        <div className="flex items-center gap-1.5 sm:gap-2 justify-center min-w-0">
                             {pages.map((_, index) => (
                                 <button
                                     key={index}
@@ -1228,7 +1228,7 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
                                         goToPage(index);
                                     }}
                                     type="button"
-                                    className={`block p-0 transition-all ${index === currentPage
+                                    className={`block p-0 transition-all touch-manipulation cursor-pointer ${index === currentPage
                                         ? 'bg-red-500'
                                         : 'bg-stone-700 hover:bg-stone-600'
                                         }`}
@@ -1253,9 +1253,9 @@ export const TutorialGuide: React.FC<TutorialGuideProps> = ({ onClose }) => {
                                 nextPage();
                             }}
                             disabled={currentPage === pages.length - 1}
-                            className={`flex items-center gap-1.5 px-4 py-2 min-h-[44px] font-black tracking-[0.2em] transition-all text-[8px] sm:text-[9px] rounded-xl border ${currentPage === pages.length - 1
+                            className={`flex items-center gap-1.5 px-3 sm:px-4 py-2 min-h-[44px] font-black tracking-[0.2em] transition-all text-[8px] sm:text-[9px] rounded-xl border touch-manipulation shrink-0 ${currentPage === pages.length - 1
                                 ? 'border-transparent text-transparent pointer-events-none'
-                                : 'bg-white text-black hover:bg-stone-200 border-white'
+                                : 'bg-white text-black hover:bg-stone-200 border-white cursor-pointer'
                                 }`}
                         >
                             NEXT

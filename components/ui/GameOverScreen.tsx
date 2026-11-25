@@ -235,7 +235,7 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({
 
     return (
         <div
-            className="fixed inset-0 z-[200] bg-[#080706] text-stone-100 font-mono select-none flex flex-col overflow-hidden pointer-events-auto animate-in fade-in duration-300"
+            className="fixed inset-0 h-[100dvh] z-[200] bg-[#080706] text-stone-100 font-mono select-none flex flex-col overflow-hidden overscroll-contain pointer-events-auto animate-in fade-in duration-300"
             style={{
                 paddingTop: 'max(env(safe-area-inset-top, 0px), 10px)',
                 paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 10px)',
@@ -258,20 +258,20 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({
                 <div className={`h-1 w-full shrink-0 bg-gradient-to-r ${accentTopLine}`} />
 
                 {/* 1. COMPACT HERO HEADER */}
-                <div className="shrink-0 px-4 py-3 sm:px-6 sm:py-4 border-b border-stone-800/90 bg-stone-950/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-                        <div className={`w-11 h-11 sm:w-14 sm:h-14 rounded-xl border ${accentBorder} bg-black/70 flex items-center justify-center shrink-0`}>
+                <div className="shrink-0 px-3 py-2 sm:px-5 sm:py-3 md:px-6 md:py-4 border-b border-stone-800/90 bg-stone-950/90 flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3">
+                    <div className="flex items-center gap-2.5 sm:gap-4 min-w-0">
+                        <div className={`w-10 h-10 md:w-14 md:h-14 rounded-xl border ${accentBorder} bg-black/70 flex items-center justify-center shrink-0`}>
                             {isGoldTheme ? (
-                                <Crown className="w-6 h-6 sm:w-7 sm:h-7 text-amber-400" />
+                                <Crown className="w-5 h-5 md:w-7 md:h-7 text-amber-400" />
                             ) : summary.isPlayerWin ? (
-                                <Trophy className="w-6 h-6 sm:w-7 sm:h-7 text-emerald-400" />
+                                <Trophy className="w-5 h-5 md:w-7 md:h-7 text-emerald-400" />
                             ) : (
-                                <Skull className="w-6 h-6 sm:w-7 sm:h-7 text-red-500" />
+                                <Skull className="w-5 h-5 md:w-7 md:h-7 text-red-500" />
                             )}
                         </div>
-                        <div className="min-w-0">
+                        <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className={`text-[9px] sm:text-[10px] font-black tracking-[0.22em] uppercase ${accentText}`}>
+                                <span className={`text-[9px] sm:text-[10px] font-black tracking-[0.2em] uppercase truncate ${accentText}`}>
                                     {summary.subtitle}
                                 </span>
                                 {isLocalSplit && (
@@ -295,7 +295,7 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({
                                     </span>
                                 )}
                             </div>
-                            <h1 className="text-xl sm:text-3xl lg:text-4xl font-black tracking-[0.06em] uppercase text-white leading-tight truncate">
+                            <h1 className="text-lg sm:text-2xl lg:text-4xl font-black tracking-[0.06em] uppercase text-white leading-tight truncate">
                                 {summary.title}
                             </h1>
                             <p className="text-[9.5px] sm:text-[11px] text-stone-400 tracking-wide truncate mt-0.5">
@@ -305,20 +305,20 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({
                     </div>
 
                     {/* Score & Class Rank Crest */}
-                    <div className="flex items-center gap-3 sm:gap-4 shrink-0 self-start sm:self-center bg-black/60 border border-stone-800/90 rounded-xl px-3.5 py-2">
+                    <div className="flex items-center justify-between sm:justify-start gap-3 sm:gap-4 shrink-0 w-full sm:w-auto bg-black/60 border border-stone-800/90 rounded-xl px-3 py-1.5 md:px-3.5 md:py-2">
                         <div className="text-left sm:text-right">
                             <div className="text-[8px] sm:text-[9px] text-stone-500 font-bold uppercase tracking-[0.2em]">
                                 COMBAT RATING
                             </div>
-                            <div className="text-xl sm:text-3xl font-black text-white tabular-nums leading-none mt-0.5">
+                            <div className="text-lg sm:text-2xl md:text-3xl font-black text-white tabular-nums leading-none mt-0.5">
                                 {displayScore.toLocaleString()}
                             </div>
-                            <div className="text-[8px] sm:text-[9px] text-stone-400 font-bold uppercase tracking-widest mt-0.5">
+                            <div className="text-[8px] sm:text-[9px] text-stone-400 font-bold uppercase tracking-widest mt-0.5 truncate max-w-[160px] sm:max-w-none">
                                 {summary.rankTitle}
                             </div>
                         </div>
                         <div
-                            className={`w-11 h-11 sm:w-13 sm:h-13 rounded-xl border-2 flex items-center justify-center text-2xl sm:text-3xl font-black shrink-0 ${GRADE_STYLE[summary.rankGrade] || GRADE_STYLE.C}`}
+                            className={`w-10 h-10 md:w-13 md:h-13 rounded-xl border-2 flex items-center justify-center text-xl md:text-3xl font-black shrink-0 ${GRADE_STYLE[summary.rankGrade] || GRADE_STYLE.C}`}
                             title={`Combat Rank ${summary.rankGrade}`}
                         >
                             {summary.rankGrade}
@@ -327,28 +327,29 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({
                 </div>
 
                 {/* 2. SCROLLABLE TELEMETRY & DOSSIER BODY */}
-                <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-3.5 sm:p-5 space-y-3.5 sm:space-y-4">
+                <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain custom-scrollbar p-3 sm:p-5 space-y-3 sm:space-y-4">
                     {/* Local Split Head-to-Head Banner */}
                     {isLocalSplit && (
-                        <div className="grid grid-cols-3 items-center gap-2 bg-stone-950/90 border border-amber-500/40 rounded-xl p-3 sm:p-4">
+                        <div className="grid grid-cols-3 items-center gap-1.5 sm:gap-2 bg-stone-950/90 border border-amber-500/40 rounded-xl p-2.5 sm:p-4">
                             <div className={`flex flex-col items-start min-w-0 p-2 rounded-lg border ${winner === 'PLAYER' ? 'bg-amber-950/40 border-amber-400/70' : 'bg-black/40 border-stone-800'}`}>
-                                <span className="text-[8px] font-black tracking-[0.2em] uppercase text-stone-400 flex items-center gap-1">
-                                    <Users size={10} /> PLAYER 1 {winner === 'PLAYER' && '• WINNER'}
+                                <span className="text-[7.5px] sm:text-[8px] font-black tracking-[0.14em] sm:tracking-[0.2em] uppercase text-stone-400 flex items-center gap-1 truncate w-full">
+                                    <Users size={10} className="shrink-0" />
+                                    <span className="truncate">P1 {winner === 'PLAYER' && '• WIN'}</span>
                                 </span>
-                                <span className={`text-sm sm:text-lg font-black uppercase truncate w-full ${winner === 'PLAYER' ? 'text-amber-300' : 'text-stone-300'}`}>
+                                <span className={`text-xs sm:text-lg font-black uppercase truncate w-full ${winner === 'PLAYER' ? 'text-amber-300' : 'text-stone-300'}`}>
                                     {p1Display}
                                 </span>
                             </div>
 
-                            <div className="text-center">
-                                <div className="text-[8px] font-black uppercase tracking-[0.25em] text-stone-500">
-                                    SERIES SCORE {splitTotalMatches ? `(BO${splitTotalMatches})` : ''}
+                            <div className="text-center min-w-0">
+                                <div className="text-[7.5px] sm:text-[8px] font-black uppercase tracking-[0.15em] sm:tracking-[0.25em] text-stone-500 truncate">
+                                    SERIES {splitTotalMatches ? `(BO${splitTotalMatches})` : ''}
                                 </div>
-                                <div className="text-2xl sm:text-3xl font-black tabular-nums text-white tracking-wider mt-0.5">
+                                <div className="text-xl sm:text-3xl font-black tabular-nums text-white tracking-wider mt-0.5">
                                     <span className={winner === 'PLAYER' ? 'text-amber-400' : 'text-stone-400'}>
                                         {splitScore?.playerWins ?? (winner === 'PLAYER' ? 1 : 0)}
                                     </span>
-                                    <span className="text-stone-600 mx-2">-</span>
+                                    <span className="text-stone-600 mx-1 sm:mx-2">-</span>
                                     <span className={winner === 'DEALER' ? 'text-amber-400' : 'text-stone-400'}>
                                         {splitScore?.opponentWins ?? (winner === 'DEALER' ? 1 : 0)}
                                     </span>
@@ -356,10 +357,10 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({
                             </div>
 
                             <div className={`flex flex-col items-end min-w-0 p-2 rounded-lg border ${winner === 'DEALER' ? 'bg-amber-950/40 border-amber-400/70' : 'bg-black/40 border-stone-800'}`}>
-                                <span className="text-[8px] font-black tracking-[0.2em] uppercase text-stone-400">
-                                    {winner === 'DEALER' && 'WINNER • '}PLAYER 2
+                                <span className="text-[7.5px] sm:text-[8px] font-black tracking-[0.14em] sm:tracking-[0.2em] uppercase text-stone-400 truncate w-full text-right">
+                                    {winner === 'DEALER' && 'WIN • '}P2
                                 </span>
-                                <span className={`text-sm sm:text-lg font-black uppercase truncate w-full text-right ${winner === 'DEALER' ? 'text-amber-300' : 'text-stone-300'}`}>
+                                <span className={`text-xs sm:text-lg font-black uppercase truncate w-full text-right ${winner === 'DEALER' ? 'text-amber-300' : 'text-stone-300'}`}>
                                     {p2Display}
                                 </span>
                             </div>
@@ -536,16 +537,16 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({
                                                     className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-black/50 border border-stone-850 text-[10px]"
                                                 >
                                                     <div className="flex items-center gap-2 min-w-0">
-                                                        <span className={`font-black uppercase tracking-wider ${m?.isLocalSplit ? 'text-amber-400' : isWin ? 'text-emerald-400' : 'text-red-400'}`}>
+                                                        <span className={`font-black uppercase tracking-wider truncate max-w-[130px] sm:max-w-[200px] ${m?.isLocalSplit ? 'text-amber-400' : isWin ? 'text-emerald-400' : 'text-red-400'}`}>
                                                             {splitWinnerLabel ? `${splitWinnerLabel} WON` : isWin ? 'WIN' : 'LOSS'}
                                                         </span>
                                                         {m?.isLocalSplit && (
-                                                            <span className="text-[8px] px-1 rounded bg-amber-950 text-amber-300 border border-amber-700/70 font-bold">
+                                                            <span className="text-[8px] px-1 rounded bg-amber-950 text-amber-300 border border-amber-700/70 font-bold shrink-0">
                                                                 SPLIT
                                                             </span>
                                                         )}
                                                         {m?.isHardMode && (
-                                                            <span className="text-[8px] px-1 rounded bg-red-950 text-red-300 border border-red-800/70 font-bold">
+                                                            <span className="text-[8px] px-1 rounded bg-red-950 text-red-300 border border-red-800/70 font-bold shrink-0">
                                                                 HARD
                                                             </span>
                                                         )}
@@ -583,20 +584,20 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({
                 </div>
 
                 {/* 3. STICKY BOTTOM ACTION BAR */}
-                <div className="shrink-0 px-4 py-3 sm:px-6 sm:py-3.5 border-t border-stone-800/90 bg-stone-950 flex flex-row items-center justify-between gap-2.5 sm:gap-4">
+                <div className="shrink-0 px-3 py-2.5 sm:px-6 sm:py-3.5 border-t border-stone-800/90 bg-stone-950 flex flex-row items-center justify-between gap-2 sm:gap-4">
                     <button
                         type="button"
                         onClick={handleMainMenu}
-                        className="flex-1 sm:flex-none sm:min-w-[180px] min-h-[44px] py-2.5 px-4 bg-stone-900 hover:bg-stone-800 border border-stone-700 hover:border-stone-500 text-stone-200 hover:text-white rounded-xl font-black text-xs tracking-[0.18em] uppercase transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2"
+                        className="flex-1 sm:flex-none sm:min-w-[180px] min-h-[44px] py-2.5 px-3 sm:px-4 bg-stone-900 hover:bg-stone-800 border border-stone-700 hover:border-stone-500 text-stone-200 hover:text-white rounded-xl font-black text-[10px] sm:text-xs tracking-[0.12em] sm:tracking-[0.18em] uppercase transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5 sm:gap-2 whitespace-nowrap touch-manipulation"
                     >
-                        <Home size={15} />
+                        <Home size={15} className="shrink-0" />
                         <span>MAIN MENU</span>
                     </button>
 
                     <button
                         type="button"
                         onClick={handlePlayAgain}
-                        className={`flex-1 sm:flex-none sm:min-w-[220px] min-h-[44px] py-2.5 px-5 rounded-xl font-black text-xs tracking-[0.18em] uppercase transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2 ${
+                        className={`flex-1 sm:flex-none sm:min-w-[220px] min-h-[44px] py-2.5 px-3 sm:px-5 rounded-xl font-black text-[10px] sm:text-xs tracking-[0.12em] sm:tracking-[0.18em] uppercase transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5 sm:gap-2 whitespace-nowrap touch-manipulation ${
                             isGoldTheme
                                 ? 'bg-amber-500 hover:bg-amber-400 text-stone-950 border border-amber-300 shadow-[0_0_24px_rgba(245,158,11,0.35)]'
                                 : summary.isPlayerWin
@@ -604,7 +605,7 @@ export const GameOverScreen: React.FC<GameOverScreenProps> = ({
                                 : 'bg-red-600 hover:bg-red-500 text-white border border-red-400 shadow-[0_0_24px_rgba(220,38,38,0.4)]'
                         }`}
                     >
-                        <RotateCcw size={15} />
+                        <RotateCcw size={15} className="shrink-0" />
                         <span>{isMultiplayer && !isLocalSplit ? 'RETURN TO LOBBY' : isLocalSplit ? 'REMATCH SPLIT' : 'PLAY AGAIN'}</span>
                     </button>
                 </div>

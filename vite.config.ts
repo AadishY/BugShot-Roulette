@@ -25,7 +25,7 @@ function collectDistAssets(dirPath: string, distRoot: string, acc: string[] = []
     const fullPath = path.join(dirPath, entry.name);
     if (entry.isDirectory()) {
       collectDistAssets(fullPath, distRoot, acc);
-    } else if (entry.isFile() && /\.(js|css|wasm|webp|png|svg|woff2?)$/i.test(entry.name)) {
+    } else if (entry.isFile() && /\.(js|css|wasm|webp|png|svg|ico|woff2?)$/i.test(entry.name)) {
       const rel = '/' + path.relative(distRoot, fullPath).replace(/\\/g, '/');
       acc.push(rel);
     }
@@ -33,42 +33,51 @@ function collectDistAssets(dirPath: string, distRoot: string, acc: string[] = []
   return acc;
 }
 
-const swBuildManifestPlugin = (): PluginOption => ({
-  name: 'sw-build-manifest',
-  apply: 'build',
-  closeBundle() {
-    try {
-      const distRoot = path.resolve(process.cwd(), 'dist');
-      const swPath = path.join(distRoot, 'sw.js');
-      if (!fs.existsSync(swPath)) return;
+const swBuildManifestPlugin = (): PluginOption => {
+  let resolvedOutDir = path.resolve(process.cwd(), 'dist');
+  let resolvedAssetsDir = 'assets';
 
-      const buildStamp = `${Date.now().toString(36)}-${crypto.randomBytes(3).toString('hex')}`;
-      const builtAssets = collectDistAssets(path.join(distRoot, 'assets'), distRoot).sort();
+  return {
+    name: 'sw-build-manifest',
+    apply: 'build',
+    configResolved(config) {
+      resolvedOutDir = path.resolve(config.root, config.build.outDir);
+      resolvedAssetsDir = config.build.assetsDir || 'assets';
+    },
+    closeBundle() {
+      try {
+        const distRoot = resolvedOutDir;
+        const swPath = path.join(distRoot, 'sw.js');
+        if (!fs.existsSync(swPath)) return;
 
-      let swCode = fs.readFileSync(swPath, 'utf8');
-      swCode = swCode.replace(
-        /const CACHE_NAME = ['"][^'"]+['"];/,
-        `const CACHE_NAME = 'bugshot-roulette-${buildStamp}';`
-      );
-      swCode = swCode.replace(
-        /const RUNTIME_CACHE = ['"][^'"]+['"];/,
-        `const RUNTIME_CACHE = 'bugshot-roulette-runtime-${buildStamp}';`
-      );
+        const buildStamp = `${Date.now().toString(36)}-${crypto.randomBytes(3).toString('hex')}`;
+        const builtAssets = collectDistAssets(path.join(distRoot, resolvedAssetsDir), distRoot).sort();
 
-      if (builtAssets.length > 0) {
-        const assetLines = builtAssets.map((a) => `    '${a}',`).join('\n');
+        let swCode = fs.readFileSync(swPath, 'utf8');
+        swCode = swCode.replace(
+          /const CACHE_NAME = ['"][^'"]+['"];/,
+          `const CACHE_NAME = 'bugshot-roulette-${buildStamp}';`
+        );
+        swCode = swCode.replace(
+          /const RUNTIME_CACHE = ['"][^'"]+['"];/,
+          `const RUNTIME_CACHE = 'bugshot-roulette-runtime-${buildStamp}';`
+        );
+
+        const assetLines = builtAssets.length > 0
+          ? builtAssets.map((a) => `    '${a}',`).join('\n')
+          : '';
         swCode = swCode.replace(
           '// __VITE_BUILT_ASSETS_PLACEHOLDER__',
-          assetLines
+          () => assetLines
         );
-      }
 
-      fs.writeFileSync(swPath, swCode, 'utf8');
-    } catch (err) {
-      console.warn('[sw-build-manifest] Failed stamping dist/sw.js:', err);
+        fs.writeFileSync(swPath, swCode, 'utf8');
+      } catch (err) {
+        console.warn('[sw-build-manifest] Failed stamping dist/sw.js:', err);
+      }
     }
-  }
-});
+  };
+};
 
 const plugins: PluginOption[] = [react(), swBuildManifestPlugin()];
 if (process.env.HTTPS === 'true') {

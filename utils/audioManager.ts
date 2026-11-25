@@ -96,6 +96,7 @@ const MUSIC_FILES: Record<string, string> = {
 const CRITICAL_SFX_URLS = Array.from(
     new Set([SOUND_FILES.grab, SOUND_FILES.blankshell, SOUND_FILES.liveshell])
 );
+const CRITICAL_SFX_URL_SET = new Set(CRITICAL_SFX_URLS);
 
 const DIMMING_SFX_KEYS = new Set([
     'dropping', 'checkhandcuffs', 'handcuffed', 'adrenaline',
@@ -137,15 +138,18 @@ export class AudioManager {
 
     // Web Audio decoded AudioBuffer LRU cache (keyed by URL so aliases like grab/click share 1 buffer)
     private audioBuffers: Map<string, AudioBuffer> = new Map();
+    private audioBufferBytes: number = 0;
     private decodePromises: Map<string, Promise<AudioBuffer | null>> = new Map();
     private activeSfxNodes: Set<ActiveSFXNode> = new Set();
     private activeFallbackSounds: Set<HTMLAudioElement> = new Set();
     private criticalReadyUrls: Set<string> = new Set();
     private sfxEpoch: number = 0;
+    private jackpotEpoch: number = 0;
     private masterCompressor: DynamicsCompressorNode | null = null;
     private noiseBuffer: AudioBuffer | null = null;
 
     private musicCrossfadeTimer: ReturnType<typeof setInterval> | null = null;
+    private fadingOutTrack: { key: string; track: HTMLAudioElement } | null = null;
 
     // Jackpot state (prefers Web Audio buffer nodes for gapless loop, falls back to HTMLAudio)
     private jackpotNode: { source: AudioBufferSourceNode; gain: GainNode } | null = null;
@@ -154,31 +158,50 @@ export class AudioManager {
     private isJackpotActive: boolean = false;
 
     private getMaxCachedBuffers(): number {
-        return isMobileBrowser() ? 14 : 28;
+        return isMobileBrowser() ? 10 : 24;
+    }
+
+    private getMaxCachedAudioBytes(): number {
+        return isMobileBrowser() ? 12 * 1024 * 1024 : 40 * 1024 * 1024;
     }
 
     private getMaxConcurrentSFX(): number {
         return isMobileBrowser() ? 8 : 14;
     }
 
+    private getBufferByteSize(buffer: AudioBuffer): number {
+        return buffer.length * buffer.numberOfChannels * 4;
+    }
+
+    private deleteCachedBuffer(url: string) {
+        const existing = this.audioBuffers.get(url);
+        if (!existing) return;
+        this.audioBufferBytes = Math.max(0, this.audioBufferBytes - this.getBufferByteSize(existing));
+        this.audioBuffers.delete(url);
+    }
+
+    private findOldestEvictableKey(): string | null {
+        for (const key of this.audioBuffers.keys()) {
+            if (!CRITICAL_SFX_URL_SET.has(key)) {
+                return key;
+            }
+        }
+        return null;
+    }
+
     private touchBufferLRU(url: string, buffer: AudioBuffer) {
         if (this.audioBuffers.has(url)) {
-            this.audioBuffers.delete(url);
+            this.deleteCachedBuffer(url);
         }
         this.audioBuffers.set(url, buffer);
+        this.audioBufferBytes += this.getBufferByteSize(buffer);
 
-        const limit = this.getMaxCachedBuffers();
-        while (this.audioBuffers.size > limit) {
-            const oldestKey = this.audioBuffers.keys().next().value as string | undefined;
-            if (!oldestKey) break;
-            // Never evict core UI/shotgun buffers while trimming
-            if (CRITICAL_SFX_URLS.includes(oldestKey) && this.audioBuffers.size > CRITICAL_SFX_URLS.length) {
-                const kept = this.audioBuffers.get(oldestKey)!;
-                this.audioBuffers.delete(oldestKey);
-                this.audioBuffers.set(oldestKey, kept);
-                continue;
-            }
-            this.audioBuffers.delete(oldestKey);
+        const maxCount = this.getMaxCachedBuffers();
+        const maxBytes = this.getMaxCachedAudioBytes();
+        while (this.audioBuffers.size > maxCount || this.audioBufferBytes > maxBytes) {
+            const evictKey = this.findOldestEvictableKey();
+            if (!evictKey) break;
+            this.deleteCachedBuffer(evictKey);
         }
     }
 
@@ -225,8 +248,10 @@ export class AudioManager {
         const path = MUSIC_FILES[key];
         if (!path) return null;
 
-        const audio = new Audio(path);
-        audio.preload = 'auto';
+        const audio = new Audio();
+        // Avoid eager downloading full MP3s before a track is actually played
+        audio.preload = 'metadata';
+        audio.src = path;
         audio.loop = key !== 'endscreen';
         this.music[key] = audio;
         return audio;
@@ -244,11 +269,25 @@ export class AudioManager {
         delete this.music[key];
     }
 
+    private finalizeFadingOutTrack() {
+        if (!this.fadingOutTrack) return;
+        const { key, track } = this.fadingOutTrack;
+        this.fadingOutTrack = null;
+        try {
+            track.pause();
+            track.currentTime = 0;
+        } catch {}
+        if (key !== this.currentMusic && (key === 'endscreen' || isMobileBrowser())) {
+            this.releaseMusicTrack(key);
+        }
+    }
+
     private clearMusicFadeTimer() {
         if (this.musicCrossfadeTimer !== null) {
             clearInterval(this.musicCrossfadeTimer);
             this.musicCrossfadeTimer = null;
         }
+        this.finalizeFadingOutTrack();
     }
 
     private getTargetMusicVolume(): number {
@@ -337,19 +376,20 @@ export class AudioManager {
                 const resumed = await resumeAudioContext().catch(() => false);
                 const ctx = getAudioContext();
 
-                // Warm up menu music track lazily only when initializing
-                const menuTrack = this.getOrCreateMusicTrack('menu');
-                if (menuTrack) {
-                    menuTrack.volume = 0;
-                    menuTrack.muted = true;
+                // Warm up only the active/pending music track lazily (avoid downloading unused tracks on mobile)
+                const warmupKey = this.currentMusic || this.pendingMusic;
+                const warmupTrack = warmupKey ? this.getOrCreateMusicTrack(warmupKey) : null;
+                if (warmupTrack) {
+                    warmupTrack.volume = 0;
+                    warmupTrack.muted = true;
                     try {
-                        await menuTrack.play();
+                        await warmupTrack.play();
                     } catch {
                         // Ignore autoplay prevention
                     }
-                    menuTrack.pause();
-                    menuTrack.currentTime = 0;
-                    menuTrack.muted = false;
+                    warmupTrack.pause();
+                    warmupTrack.currentTime = 0;
+                    warmupTrack.muted = false;
                 }
 
                 // Decode only tiny core SFX buffers on unlock; item SFX decode lazily when used
@@ -359,7 +399,7 @@ export class AudioManager {
                     );
                 }
 
-                if (resumed || (ctx && ctx.state === 'running') || (menuTrack && menuTrack.readyState >= 1)) {
+                if (resumed || (ctx && ctx.state === 'running') || (warmupTrack && warmupTrack.readyState >= 1)) {
                     this.isInitialized = true;
                     this.initialized = true;
                 } else {
@@ -558,6 +598,10 @@ export class AudioManager {
                 oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
                 osc.connect(oscGain);
                 oscGain.connect(out);
+                osc.onended = () => {
+                    try { osc.disconnect(); } catch {}
+                    try { oscGain.disconnect(); } catch {}
+                };
                 osc.start(now);
                 osc.stop(now + 0.085);
 
@@ -573,6 +617,11 @@ export class AudioManager {
                 click.connect(bp);
                 bp.connect(nGain);
                 nGain.connect(out);
+                click.onended = () => {
+                    try { click.disconnect(); } catch {}
+                    try { bp.disconnect(); } catch {}
+                    try { nGain.disconnect(); } catch {}
+                };
                 click.start(now);
                 click.stop(now + 0.05);
                 return true;
@@ -594,6 +643,11 @@ export class AudioManager {
                     src.connect(bp);
                     bp.connect(g);
                     g.connect(out);
+                    src.onended = () => {
+                        try { src.disconnect(); } catch {}
+                        try { bp.disconnect(); } catch {}
+                        try { g.disconnect(); } catch {}
+                    };
                     src.start(t);
                     src.stop(t + 0.1);
 
@@ -606,6 +660,10 @@ export class AudioManager {
                     bg.gain.exponentialRampToValueAtTime(0.001, t + 0.075);
                     body.connect(bg);
                     bg.connect(out);
+                    body.onended = () => {
+                        try { body.disconnect(); } catch {}
+                        try { bg.disconnect(); } catch {}
+                    };
                     body.start(t);
                     body.stop(t + 0.08);
                 };
@@ -625,6 +683,10 @@ export class AudioManager {
                 g.gain.exponentialRampToValueAtTime(0.001, now + 0.11);
                 osc.connect(g);
                 g.connect(out);
+                osc.onended = () => {
+                    try { osc.disconnect(); } catch {}
+                    try { g.disconnect(); } catch {}
+                };
                 osc.start(now);
                 osc.stop(now + 0.115);
                 return true;
@@ -728,7 +790,7 @@ export class AudioManager {
         ]);
         for (const url of Array.from(this.audioBuffers.keys())) {
             if (!keepUrls.has(url)) {
-                this.audioBuffers.delete(url);
+                this.deleteCachedBuffer(url);
             }
         }
     }
@@ -737,6 +799,7 @@ export class AudioManager {
         if (this.currentMusic === key) {
             const track = this.getOrCreateMusicTrack(key);
             if (track && this.isInitialized) {
+                track.preload = 'auto';
                 if (track.paused) {
                     track.currentTime = 0;
                     track.play().catch(() => {});
@@ -759,18 +822,21 @@ export class AudioManager {
         this.clearMusicFadeTimer();
 
         if (newTrack) {
+            newTrack.preload = 'auto';
             const targetVol = this.getTargetMusicVolume();
             newTrack.currentTime = 0;
 
-            if (oldTrack && !oldTrack.paused && transitionDurationMs > 50) {
+            if (oldTrack && oldKey && !oldTrack.paused && transitionDurationMs > 50) {
                 const oldStartVol = oldTrack.volume;
                 newTrack.volume = 0;
+                this.fadingOutTrack = { key: oldKey, track: oldTrack };
+
                 const playPromise = newTrack.play();
                 if (playPromise !== undefined) {
                     playPromise.catch((error) => {
-                        if (error && (error.name === 'NotAllowedError' || error.name === 'AbortError')) {
+                        if (error && (error.name === 'NotAllowedError' || (error.name === 'AbortError' && this.currentMusic === key))) {
                             this.pendingMusic = key;
-                        } else {
+                        } else if (error && error.name !== 'AbortError') {
                             console.warn(`Music '${key}' error:`, error);
                         }
                     });
@@ -789,24 +855,16 @@ export class AudioManager {
                     }
                     if (step >= steps) {
                         this.clearMusicFadeTimer();
-                        if (oldTrack) {
-                            oldTrack.pause();
-                            oldTrack.currentTime = 0;
-                            oldTrack.volume = targetVol;
-                            if (oldKey === 'endscreen') {
-                                this.releaseMusicTrack(oldKey);
-                            }
-                        }
                         if (newTrack) {
                             newTrack.volume = targetVol;
                         }
                     }
                 }, 25);
             } else {
-                if (oldTrack) {
+                if (oldTrack && oldKey) {
                     oldTrack.pause();
                     oldTrack.currentTime = 0;
-                    if (oldKey === 'endscreen') {
+                    if (oldKey === 'endscreen' || isMobileBrowser()) {
                         this.releaseMusicTrack(oldKey);
                     }
                 }
@@ -814,9 +872,9 @@ export class AudioManager {
                 const playPromise = newTrack.play();
                 if (playPromise !== undefined) {
                     playPromise.catch((error) => {
-                        if (error && (error.name === 'NotAllowedError' || error.name === 'AbortError')) {
+                        if (error && (error.name === 'NotAllowedError' || (error.name === 'AbortError' && this.currentMusic === key))) {
                             this.pendingMusic = key;
-                        } else {
+                        } else if (error && error.name !== 'AbortError') {
                             console.warn(`Music '${key}' error:`, error);
                         }
                     });
@@ -852,19 +910,21 @@ export class AudioManager {
             const startVol = track.volume;
             const steps = Math.max(1, Math.round(fadeDurationMs / 25));
             let step = 0;
+            this.fadingOutTrack = { key: stoppingKey, track };
             this.musicCrossfadeTimer = setInterval(() => {
                 step++;
                 const progress = Math.min(1.0, step / steps);
                 track.volume = Math.max(0, startVol * (1 - progress));
                 if (step >= steps) {
                     this.clearMusicFadeTimer();
-                    track.pause();
-                    track.currentTime = 0;
                 }
             }, 25);
         } else {
             track.pause();
             track.currentTime = 0;
+            if (isMobileBrowser() || stoppingKey === 'endscreen') {
+                this.releaseMusicTrack(stoppingKey);
+            }
         }
     }
 
@@ -908,10 +968,11 @@ export class AudioManager {
         }
 
         const ctx = getAudioContext();
-        const epochAtStart = this.sfxEpoch;
+        const sfxEpochAtStart = this.sfxEpoch;
+        const jackpotEpochAtStart = this.jackpotEpoch;
         if (ctx) {
             this.getOrDecodeBuffer(url).then((buffer) => {
-                if (epochAtStart !== this.sfxEpoch || !this.isJackpotActive) return;
+                if (sfxEpochAtStart !== this.sfxEpoch || jackpotEpochAtStart !== this.jackpotEpoch) return;
                 if (buffer && getAudioContext()) {
                     const c = getAudioContext()!;
                     const source = c.createBufferSource();
@@ -967,10 +1028,11 @@ export class AudioManager {
         this.applyMusicVolume();
 
         const ctx = getAudioContext();
-        const epochAtStart = this.sfxEpoch;
+        const sfxEpochAtStart = this.sfxEpoch;
+        const jackpotEpochAtStart = this.jackpotEpoch;
         if (ctx) {
             this.getOrDecodeBuffer(url).then((buffer) => {
-                if (epochAtStart !== this.sfxEpoch) return;
+                if (sfxEpochAtStart !== this.sfxEpoch || jackpotEpochAtStart !== this.jackpotEpoch) return;
                 if (buffer && getAudioContext()) {
                     const c = getAudioContext()!;
                     const source = c.createBufferSource();
@@ -1005,6 +1067,7 @@ export class AudioManager {
     }
 
     public stopJackpotMusic() {
+        this.jackpotEpoch++;
         this.clearJackpotNodes();
         this.isJackpotActive = false;
         this.applyMusicVolume();
@@ -1013,9 +1076,20 @@ export class AudioManager {
     public dispose() {
         this.stopAllSFX();
         this.stopMusic(0);
+        this.clearMusicFadeTimer();
         Object.keys(this.music).forEach((k) => this.releaseMusicTrack(k));
         this.audioBuffers.clear();
+        this.audioBufferBytes = 0;
         this.decodePromises.clear();
+        this.criticalReadyUrls.clear();
+        this.pendingMusic = null;
+        this.noiseBuffer = null;
+        if (this.masterCompressor) {
+            try { this.masterCompressor.disconnect(); } catch {}
+            this.masterCompressor = null;
+        }
+        this.isInitialized = false;
+        this.initialized = false;
     }
 }
 

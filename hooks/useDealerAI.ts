@@ -193,9 +193,10 @@ export const useDealerAI = ({
     const prevSelectedCardRef = useRef<{ name: TarotCard['name']; liveCount: number; index: number } | null>(null);
 
     // Tab visibility handling
-    const [isTabVisible, setIsTabVisible] = useState(!document.hidden);
-    const isTabVisibleRef = useRef(!document.hidden);
+    const [isTabVisible, setIsTabVisible] = useState(() => (typeof document !== 'undefined' ? !document.hidden : true));
+    const isTabVisibleRef = useRef(typeof document !== 'undefined' ? !document.hidden : true);
     useEffect(() => {
+        if (typeof document === 'undefined') return;
         const handleVisibility = () => {
             const visible = !document.hidden;
             isTabVisibleRef.current = visible;
@@ -225,6 +226,7 @@ export const useDealerAI = ({
     const processItemEffectRef = useRef(processItemEffect);
     const animStateRef = useRef(animState);
     const selectTarotCardRef = useRef(selectTarotCard);
+    const isMultiplayerRef = useRef(isMultiplayer);
 
     gameStateRef.current = gameState;
     dealerRef.current = dealer;
@@ -234,6 +236,7 @@ export const useDealerAI = ({
     processItemEffectRef.current = processItemEffect;
     animStateRef.current = animState;
     selectTarotCardRef.current = selectTarotCard;
+    isMultiplayerRef.current = isMultiplayer;
 
     const scheduleOverlayClear = (message: string, durationMs: number) => {
         if (!setOverlayText) return;
@@ -262,20 +265,31 @@ export const useDealerAI = ({
             itemsUsedThisTurnRef.current = 0;
             prevPlayerUsedLenRef.current = 0;
             prevSelectedCardRef.current = null;
+            activeTimersRef.current.forEach(clearTimeout);
+            activeTimersRef.current.clear();
         }
 
-        if (gameState.phase === 'BOOT' || gameState.phase === 'INTRO' || gameState.phase === 'GAME_OVER') {
+        if (
+            gameState.phase === 'BOOT' ||
+            gameState.phase === 'INTRO' ||
+            gameState.phase === 'GAME_OVER' ||
+            gameState.isLocalSplit ||
+            isMultiplayer
+        ) {
             turnGenRef.current++;
+            if (gameState.phase === 'BOOT' || gameState.phase === 'INTRO') {
+                isAITurnInProgress.current = false;
+            }
         }
 
         prevPhaseRef.current = gameState.phase;
         prevChamberRef.current = gameState.chamber;
-    }, [gameState.phase, gameState.chamber, gameState.currentShellIndex]);
+    }, [gameState.phase, gameState.chamber, gameState.currentShellIndex, gameState.isLocalSplit, isMultiplayer]);
 
     // Prune consumed shell indices when currentShellIndex advances
     useEffect(() => {
         if (gameState.currentShellIndex !== prevShellIndexRef.current) {
-            for (const key of Array.from(aiMemory.current.keys())) {
+            for (const key of aiMemory.current.keys()) {
                 if (key < gameState.currentShellIndex) {
                     aiMemory.current.delete(key);
                 }
@@ -366,7 +380,13 @@ export const useDealerAI = ({
             }
 
             const myGen = turnGenRef.current;
-            const isCancelled = () => !isMountedRef.current || myGen !== turnGenRef.current || document.hidden || !isTabVisibleRef.current;
+            const isCancelled = () =>
+                !isMountedRef.current ||
+                myGen !== turnGenRef.current ||
+                (typeof document !== 'undefined' && document.hidden) ||
+                !isTabVisibleRef.current ||
+                Boolean(gameStateRef.current.isLocalSplit) ||
+                isMultiplayerRef.current;
 
             const applyMemoryForDealerItem = (
                 item: ItemType,
@@ -421,7 +441,10 @@ export const useDealerAI = ({
                             const cards = gameStateRef.current.deckCards;
                             if (!cards || cards.length === 0) {
                                 // Recover safely if deckCards is ever empty
-                                setGameStateSafeRecover(selectTarotCardRef.current);
+                                if (selectTarotCardRef.current) {
+                                    await selectTarotCardRef.current(0).catch(() => {});
+                                    handedOffRound = true;
+                                }
                                 return;
                             }
                             let chosenIdx = Math.floor(Math.random() * cards.length);
@@ -1034,11 +1057,7 @@ export const useDealerAI = ({
                 }
             };
 
-            const setGameStateSafeRecover = (fn?: (index: number) => Promise<void>) => {
-                if (fn) fn(0).catch(() => {});
-            };
-
             runAITurn();
         }
-    }, [gameState.phase, aiTick, gameState.turnOwner, isProcessing, dealer, isTabVisible, isMultiplayer, setCameraView, setIsProcessing, setPlayer, setDealer, setTargetAim]);
+    }, [gameState.phase, gameState.isLocalSplit, gameState.selectedCardIndex, aiTick, gameState.turnOwner, isProcessing, dealer, isTabVisible, isMultiplayer, setCameraView, setIsProcessing, setPlayer, setDealer, setTargetAim]);
 };

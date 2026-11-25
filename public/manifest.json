@@ -12,7 +12,7 @@
     "minimal-ui",
     "window-controls-overlay"
   ],
-  "orientation": "landscape",
+  "orientation": "any",
   "background_color": "#0a0a0a",
   "theme_color": "#0a0a0a",
   "icons": [
@@ -60,6 +60,19 @@
       "short_name": "Multiplayer",
       "description": "Enter the live PvP multiplayer bunker",
       "url": "/?mode=multi",
+      "icons": [
+        {
+          "src": "/image/favicon/android-chrome-192x192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Local Split (1v1)",
+      "short_name": "Split 1v1",
+      "description": "Play local pass-and-play or split-screen 1v1 roulette",
+      "url": "/?mode=split",
       "icons": [
         {
           "src": "/image/favicon/android-chrome-192x192.png",

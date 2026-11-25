@@ -40,8 +40,8 @@ const SYSTEM_PRINTS = [
 export const BootScreen: React.FC<BootScreenProps> = React.memo(({ onContinue }) => {
     const [bootLines, setBootLines] = useState<string[]>([]);
     const [isExiting, setIsExiting] = useState(false);
-    const hasSkippedRef = useRef(false);
-    const skipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const hasCompletedRef = useRef(false);
+    const completeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const progressRef = useRef(0);
     const barFillRef = useRef<HTMLDivElement>(null);
     const onContinueRef = useRef(onContinue);
@@ -55,11 +55,15 @@ export const BootScreen: React.FC<BootScreenProps> = React.memo(({ onContinue })
         return device === 'mobile' || device === 'tablet';
     }, []);
 
-    const handleSkip = useCallback(() => {
-        if (hasSkippedRef.current) return;
-        hasSkippedRef.current = true;
+    const finishBoot = useCallback(() => {
+        if (hasCompletedRef.current) return;
+        hasCompletedRef.current = true;
         setIsExiting(true);
-        skipTimerRef.current = setTimeout(() => {
+        if (completeTimerRef.current !== null) {
+            clearTimeout(completeTimerRef.current);
+        }
+        completeTimerRef.current = setTimeout(() => {
+            completeTimerRef.current = null;
             if (onContinueRef.current) onContinueRef.current();
         }, 150);
     }, []);
@@ -80,7 +84,7 @@ export const BootScreen: React.FC<BootScreenProps> = React.memo(({ onContinue })
         let lastAudioPct = -1;
 
         const interval = setInterval(() => {
-            if (hasSkippedRef.current) {
+            if (hasCompletedRef.current) {
                 clearInterval(interval);
                 return;
             }
@@ -139,32 +143,22 @@ export const BootScreen: React.FC<BootScreenProps> = React.memo(({ onContinue })
 
             if (nextP >= 100) {
                 clearInterval(interval);
-                handleSkip();
+                finishBoot();
             }
         }, tickRate);
 
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Enter' || e.key === ' ' || e.key === 'Escape') {
-                e.preventDefault();
-                handleSkip();
-            }
-        };
-        window.addEventListener('keydown', handleKeyDown);
-
         return () => {
             clearInterval(interval);
-            window.removeEventListener('keydown', handleKeyDown);
-            if (skipTimerRef.current !== null) {
-                clearTimeout(skipTimerRef.current);
-                skipTimerRef.current = null;
+            if (completeTimerRef.current !== null) {
+                clearTimeout(completeTimerRef.current);
+                completeTimerRef.current = null;
             }
         };
-    }, [isMobileOrTablet, handleSkip]);
+    }, [isMobileOrTablet, finishBoot]);
 
     return (
         <div
-            onClick={handleSkip}
-            className={`fixed inset-0 z-[100] bg-black flex flex-col justify-between p-4 md:p-12 font-mono select-none transform-gpu cursor-pointer transition-opacity duration-200 ${
+            className={`fixed inset-0 z-[100] h-[100dvh] bg-black flex flex-col justify-between gap-2 p-4 md:p-12 font-mono select-none transform-gpu transition-opacity duration-200 overflow-y-auto overscroll-contain ${
                 isExiting ? 'opacity-0 pointer-events-none' : 'opacity-100'
             }`}
             style={{
@@ -173,18 +167,17 @@ export const BootScreen: React.FC<BootScreenProps> = React.memo(({ onContinue })
                 paddingLeft: 'max(env(safe-area-inset-left, 0px), 16px)',
                 paddingRight: 'max(env(safe-area-inset-right, 0px), 16px)'
             }}
-            title="Click anywhere to continue"
         >
-            <div className="flex justify-between items-start text-stone-600 text-[9px] sm:text-xs">
-                <span>BUGSHOT_OS v1.0.0</span>
-                <span>MEM: 65536KB OK</span>
+            <div className="flex justify-between items-start gap-2 text-stone-600 text-[9px] sm:text-xs shrink-0">
+                <span className="truncate">BUGSHOT_OS v1.0.0</span>
+                <span className="shrink-0">MEM: 65536KB OK</span>
             </div>
-            <div className="flex-1 flex flex-col justify-center max-w-lg mx-auto w-full gap-2 sm:gap-4 my-auto">
-                <div className="text-green-500 text-[9px] sm:text-xs md:text-sm space-y-1 h-[50vh] max-h-[18rem] sm:max-h-[26rem] md:max-h-[32rem] overflow-hidden flex flex-col justify-end">
+            <div className="flex-1 min-h-0 flex flex-col justify-center max-w-lg mx-auto w-full gap-2 sm:gap-4 my-auto min-w-0">
+                <div className="text-green-500 text-[9px] sm:text-xs md:text-sm space-y-1 flex-1 min-h-0 max-h-[16rem] sm:max-h-[24rem] md:max-h-[30rem] overflow-hidden flex flex-col justify-end min-w-0">
                     {bootLines.map((line, i) => (
                         <div
                             key={`${i}-${line.slice(0, 12)}`}
-                            className="typewriter truncate text-green-400 shrink-0 leading-normal tracking-wider"
+                            className="typewriter truncate text-green-400 shrink-0 leading-normal tracking-wider min-w-0"
                         >
                             {`> ${line}`}
                         </div>
@@ -193,7 +186,7 @@ export const BootScreen: React.FC<BootScreenProps> = React.memo(({ onContinue })
                         _
                     </div>
                 </div>
-                <div className="w-full h-2 bg-stone-900 border border-stone-850 p-0.5 relative rounded-sm overflow-hidden shadow-inner">
+                <div className="w-full h-2 shrink-0 bg-stone-900 border border-stone-850 p-0.5 relative rounded-sm overflow-hidden shadow-inner">
                     <div
                         ref={barFillRef}
                         className="w-full h-full bg-green-700 rounded-sm will-change-transform"
@@ -202,6 +195,10 @@ export const BootScreen: React.FC<BootScreenProps> = React.memo(({ onContinue })
                         }}
                     />
                 </div>
+            </div>
+            <div className="flex items-center justify-between gap-2 text-stone-600 text-[9px] sm:text-[10px] shrink-0">
+                <span className="truncate tracking-widest uppercase">INITIALIZING AUDIO &amp; 3D PIPELINE...</span>
+                <span className="shrink-0 uppercase tracking-widest text-green-700">SECURE</span>
             </div>
         </div>
     );

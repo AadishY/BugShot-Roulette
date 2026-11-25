@@ -17,8 +17,8 @@ export class SocketBatcher {
     private timerId: ReturnType<typeof setTimeout> | null = null;
 
     constructor(maxBatchSize: number, maxDelayMs: number, callback: (actions: SocketAction[]) => void) {
-        this.maxBatchSize = Math.max(1, maxBatchSize);
-        this.maxDelayMs = Math.max(0, maxDelayMs);
+        this.maxBatchSize = Number.isFinite(maxBatchSize) ? Math.max(1, maxBatchSize) : 1;
+        this.maxDelayMs = Number.isFinite(maxDelayMs) ? Math.max(0, maxDelayMs) : 0;
         this.callback = callback;
     }
 

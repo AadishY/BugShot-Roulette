@@ -107,6 +107,8 @@ export function useMultiplayer() {
 
     const connectionAttemptsRef = useRef(0);
     const hasFallenBackRef = useRef(false);
+    const hasConnectedOnceRef = useRef(false);
+    const isMountedRef = useRef(true);
     const socketRef = useRef<Socket | null>(null);
     const socketBatcherRef = useRef<SocketBatcher | null>(null);
     const managerCleanupRef = useRef<(() => void) | null>(null);
@@ -205,6 +207,7 @@ export function useMultiplayer() {
         // Prevent socket leaks if connect is called while already connected or connecting
         teardownActiveSocket(false);
         clearTimers();
+        hasConnectedOnceRef.current = false;
         setIsConnecting(true);
         setError(null);
         setConnectionStatus('ESTABLISHING LINK...');
@@ -212,6 +215,8 @@ export function useMultiplayer() {
 
         // Hard watchdog timeout (12s): Prevents hanging on dormant cloud spaces or silent socket stalls
         connectionTimeoutRef.current = setTimeout(() => {
+            connectionTimeoutRef.current = null;
+            if (!isMountedRef.current) return;
             if (!socketRef.current?.connected) {
                 console.warn("[Socket] Connection timed out after 12s.");
                 teardownActiveSocket(false);
@@ -241,11 +246,12 @@ export function useMultiplayer() {
         socketRef.current = newSocket;
 
         newSocket.on('connect', () => {
-            if (socketRef.current !== newSocket) return;
+            if (socketRef.current !== newSocket || !isMountedRef.current) return;
             if (connectionTimeoutRef.current) {
                 clearTimeout(connectionTimeoutRef.current);
                 connectionTimeoutRef.current = null;
             }
+            hasConnectedOnceRef.current = true;
             setIsConnected(true);
             setIsConnecting(false);
             setSocket(newSocket);
@@ -294,6 +300,7 @@ export function useMultiplayer() {
             (newSocket as any)._pingSentAt = Date.now();
         };
         const onPong = () => {
+            if (socketRef.current !== newSocket || !isMountedRef.current) return;
             const sent = (newSocket as any)._pingSentAt;
             if (sent) {
                 const rtt = Date.now() - sent;
@@ -332,11 +339,11 @@ export function useMultiplayer() {
             };
         };
         const onReconnectAttempt = (attempt: number) => {
-            if (socketRef.current !== newSocket) return;
+            if (socketRef.current !== newSocket || !isMountedRef.current) return;
             setConnectionStatus(`RECONNECTING TO MAINFRAME (${attempt}/50)...`);
         };
         const onReconnect = () => {
-            if (socketRef.current !== newSocket) return;
+            if (socketRef.current !== newSocket || !isMountedRef.current) return;
             setIsConnected(true);
             setIsConnecting(false);
             setError(null);
@@ -347,8 +354,12 @@ export function useMultiplayer() {
             }
         };
         const onReconnectFailed = () => {
-            if (socketRef.current !== newSocket) return;
+            if (socketRef.current !== newSocket || !isMountedRef.current) return;
             console.warn("Socket reconnection failed after 50 attempts.");
+            clearTimers();
+            teardownActiveSocket(false);
+            hasConnectedOnceRef.current = false;
+            setSocket(null);
             setError('Connection lost: Server unreachable after multiple reconnection attempts.');
             setIsConnecting(false);
             setIsConnected(false);
@@ -359,13 +370,20 @@ export function useMultiplayer() {
             console.warn("Socket reconnect error:", err);
         };
         const onBrowserOnline = () => {
-            if (socketRef.current === newSocket && !newSocket.connected) {
+            if (socketRef.current === newSocket && isMountedRef.current && !newSocket.connected) {
                 setConnectionStatus('NETWORK RESTORED. RECONNECTING...');
                 try { newSocket.connect(); } catch {}
             }
         };
+        const onBrowserOffline = () => {
+            if (socketRef.current === newSocket && isMountedRef.current) {
+                setIsConnected(false);
+                setConnectionStatus('OFFLINE: WAITING FOR NETWORK...');
+            }
+        };
         if (typeof window !== 'undefined') {
             window.addEventListener('online', onBrowserOnline);
+            window.addEventListener('offline', onBrowserOffline);
         }
 
         if (ioManager && typeof ioManager.on === 'function') {
@@ -376,42 +394,55 @@ export function useMultiplayer() {
             ioManager.on('reconnect_failed', onReconnectFailed);
             ioManager.on('reconnect_error', onReconnectError);
             attachEngineRttListeners();
-            managerCleanupRef.current = () => {
-                if (typeof window !== 'undefined') {
-                    window.removeEventListener('online', onBrowserOnline);
-                }
-                if (engineCleanup) {
-                    try { engineCleanup(); } catch {}
-                    engineCleanup = null;
-                }
-                ioManager.off?.('ping', onPing);
-                ioManager.off?.('pong', onPong);
-                ioManager.off?.('reconnect_attempt', onReconnectAttempt);
-                ioManager.off?.('reconnect', onReconnect);
-                ioManager.off?.('reconnect_failed', onReconnectFailed);
-                ioManager.off?.('reconnect_error', onReconnectError);
-            };
         }
+        managerCleanupRef.current = () => {
+            if (typeof window !== 'undefined') {
+                window.removeEventListener('online', onBrowserOnline);
+                window.removeEventListener('offline', onBrowserOffline);
+            }
+            if (engineCleanup) {
+                try { engineCleanup(); } catch {}
+                engineCleanup = null;
+            }
+            if (ioManager && typeof ioManager.off === 'function') {
+                ioManager.off('ping', onPing);
+                ioManager.off('pong', onPong);
+                ioManager.off('reconnect_attempt', onReconnectAttempt);
+                ioManager.off('reconnect', onReconnect);
+                ioManager.off('reconnect_failed', onReconnectFailed);
+                ioManager.off('reconnect_error', onReconnectError);
+            }
+        };
 
         newSocket.on('connect_error', (err) => {
-            if (socketRef.current !== newSocket) return;
+            if (socketRef.current !== newSocket || !isMountedRef.current) return;
             connectionAttemptsRef.current += 1;
             console.warn(`[Socket] Connection error attempt ${connectionAttemptsRef.current}:`, (err as any)?.message || err);
 
-            // If local server is offline, auto-route to cloud backend on attempt 2
-            if (isLocal && !hasFallenBackRef.current && connectionAttemptsRef.current >= 2) {
+            // If local server is offline before initial connect, auto-route to cloud backend on attempt 2
+            if (!hasConnectedOnceRef.current && isLocal && !hasFallenBackRef.current && connectionAttemptsRef.current >= 2) {
                 hasFallenBackRef.current = true;
                 setConnectionStatus('ROUTING TO CLOUD BUNKER...');
                 teardownActiveSocket(false);
                 if (fallbackConnectTimeoutRef.current) clearTimeout(fallbackConnectTimeoutRef.current);
                 fallbackConnectTimeoutRef.current = setTimeout(() => {
                     fallbackConnectTimeoutRef.current = null;
+                    if (!isMountedRef.current) return;
                     connect(playerNameRef.current);
                 }, 200);
                 return;
             }
 
-            // Cloud connection or after fallback: fail fast after 3 attempts (~6-8s) instead of hanging indefinitely
+            // Once already connected in-session, allow Socket.IO's reconnectionAttempts & online recovery to continue
+            if (hasConnectedOnceRef.current) {
+                setIsConnecting(false);
+                if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+                    setConnectionStatus('OFFLINE: WAITING FOR NETWORK...');
+                }
+                return;
+            }
+
+            // Initial cloud connection or after fallback: fail fast after 3 attempts (~6-8s) instead of hanging indefinitely
             const maxAttempts = (isLocal && !hasFallenBackRef.current) ? 2 : 3;
             if (connectionAttemptsRef.current >= maxAttempts) {
                 if (connectionTimeoutRef.current) {
@@ -429,24 +460,34 @@ export function useMultiplayer() {
         });
 
         newSocket.on('disconnect', (reason) => {
-            if (socketRef.current !== newSocket) return;
+            if (socketRef.current !== newSocket || !isMountedRef.current) return;
             console.log('Socket disconnected:', reason);
             setIsConnected(false);
             try {
-                socketBatcherRef.current?.clear();
+                socketBatcherRef.current?.flush();
             } catch (e) {}
             if (reason === 'io server disconnect') {
+                setIsConnecting(true);
+                setConnectionStatus('SERVER DISCONNECTED. RECONNECTING...');
                 try {
                     newSocket.connect();
                 } catch (e) {
                     console.error("Failed to reconnect after server disconnect:", e);
+                    setIsConnecting(false);
+                    setConnectionStatus('');
                 }
+            } else if (reason === 'io client disconnect') {
+                setIsConnecting(false);
+                setConnectionStatus('');
             } else if (reason === 'transport close' || reason === 'ping timeout') {
-                setConnectionStatus('CONNECTION INTERRUPTED. RECONNECTING...');
+                setIsConnecting(false);
+                const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
+                setConnectionStatus(isOffline ? 'OFFLINE: WAITING FOR NETWORK...' : 'CONNECTION INTERRUPTED. RECONNECTING...');
             }
         });
 
         newSocket.on('joinedRoom', ({ room: joinedRoom, playerId: joinedPlayerId, reconnected }) => {
+            if (socketRef.current !== newSocket || !isMountedRef.current) return;
             if (!joinedRoom) return;
             if (joinedRoom.debugPlayerModels) {
                 joinedRoom.multiplayerState = {
@@ -465,13 +506,15 @@ export function useMultiplayer() {
                 setConnectionStatus('RECONNECTED');
                 if (reconnectStatusTimeoutRef.current) clearTimeout(reconnectStatusTimeoutRef.current);
                 reconnectStatusTimeoutRef.current = setTimeout(() => {
-                    setConnectionStatus('');
                     reconnectStatusTimeoutRef.current = null;
+                    if (!isMountedRef.current) return;
+                    setConnectionStatus('');
                 }, 2000);
             }
         });
 
         newSocket.on('roomUpdated', (updatedRoom) => {
+            if (socketRef.current !== newSocket || !isMountedRef.current) return;
             if (!updatedRoom) return;
             if (updatedRoom.debugPlayerModels) {
                 updatedRoom.multiplayerState = {
@@ -486,12 +529,14 @@ export function useMultiplayer() {
         });
 
         newSocket.on('chatMessageReceived', (msg: ChatMessage) => {
+            if (socketRef.current !== newSocket || !isMountedRef.current) return;
             if (msg) {
                 setMessages(prev => [...prev, msg].slice(-50));
             }
         });
 
         newSocket.on('gameActionReceived', (data: { playerId: string, action: any }) => {
+            if (socketRef.current !== newSocket || !isMountedRef.current) return;
             try {
                 if (onActionRef.current && data) {
                     onActionRef.current(data);
@@ -502,6 +547,7 @@ export function useMultiplayer() {
         });
 
         newSocket.on('requestFullSync', () => {
+            if (socketRef.current !== newSocket || !isMountedRef.current) return;
             try {
                 if (onFullSyncRequestRef.current) {
                     onFullSyncRequestRef.current();
@@ -516,17 +562,24 @@ export function useMultiplayer() {
         });
 
         newSocket.on('kicked', () => {
+            if (socketRef.current !== newSocket || !isMountedRef.current) return;
+            clearTimers();
+            teardownActiveSocket(false);
+            hasConnectedOnceRef.current = false;
+            setSocket(null);
+            setIsConnected(false);
+            setIsConnecting(false);
+            setConnectionStatus('');
+            setLatencyMs(null);
             setError('You were kicked from the room.');
             setRoom(null);
             setPlayerId(null);
             lastJoinRef.current = null;
             actionQueueRef.current = [];
-            try {
-                newSocket.disconnect();
-            } catch (e) {}
         });
 
         newSocket.on('error', (err: string) => {
+            if (socketRef.current !== newSocket || !isMountedRef.current) return;
             setError(err || 'An unknown multiplayer error occurred.');
         });
 
@@ -536,6 +589,7 @@ export function useMultiplayer() {
     const disconnect = useCallback(() => {
         clearTimers();
         teardownActiveSocket(true);
+        hasConnectedOnceRef.current = false;
         actionQueueRef.current = [];
         setSocket(null);
         setIsConnected(false);
@@ -551,7 +605,10 @@ export function useMultiplayer() {
     }, [clearTimers, teardownActiveSocket]);
 
     useEffect(() => {
+        isMountedRef.current = true;
         return () => {
+            isMountedRef.current = false;
+            hasConnectedOnceRef.current = false;
             clearTimers();
             actionQueueRef.current = [];
             teardownActiveSocket(true);

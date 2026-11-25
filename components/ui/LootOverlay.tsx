@@ -151,7 +151,7 @@ export const LootOverlay: React.FC<LootOverlayProps> = ({
 
     return (
         <div
-            className="absolute inset-0 z-50 flex flex-col items-center justify-start sm:justify-center bg-black/88 backdrop-blur-2xl p-3 sm:p-5 animate-in fade-in duration-500 overflow-y-auto custom-scrollbar"
+            className="absolute inset-0 max-h-[100dvh] z-50 flex flex-col items-center justify-start bg-black/94 md:bg-black/88 md:backdrop-blur-2xl p-3 sm:p-5 animate-in fade-in duration-500 overflow-y-auto overscroll-contain touch-manipulation custom-scrollbar"
             style={{
                 paddingTop: 'max(env(safe-area-inset-top, 0px), 12px)',
                 paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 12px)',
@@ -164,17 +164,17 @@ export const LootOverlay: React.FC<LootOverlayProps> = ({
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(50,50,50,0.45)_0%,transparent_100%)]" />
             </div>
 
-            <div className="relative z-10 w-full max-w-6xl flex flex-col items-center my-auto">
+            <div className="relative z-10 w-full max-w-6xl flex flex-col items-center my-auto min-w-0">
                 {/* Header Section */}
-                <div className={`${showDualSplit ? 'mb-4 sm:mb-6' : 'mb-4 sm:mb-10'} text-center animate-in slide-in-from-top-6 duration-500`}>
-                    <div className="flex items-center gap-2.5 sm:gap-4 mb-1 justify-center">
-                        <div className="h-[1px] w-8 sm:w-20 lg:w-36 bg-gradient-to-r from-transparent to-red-600" />
-                        <span className="text-red-400 font-black tracking-[0.2em] sm:tracking-[0.4em] text-[9px] sm:text-xs uppercase">
+                <div className={`${showDualSplit ? 'mb-3 sm:mb-5' : 'mb-3 sm:mb-8'} w-full text-center animate-in slide-in-from-top-6 duration-500`}>
+                    <div className="flex items-center gap-2 sm:gap-4 mb-1 justify-center">
+                        <div className="h-[1px] w-6 sm:w-20 lg:w-36 bg-gradient-to-r from-transparent to-red-600 shrink-0" />
+                        <span className="text-red-400 font-black tracking-[0.16em] sm:tracking-[0.4em] text-[9px] sm:text-xs uppercase truncate">
                             {showDualSplit ? 'Dual Split Shipment Delivered' : 'Incoming Shipment Verified'}
                         </span>
-                        <div className="h-[1px] w-8 sm:w-20 lg:w-36 bg-gradient-to-l from-transparent to-red-600" />
+                        <div className="h-[1px] w-6 sm:w-20 lg:w-36 bg-gradient-to-l from-transparent to-red-600 shrink-0" />
                     </div>
-                    <h2 className={`${showDualSplit ? 'text-2xl sm:text-4xl lg:text-5xl' : 'text-2xl sm:text-5xl lg:text-7xl'} font-black italic tracking-tighter text-white drop-shadow-[0_0_30px_rgba(255,255,255,0.25)]`}>
+                    <h2 className={`${showDualSplit ? 'text-xl sm:text-4xl lg:text-5xl' : 'text-2xl sm:text-5xl lg:text-7xl'} font-black italic tracking-tighter text-white drop-shadow-[0_0_30px_rgba(255,255,255,0.25)]`}>
                         RESOURCE <span className="text-stone-400">PACK</span>
                     </h2>
                 </div>
@@ -197,7 +197,7 @@ export const LootOverlay: React.FC<LootOverlayProps> = ({
                         )}
                     </div>
                 ) : (
-                    <div className="flex flex-wrap gap-3 sm:gap-6 lg:gap-10 justify-center items-center w-full">
+                    <div className="flex flex-wrap gap-2.5 sm:gap-6 lg:gap-10 justify-center items-center w-full">
                         {receivedItems.map((item, i) => {
                             const isVisible = i < visibleCount;
                             const colorToken = ITEM_COLORS[item].split(' ')[0];
@@ -209,8 +209,8 @@ export const LootOverlay: React.FC<LootOverlayProps> = ({
                                     }`}
                                     style={{ transitionDelay: `${i * 120}ms` }}
                                 >
-                                    <div className="relative group w-20 sm:w-28 lg:w-44 aspect-square sm:aspect-[4/5] shrink-0 flex flex-col items-center justify-center p-2 sm:p-3 border border-white/10 rounded-xl sm:rounded-2xl shadow-2xl overflow-hidden bg-gradient-to-b from-stone-900/60 to-black/80 backdrop-blur-xl">
-                                        <div className={`absolute inset-0 opacity-10 blur-2xl group-hover:opacity-30 transition-opacity bg-current ${colorToken}`} />
+                                    <div className="relative group w-20 sm:w-28 lg:w-44 aspect-square sm:aspect-[4/5] shrink-0 flex flex-col items-center justify-center p-2 sm:p-3 border border-white/10 rounded-xl sm:rounded-2xl shadow-2xl overflow-hidden bg-gradient-to-b from-stone-900/90 to-black/95 md:from-stone-900/60 md:to-black/80 md:backdrop-blur-xl">
+                                        <div className={`absolute inset-0 opacity-10 md:blur-2xl group-hover:opacity-30 transition-opacity bg-current ${colorToken}`} />
                                         <div className={`relative z-10 p-2.5 sm:p-5 rounded-2xl sm:rounded-3xl bg-black/40 border border-white/5 mb-1.5 sm:mb-3 group-hover:scale-110 transition-all duration-500 ${colorToken}`}>
                                             {renderItemIcon(item, 'w-7 h-7 sm:w-11 sm:h-11 lg:w-14 lg:h-14')}
                                         </div>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import {
     X,
@@ -200,6 +200,68 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     // Detailed Match Popup Modal State
     const [selectedMatchDetail, setSelectedMatchDetail] = useState<any | null>(null);
 
+    const isMountedRef = useRef(true);
+    const copiedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const loginPromptTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const nameSuccessTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const clearAllTimers = useCallback(() => {
+        if (copiedTimeoutRef.current) {
+            clearTimeout(copiedTimeoutRef.current);
+            copiedTimeoutRef.current = null;
+        }
+        if (toastTimeoutRef.current) {
+            clearTimeout(toastTimeoutRef.current);
+            toastTimeoutRef.current = null;
+        }
+        if (loginPromptTimeoutRef.current) {
+            clearTimeout(loginPromptTimeoutRef.current);
+            loginPromptTimeoutRef.current = null;
+        }
+        if (nameSuccessTimeoutRef.current) {
+            clearTimeout(nameSuccessTimeoutRef.current);
+            nameSuccessTimeoutRef.current = null;
+        }
+    }, []);
+
+    const showToastMessage = useCallback((msg: string, durationMs = 3500) => {
+        if (toastTimeoutRef.current) {
+            clearTimeout(toastTimeoutRef.current);
+        }
+        setMessageToast(msg);
+        toastTimeoutRef.current = setTimeout(() => {
+            toastTimeoutRef.current = null;
+            if (isMountedRef.current) {
+                setMessageToast(null);
+            }
+        }, durationMs);
+    }, []);
+
+    useEffect(() => {
+        isMountedRef.current = true;
+        return () => {
+            isMountedRef.current = false;
+            clearAllTimers();
+        };
+    }, [clearAllTimers]);
+
+    useEffect(() => {
+        if (!isOpen) {
+            clearAllTimers();
+            setCopiedId(false);
+            setNameSuccess(false);
+            setMessageToast(null);
+            setDeleteStep(0);
+            setDeleteInputText('');
+            setDeleteError('');
+            setShowSpamNoticeModal(false);
+            setShowReauthModal(false);
+            setShowEmailVerificationModal(false);
+            setSelectedMatchDetail(null);
+        }
+    }, [isOpen, clearAllTimers]);
+
     useEffect(() => {
         if (profile) {
             setDisplayNameInput(profile.displayName || profile.username);
@@ -243,7 +305,13 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
         if (!isOpen) return;
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key === 'Escape') {
-                if (selectedMatchDetail) {
+                if (deleteStep === 2) {
+                    setDeleteStep(0);
+                    setDeleteInputText('');
+                    setDeleteError('');
+                } else if (deleteStep === 1) {
+                    setDeleteStep(0);
+                } else if (selectedMatchDetail) {
                     setSelectedMatchDetail(null);
                 } else if (showSpamNoticeModal) {
                     setShowSpamNoticeModal(false);
@@ -260,7 +328,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isOpen, selectedMatchDetail, showSpamNoticeModal, showReauthModal, showEmailVerificationModal, isEditingAvatar, onClose]);
+    }, [isOpen, deleteStep, selectedMatchDetail, showSpamNoticeModal, showReauthModal, showEmailVerificationModal, isEditingAvatar, onClose]);
 
     useEffect(() => {
         if (!currentUser?.username || !profile?.username || isOwnProfile) {
@@ -375,15 +443,21 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
         audioManager.playSound('click');
         navigator.clipboard?.writeText(playerId);
         setCopiedId(true);
-        setTimeout(() => setCopiedId(false), 2000);
+        if (copiedTimeoutRef.current) clearTimeout(copiedTimeoutRef.current);
+        copiedTimeoutRef.current = setTimeout(() => {
+            copiedTimeoutRef.current = null;
+            if (isMountedRef.current) setCopiedId(false);
+        }, 2000);
     };
 
     const handleSendFriendRequest = async () => {
         if (!currentUser) {
             audioManager.playSound('click');
-            setMessageToast('LOGIN REQUIRED // Sign in to dispatch friend transmissions.');
-            setTimeout(() => {
-                if (onRequireLogin) onRequireLogin();
+            showToastMessage('LOGIN REQUIRED // Sign in to dispatch friend transmissions.');
+            if (loginPromptTimeoutRef.current) clearTimeout(loginPromptTimeoutRef.current);
+            loginPromptTimeoutRef.current = setTimeout(() => {
+                loginPromptTimeoutRef.current = null;
+                if (isMountedRef.current && onRequireLogin) onRequireLogin();
             }, 1200);
             return;
         }
@@ -392,16 +466,17 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
         try {
             const targetTag = playerId || getPlayerId(profile);
             const res = await sendFriendRequest(currentUser, targetTag);
+            if (!isMountedRef.current) return;
             if (res.success) {
                 setFriendRequestStatus('sent');
-                setMessageToast(`Friend transmission dispatched to ${targetTag}!`);
+                showToastMessage(`Friend transmission dispatched to ${targetTag}!`);
             } else {
-                setMessageToast(res.error || 'Failed to dispatch friend request.');
+                showToastMessage(res.error || 'Failed to dispatch friend request.');
             }
         } catch (e: any) {
-            setMessageToast(e.message || 'Error dispatching friend transmission.');
+            if (!isMountedRef.current) return;
+            showToastMessage(e.message || 'Error dispatching friend transmission.');
         }
-        setTimeout(() => setMessageToast(null), 3500);
     };
 
     const handleRemoveFriend = async () => {
@@ -415,33 +490,36 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             isDanger: true,
             icon: "warning"
         });
-        if (!confirmed) return;
+        if (!confirmed || !isMountedRef.current) return;
 
         audioManager.playSound('click');
         setIsRemovingFriend(true);
         try {
             const res = await removeFriend(currentUser.username, profile.username);
+            if (!isMountedRef.current) return;
             if (res.success) {
                 setIsAlreadyFriend(false);
                 setFriendRequestStatus('idle');
-                setMessageToast(`Removed ${targetName} from your friends.`);
+                showToastMessage(`Removed ${targetName} from your friends.`, 3000);
             } else {
-                setMessageToast(res.error || 'Failed to remove friend.');
+                showToastMessage(res.error || 'Failed to remove friend.', 3000);
             }
         } catch (e: any) {
-            setMessageToast(e.message || 'Error removing friend.');
+            if (!isMountedRef.current) return;
+            showToastMessage(e.message || 'Error removing friend.', 3000);
         } finally {
-            setIsRemovingFriend(false);
-            setTimeout(() => setMessageToast(null), 3000);
+            if (isMountedRef.current) setIsRemovingFriend(false);
         }
     };
 
     const handleSendMessage = () => {
         audioManager.playSound('click');
         if (!currentUser) {
-            setMessageToast('LOGIN REQUIRED // Sign in to transmit messages.');
-            setTimeout(() => {
-                if (onRequireLogin) onRequireLogin();
+            showToastMessage('LOGIN REQUIRED // Sign in to transmit messages.');
+            if (loginPromptTimeoutRef.current) clearTimeout(loginPromptTimeoutRef.current);
+            loginPromptTimeoutRef.current = setTimeout(() => {
+                loginPromptTimeoutRef.current = null;
+                if (isMountedRef.current && onRequireLogin) onRequireLogin();
             }, 1200);
             return;
         }
@@ -450,8 +528,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             onClose();
             onOpenMessages(profile.username);
         } else {
-            setMessageToast(`Direct messaging channel with ${profile.displayName || profile.username} activated.`);
-            setTimeout(() => setMessageToast(null), 3500);
+            showToastMessage(`Direct messaging channel with ${profile.displayName || profile.username} activated.`);
         }
     };
 
@@ -503,19 +580,19 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             const finalSeed = customSeedInput.trim() || avatarSeed || profile.username || 'operator';
             setAvatarSeed(finalSeed);
             const updated = await updateUserAvatar(profile.username, selectedStyle, finalSeed);
+            if (!isMountedRef.current) return;
             if (updated) {
                 setPreviewAvatarUrl(resolvePlayerAvatar(updated));
                 if (onProfileUpdated) {
                     onProfileUpdated(updated);
                 }
-                setMessageToast('Avatar saved & synced across leaderboard and chat!');
-                setTimeout(() => setMessageToast(null), 3000);
+                showToastMessage('Avatar saved & synced across leaderboard and chat!', 3000);
             }
             setIsEditingAvatar(false);
         } catch (err) {
             console.error("Save avatar error:", err);
         } finally {
-            setIsSavingAvatar(false);
+            if (isMountedRef.current) setIsSavingAvatar(false);
         }
     };
 
@@ -525,15 +602,20 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
         setNameSuccess(false);
         try {
             const updated = await updateUserDisplayName(profile.username, displayNameInput);
+            if (!isMountedRef.current) return;
             if (updated && onProfileUpdated) {
                 onProfileUpdated(updated);
                 setNameSuccess(true);
-                setTimeout(() => setNameSuccess(false), 2500);
+                if (nameSuccessTimeoutRef.current) clearTimeout(nameSuccessTimeoutRef.current);
+                nameSuccessTimeoutRef.current = setTimeout(() => {
+                    nameSuccessTimeoutRef.current = null;
+                    if (isMountedRef.current) setNameSuccess(false);
+                }, 2500);
             }
         } catch (e) {
             console.error(e);
         } finally {
-            setIsSavingName(false);
+            if (isMountedRef.current) setIsSavingName(false);
         }
     };
 
@@ -715,7 +797,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     // Use createPortal to mount directly to document.body, escaping any parent CSS transforms or z-index stacking traps!
     return createPortal(
         <div 
-            className="fixed inset-0 z-[250] flex items-center justify-center p-1.5 sm:p-5 bg-black/85 backdrop-blur-md animate-in fade-in duration-200"
+            className="fixed inset-0 z-[250] flex items-center justify-center p-1.5 sm:p-5 bg-black/92 md:bg-black/85 md:backdrop-blur-md animate-in fade-in duration-200"
             role="dialog"
             aria-modal="true"
             aria-label="Agent Dossier & Profile"
@@ -733,7 +815,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             }}
         >
             {/* Modal Card */}
-            <div className="relative w-full max-w-[96vw] sm:max-w-xl max-h-[95dvh] sm:max-h-[92vh] flex flex-col bg-stone-950 border border-stone-800 rounded-2xl shadow-[0_25px_80px_rgba(0,0,0,0.95)] overflow-hidden font-mono text-stone-300">
+            <div className="relative w-full max-w-[96vw] sm:max-w-xl max-h-[95dvh] md:max-h-[92dvh] flex flex-col bg-stone-950 border border-stone-800 rounded-2xl shadow-[0_25px_80px_rgba(0,0,0,0.95)] overflow-hidden font-mono text-stone-300">
                 {/* Header */}
                 <div className="flex items-center justify-between px-3.5 sm:px-5 py-2.5 sm:py-3.5 border-b border-stone-850 bg-stone-900/60 shrink-0">
                     <div className="flex items-center gap-3">
@@ -768,7 +850,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                                 audioManager.playSound('click');
                                 onClose();
                             }}
-                            className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl text-stone-400 hover:text-white hover:bg-stone-850 border border-transparent hover:border-stone-800 transition-all cursor-pointer"
+                            className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl text-stone-400 hover:text-white hover:bg-stone-850 border border-transparent hover:border-stone-800 transition-all cursor-pointer touch-manipulation"
                             title="Close Profile"
                         >
                             <X className="w-5 h-5" />
@@ -778,7 +860,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 
                 {/* Toast Notification Banner */}
                 {messageToast && (
-                    <div className="px-4 py-2 bg-stone-900 border-b border-stone-800 text-emerald-400 text-[9px] sm:text-[10px] font-bold text-center tracking-wider animate-in fade-in duration-150">
+                    <div className="px-4 py-2 bg-stone-900 border-b border-stone-800 text-emerald-400 text-[9px] sm:text-[10px] font-bold text-center tracking-wider animate-in fade-in duration-150 shrink-0">
                         {messageToast}
                     </div>
                 )}
@@ -792,7 +874,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                                     audioManager.playSound('click');
                                     setActiveTab('OVERVIEW');
                                 }}
-                                className={`flex-1 justify-center px-2 sm:px-4 py-2 min-h-[44px] rounded-lg text-[9px] sm:text-[10px] font-black uppercase tracking-wider transition-all duration-200 cursor-pointer flex items-center gap-1.5 ${
+                                className={`flex-1 justify-center px-2 sm:px-4 py-2 min-h-[44px] rounded-lg text-[9px] sm:text-[10px] font-black uppercase tracking-wider transition-all duration-200 cursor-pointer flex items-center gap-1.5 touch-manipulation ${
                                     activeTab === 'OVERVIEW'
                                         ? 'bg-gradient-to-r from-red-600 to-red-700 text-white shadow-md shadow-red-950/60 border border-red-500/50'
                                         : 'text-stone-400 hover:text-stone-200 hover:bg-stone-800/60 border border-transparent'
@@ -806,7 +888,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                                     audioManager.playSound('click');
                                     setActiveTab('SECURITY');
                                 }}
-                                className={`flex-1 justify-center px-2 sm:px-4 py-2 min-h-[44px] rounded-lg text-[9px] sm:text-[10px] font-black uppercase tracking-wider transition-all duration-200 cursor-pointer flex items-center gap-1.5 ${
+                                className={`flex-1 justify-center px-2 sm:px-4 py-2 min-h-[44px] rounded-lg text-[9px] sm:text-[10px] font-black uppercase tracking-wider transition-all duration-200 cursor-pointer flex items-center gap-1.5 touch-manipulation ${
                                     activeTab === 'SECURITY'
                                         ? 'bg-gradient-to-r from-red-600 to-red-700 text-white shadow-md shadow-red-950/60 border border-red-500/50'
                                         : 'text-stone-400 hover:text-stone-200 hover:bg-stone-800/60 border border-transparent'
@@ -820,7 +902,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 )}
 
                 {/* Body Content (Scrollable) */}
-                <div className="flex-1 overflow-y-auto p-3 sm:p-5 space-y-3 sm:space-y-4 custom-scrollbar">
+                <div className="flex-1 overflow-y-auto overscroll-contain p-3 sm:p-5 space-y-3 sm:space-y-4 custom-scrollbar">
                     {activeTab === 'OVERVIEW' ? (
                         <>
                             {/* Profile Identity Card */}
@@ -849,7 +931,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                                                     setCustomSeedInput(avatarSeed);
                                                 }
                                             }}
-                                            className="absolute -bottom-1 -right-1 p-1.5 bg-stone-800 hover:bg-stone-700 text-stone-200 hover:text-white rounded-xl shadow-md border border-stone-700 transition-all cursor-pointer hover:scale-105"
+                                            className="absolute -bottom-2 -right-2 w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center bg-stone-800/95 hover:bg-stone-700 text-stone-200 hover:text-white rounded-xl shadow-md border border-stone-700 transition-all cursor-pointer hover:scale-105 touch-manipulation"
                                             title="Change Avatar"
                                         >
                                             <Pencil className="w-3.5 h-3.5" />
@@ -858,14 +940,14 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                                 </div>
 
                                 {/* Identity Info */}
-                                <div className="flex-1 text-center sm:text-left space-y-1.5">
-                                    <div className="flex flex-col sm:flex-row items-center sm:items-baseline gap-1.5">
+                                <div className="flex-1 text-center sm:text-left space-y-1.5 min-w-0">
+                                    <div className="flex flex-col sm:flex-row items-center sm:items-center gap-1.5 flex-wrap justify-center sm:justify-start">
                                         <span className="text-base sm:text-lg font-black text-white">
                                             {profile.displayName || profile.username}
                                         </span>
                                         <button
                                             onClick={handleCopyPlayerId}
-                                            className="inline-flex items-center gap-1 text-[9.5px] text-stone-400 hover:text-stone-200 font-mono font-bold bg-stone-900 px-2 py-0.5 rounded-lg border border-stone-800 transition-colors cursor-pointer"
+                                            className="inline-flex items-center gap-1.5 text-[9.5px] text-stone-400 hover:text-stone-200 font-mono font-bold bg-stone-900 px-2.5 min-h-[44px] rounded-lg border border-stone-800 transition-colors cursor-pointer touch-manipulation"
                                             title="Click to copy Player ID"
                                         >
                                             <span>{playerId}</span>
@@ -873,7 +955,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                                         </button>
                                     </div>
 
-                                    <div className="flex items-center justify-center sm:justify-start gap-3 text-[9px] text-stone-400">
+                                    <div className="flex items-center justify-center sm:justify-start gap-3 text-[9px] text-stone-400 flex-wrap">
                                         <div className="flex items-center gap-1">
                                             <Clock className="w-3 h-3 text-stone-500" />
                                             <span>Play Time: {formatPlayTime(profile.totalTimePlayed)}</span>
@@ -886,12 +968,12 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 
                                     {/* Action Buttons: Next to player name (Add as Friend / Remove Friend, Send Message) on other profiles */}
                                     {!isOwnProfile && (
-                                        <div className="flex items-center justify-center sm:justify-start gap-2 pt-1.5">
+                                        <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 pt-1.5">
                                             {isAlreadyFriend ? (
                                                 <button
                                                     onClick={handleRemoveFriend}
                                                     disabled={isRemovingFriend}
-                                                    className="px-3 py-1.5 rounded-xl text-[9px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer bg-red-955/50 hover:bg-red-900/60 border border-red-800 text-red-300 hover:text-red-100 active:scale-95 disabled:opacity-50"
+                                                    className="px-3 py-2 min-h-[44px] rounded-xl text-[9px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer bg-red-955/50 hover:bg-red-900/60 border border-red-800 text-red-300 hover:text-red-100 active:scale-95 disabled:opacity-50 touch-manipulation"
                                                     title="Remove from Friends"
                                                 >
                                                     <UserMinus className="w-3 h-3 text-red-400" />
@@ -901,7 +983,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                                                 <button
                                                     onClick={handleSendFriendRequest}
                                                     disabled={friendRequestStatus === 'sent'}
-                                                    className={`px-3 py-1.5 rounded-xl text-[9px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer ${
+                                                    className={`px-3 py-2 min-h-[44px] rounded-xl text-[9px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer touch-manipulation ${
                                                         friendRequestStatus === 'sent'
                                                             ? 'bg-stone-900 border border-emerald-800/60 text-emerald-400'
                                                             : 'bg-stone-900 hover:bg-stone-850 border border-stone-750 text-stone-200 hover:text-white active:scale-95'
@@ -923,7 +1005,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 
                                             <button
                                                 onClick={handleSendMessage}
-                                                className="px-3 py-1.5 bg-stone-900 hover:bg-stone-850 border border-stone-750 text-stone-200 hover:text-white rounded-xl text-[9px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                                                className="px-3 py-2 min-h-[44px] bg-stone-900 hover:bg-stone-850 border border-stone-750 text-stone-200 hover:text-white rounded-xl text-[9px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 touch-manipulation"
                                             >
                                                 <MessageSquare className="w-3 h-3 text-stone-400" />
                                                 <span>Send Message</span>
@@ -935,8 +1017,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 
                             {/* Avatar Picker Drawer with Pagination, Style Filters & Real DiceBear Presets */}
                             {isOwnProfile && isEditingAvatar && (
-                                <div className="p-4 bg-stone-900/80 border border-stone-800 rounded-2xl space-y-3.5 animate-in slide-in-from-top-2 duration-150 shadow-2xl">
-                                    <div className="flex items-center justify-between">
+                                <div className="p-3 sm:p-4 bg-stone-900/80 border border-stone-800 rounded-2xl space-y-3.5 animate-in slide-in-from-top-2 duration-150 shadow-2xl">
+                                    <div className="flex items-center justify-between gap-2">
                                         <span className="text-[10px] font-black uppercase tracking-widest text-stone-200 flex items-center gap-1.5 font-mono">
                                             <Sparkles className="w-3.5 h-3.5 text-amber-400" />
                                             Customize Avatar
@@ -945,7 +1027,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                                             <button
                                                 type="button"
                                                 onClick={handleRandomizeAvatars}
-                                                className="px-2.5 py-1 bg-stone-800 hover:bg-stone-750 text-stone-200 hover:text-white font-bold text-[9px] rounded-lg border border-stone-700 uppercase flex items-center gap-1.5 cursor-pointer transition-all shadow-sm active:scale-95"
+                                                className="px-3 py-2 min-h-[44px] bg-stone-800 hover:bg-stone-750 text-stone-200 hover:text-white font-bold text-[9px] rounded-lg border border-stone-700 uppercase flex items-center gap-1.5 cursor-pointer transition-all shadow-sm active:scale-95 touch-manipulation"
                                                 title="Generate new random presets"
                                             >
                                                 <Dices className="w-3.5 h-3.5 text-amber-400" />
@@ -992,11 +1074,11 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                                                 value={customSeedInput}
                                                 onChange={(e) => setCustomSeedInput(e.target.value)}
                                                 placeholder="Custom seed / codename..."
-                                                className="flex-1 sm:w-36 px-2.5 py-1 bg-stone-900 border border-stone-750 focus:border-red-500 text-stone-100 text-[9px] rounded-lg font-mono outline-none"
+                                                className="flex-1 sm:w-36 min-h-[44px] px-2.5 py-2 bg-stone-900 border border-stone-750 focus:border-red-500 text-stone-100 text-[10px] rounded-lg font-mono outline-none"
                                             />
                                             <button
                                                 type="submit"
-                                                className="px-2.5 py-1 bg-stone-800 hover:bg-stone-700 text-stone-200 hover:text-white font-black text-[8.5px] rounded-lg border border-stone-700 uppercase cursor-pointer transition-all active:scale-95"
+                                                className="px-3 py-2 min-h-[44px] bg-stone-800 hover:bg-stone-700 text-stone-200 hover:text-white font-black text-[8.5px] rounded-lg border border-stone-700 uppercase cursor-pointer transition-all active:scale-95 touch-manipulation"
                                             >
                                                 Apply
                                             </button>
@@ -1004,11 +1086,11 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                                     </div>
 
                                     {/* Style Category Filter Tabs */}
-                                    <div className="flex flex-wrap items-center gap-1">
+                                    <div className="flex flex-wrap items-center gap-1.5">
                                         <button
                                             type="button"
                                             onClick={() => handleAvatarFilterChange('all')}
-                                            className={`px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                                            className={`px-3 py-2 min-h-[44px] rounded-lg text-[8.5px] font-black uppercase tracking-wider transition-all cursor-pointer touch-manipulation ${
                                                 avatarFilterStyle === 'all'
                                                     ? 'bg-red-955 border border-red-700 text-white shadow-sm'
                                                     : 'bg-stone-850 hover:bg-stone-800 text-stone-400 hover:text-stone-200 border border-stone-750'
@@ -1021,7 +1103,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                                                 key={st.id}
                                                 type="button"
                                                 onClick={() => handleAvatarFilterChange(st.id)}
-                                                className={`px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                                                className={`px-3 py-2 min-h-[44px] rounded-lg text-[8.5px] font-black uppercase tracking-wider transition-all cursor-pointer touch-manipulation ${
                                                     avatarFilterStyle === st.id
                                                         ? 'bg-red-955 border border-red-700 text-white shadow-sm'
                                                         : 'bg-stone-850 hover:bg-stone-800 text-stone-400 hover:text-stone-200 border border-stone-750'
@@ -1034,7 +1116,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 
                                     {/* Visual Grid of Avatar Icons */}
                                     <div className={`grid grid-cols-4 sm:grid-cols-8 gap-2 p-2 bg-stone-950/90 rounded-xl border border-stone-850 ${
-                                        avatarFilterStyle !== 'all' ? 'max-h-[260px] overflow-y-auto pr-1 custom-scrollbar' : 'min-h-[130px]'
+                                        avatarFilterStyle !== 'all' ? 'max-h-[260px] overflow-y-auto overscroll-contain pr-1 custom-scrollbar' : 'min-h-[130px]'
                                     }`}>
                                         {(presetPages[avatarPage] || []).map((preset, idx) => {
                                             const url = getDicebearUrl(preset.style, preset.seed);
@@ -1044,7 +1126,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                                                     key={`${preset.style}-${preset.seed}-${idx}`}
                                                     type="button"
                                                     onClick={() => handleSelectAvatarPreset(preset.style, preset.seed)}
-                                                    className={`relative p-1 rounded-xl border flex flex-col items-center justify-center transition-all cursor-pointer group ${
+                                                    className={`relative p-1 min-h-[44px] min-w-[44px] rounded-xl border flex flex-col items-center justify-center transition-all cursor-pointer group touch-manipulation ${
                                                         isSelected
                                                             ? 'border-red-500 bg-red-955/50 shadow-[0_0_15px_rgba(220,38,38,0.4)] scale-105 ring-1 ring-red-500'
                                                             : 'border-stone-800/80 bg-stone-900/60 hover:border-stone-600 hover:bg-stone-850'
@@ -1081,7 +1163,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                                                         setAvatarPage(p => Math.max(0, p - 1));
                                                     }}
                                                     disabled={avatarPage === 0}
-                                                    className="px-2.5 py-1 bg-stone-850 hover:bg-stone-800 disabled:opacity-30 disabled:pointer-events-none text-stone-300 font-bold text-[8.5px] rounded-lg border border-stone-750 uppercase cursor-pointer transition-all"
+                                                    className="px-3 py-2 min-h-[44px] bg-stone-850 hover:bg-stone-800 disabled:opacity-30 disabled:pointer-events-none text-stone-300 font-bold text-[8.5px] rounded-lg border border-stone-750 uppercase cursor-pointer transition-all touch-manipulation"
                                                 >
                                                     Previous Page
                                                 </button>
@@ -1095,7 +1177,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                                                         setAvatarPage(p => Math.min(presetPages.length - 1, p + 1));
                                                     }}
                                                     disabled={avatarPage >= presetPages.length - 1}
-                                                    className="px-2.5 py-1 bg-stone-850 hover:bg-stone-800 disabled:opacity-30 disabled:pointer-events-none text-stone-300 font-bold text-[8.5px] rounded-lg border border-stone-750 uppercase cursor-pointer transition-all"
+                                                    className="px-3 py-2 min-h-[44px] bg-stone-850 hover:bg-stone-800 disabled:opacity-30 disabled:pointer-events-none text-stone-300 font-bold text-[8.5px] rounded-lg border border-stone-750 uppercase cursor-pointer transition-all touch-manipulation"
                                                 >
                                                     Next Page
                                                 </button>
@@ -1112,7 +1194,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                                             <button
                                                 type="button"
                                                 onClick={handleCancelAvatarEdit}
-                                                className="px-3 py-1 bg-stone-900 hover:bg-stone-800 text-stone-400 hover:text-white font-bold text-[8.5px] rounded-lg border border-stone-800 uppercase cursor-pointer"
+                                                className="px-3 py-2 min-h-[44px] bg-stone-900 hover:bg-stone-800 text-stone-400 hover:text-white font-bold text-[8.5px] rounded-lg border border-stone-800 uppercase cursor-pointer touch-manipulation"
                                             >
                                                 Cancel
                                             </button>
@@ -1120,7 +1202,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                                                 type="button"
                                                 onClick={handleSaveAvatar}
                                                 disabled={isSavingAvatar}
-                                                className="px-3.5 py-1 bg-red-650 hover:bg-red-600 text-white font-bold text-[8.5px] uppercase tracking-wider rounded-lg cursor-pointer transition-all disabled:opacity-50 shadow-md flex items-center gap-1.5"
+                                                className="px-3.5 py-2 min-h-[44px] bg-red-650 hover:bg-red-600 text-white font-bold text-[8.5px] uppercase tracking-wider rounded-lg cursor-pointer transition-all disabled:opacity-50 shadow-md flex items-center gap-1.5 touch-manipulation"
                                             >
                                                 {isSavingAvatar ? 'Applying...' : 'Apply Avatar'}
                                             </button>
@@ -1212,7 +1294,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                                         Match History ({stats.matchHistory.length} Recorded — Click for full report)
                                     </span>
 
-                                    <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1 custom-scrollbar">
+                                    <div className="space-y-1.5 max-h-56 overflow-y-auto overscroll-contain pr-1 custom-scrollbar">
                                         {stats.matchHistory.slice(0, 15).map((m: any, idx: number) => {
                                             const isWin = m.result === 'WIN';
                                             const dateStr = m.timestamp ? new Date(m.timestamp).toLocaleDateString() : 'Recorded Match';
@@ -1225,7 +1307,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                                                         audioManager.playSound('click');
                                                         setSelectedMatchDetail(m);
                                                     }}
-                                                    className="w-full p-2.5 flex items-center justify-between text-[9px] bg-stone-900/40 hover:bg-stone-850/70 border border-stone-800 hover:border-stone-700 rounded-xl cursor-pointer text-left transition-all group"
+                                                    className="w-full p-2.5 min-h-[44px] flex items-center justify-between text-[9px] bg-stone-900/40 hover:bg-stone-850/70 border border-stone-800 hover:border-stone-700 rounded-xl cursor-pointer text-left transition-all group touch-manipulation"
                                                 >
                                                     <div className="flex items-center gap-2">
                                                         <span className={`px-2 py-0.5 rounded font-bold text-[8px] uppercase tracking-wider ${
@@ -1265,18 +1347,18 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                                 <span className="text-[9px] font-bold uppercase tracking-wider text-stone-400 block">
                                     Display Name
                                 </span>
-                                <div className="flex gap-2">
+                                <div className="flex flex-col sm:flex-row gap-2">
                                     <input
                                         type="text"
                                         value={displayNameInput}
                                         onChange={e => setDisplayNameInput(e.target.value)}
-                                        className="flex-1 bg-stone-950 border border-stone-800 focus:border-red-600 rounded-xl px-3 py-2 text-[10px] text-stone-200 outline-none uppercase font-mono"
+                                        className="flex-1 min-w-0 min-h-[44px] bg-stone-950 border border-stone-800 focus:border-red-600 rounded-xl px-3 py-2 text-[10px] text-stone-200 outline-none uppercase font-mono"
                                         maxLength={24}
                                     />
                                     <button
                                         onClick={handleSaveDisplayName}
                                         disabled={isSavingName}
-                                        className="px-4 py-2 bg-stone-850 hover:bg-stone-800 text-stone-200 font-bold text-[9px] rounded-xl uppercase tracking-wider transition-all cursor-pointer disabled:opacity-50"
+                                        className="px-4 py-2 min-h-[44px] bg-stone-850 hover:bg-stone-800 text-stone-200 font-bold text-[9px] rounded-xl uppercase tracking-wider transition-all cursor-pointer disabled:opacity-50 touch-manipulation shrink-0"
                                     >
                                         {isSavingName ? 'Saving...' : 'Update'}
                                     </button>
@@ -1290,9 +1372,9 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 
                             {/* Email Address Clearance & Change */}
                             <div className="p-4 bg-stone-900/40 border border-stone-850 rounded-2xl space-y-3">
-                                <div className="flex items-center justify-between">
-                                    <div className="space-y-0.5">
-                                        <div className="flex items-center gap-2">
+                                <div className="flex items-center justify-between gap-2">
+                                    <div className="space-y-0.5 min-w-0">
+                                        <div className="flex items-center gap-2 flex-wrap">
                                             <span className="text-[9px] font-bold uppercase tracking-wider text-stone-300 block">
                                                 Registered Gmail Clearance
                                             </span>
@@ -1300,11 +1382,11 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                                                 Active Link
                                             </span>
                                         </div>
-                                        <span className="text-[8px] text-stone-500 block">
+                                        <span className="text-[8px] text-stone-500 block break-all">
                                             Current address: <strong className="text-stone-300 font-mono">{(profile as any).email || 'No email bound'}</strong>
                                         </span>
                                     </div>
-                                    <div className="p-2 rounded-xl bg-stone-950 border border-stone-800 text-stone-400">
+                                    <div className="p-2 rounded-xl bg-stone-950 border border-stone-800 text-stone-400 shrink-0">
                                         <Mail className="w-3.5 h-3.5 text-stone-400" />
                                     </div>
                                 </div>
@@ -1313,20 +1395,20 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                                     <span className="text-[8px] text-stone-400 uppercase tracking-wider font-bold block">
                                         Transfer to New Gmail Address
                                     </span>
-                                    <div className="flex gap-2">
-                                        <div className="relative flex-1">
+                                    <div className="flex flex-col sm:flex-row gap-2">
+                                        <div className="relative flex-1 min-w-0">
                                             <input
                                                 type="email"
                                                 value={newEmailInput}
                                                 onChange={e => setNewEmailInput(e.target.value)}
                                                 placeholder="Enter new Gmail address..."
-                                                className="w-full bg-stone-950 border border-stone-800 focus:border-red-600 rounded-xl px-3 py-2 text-[10px] text-stone-200 outline-none font-mono placeholder:text-stone-600"
+                                                className="w-full min-h-[44px] bg-stone-950 border border-stone-800 focus:border-red-600 rounded-xl px-3 py-2 text-[10px] text-stone-200 outline-none font-mono placeholder:text-stone-600"
                                             />
                                         </div>
                                         <button
                                             type="submit"
                                             disabled={isUpdatingEmail || !newEmailInput.trim()}
-                                            className="px-4 py-2 bg-stone-850 hover:bg-stone-800 text-stone-200 font-bold text-[9px] rounded-xl border border-stone-750 uppercase tracking-wider transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+                                            className="px-4 py-2 min-h-[44px] bg-stone-850 hover:bg-stone-800 text-stone-200 font-bold text-[9px] rounded-xl border border-stone-750 uppercase tracking-wider transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0 touch-manipulation"
                                         >
                                             {isUpdatingEmail ? 'Updating...' : 'Update Email'}
                                         </button>
@@ -1354,8 +1436,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 
                             {/* Password Reset Email Link */}
                             <div className="p-4 bg-stone-900/40 border border-stone-850 rounded-2xl space-y-2">
-                                <div className="flex items-center justify-between">
-                                    <div>
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                                    <div className="min-w-0">
                                         <span className="text-[9px] font-bold uppercase tracking-wider text-stone-300 block">
                                             Password Recovery
                                         </span>
@@ -1366,7 +1448,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                                     <button
                                         onClick={handleSendPasswordReset}
                                         disabled={isSendingReset}
-                                        className="px-3.5 py-2 bg-stone-850 hover:bg-stone-800 text-stone-200 font-bold text-[9px] rounded-xl border border-stone-750 uppercase tracking-wider transition-all cursor-pointer disabled:opacity-50"
+                                        className="px-3.5 py-2 min-h-[44px] bg-stone-850 hover:bg-stone-800 text-stone-200 font-bold text-[9px] rounded-xl border border-stone-750 uppercase tracking-wider transition-all cursor-pointer disabled:opacity-50 shrink-0 touch-manipulation"
                                     >
                                         {isSendingReset ? 'Sending...' : 'Send Reset Link'}
                                     </button>
@@ -1381,7 +1463,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                             </div>
 
                             {/* Session Management (Red Logout Button inside Privacy tab) */}
-                            <div className="flex items-center justify-between p-4 bg-stone-900/30 border border-stone-850 rounded-2xl">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-4 bg-stone-900/30 border border-stone-850 rounded-2xl">
                                 <div>
                                     <span className="text-[9.5px] font-bold uppercase tracking-wider text-stone-300 block">
                                         Session Security
@@ -1396,7 +1478,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                                         if (onLogout) onLogout();
                                         onClose();
                                     }}
-                                    className="px-4 py-2 bg-red-650 hover:bg-red-600 border border-red-500 text-white rounded-xl text-[9.5px] font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 shadow-md shadow-red-955/50 hover:scale-105 active:scale-95"
+                                    className="px-4 py-2 min-h-[44px] bg-red-650 hover:bg-red-600 border border-red-500 text-white rounded-xl text-[9.5px] font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-md shadow-red-955/50 hover:scale-105 active:scale-95 shrink-0 touch-manipulation"
                                 >
                                     <LogOut className="w-3.5 h-3.5" />
                                     <span>Logout</span>
@@ -1405,7 +1487,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 
                             {/* Danger Zone: Double Confirmation Account Deletion */}
                             <div className="p-4 bg-red-955/15 border border-red-900/40 rounded-2xl space-y-2">
-                                <div className="flex items-center justify-between">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
                                     <div>
                                         <span className="text-[9.5px] font-bold uppercase tracking-wider text-red-400 block">
                                             Delete Account
@@ -1419,7 +1501,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                                             audioManager.playSound('click');
                                             setDeleteStep(1);
                                         }}
-                                        className="px-3.5 py-2 bg-red-955 hover:bg-red-900 text-red-300 hover:text-white font-bold text-[9px] rounded-xl border border-red-800 uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5"
+                                        className="px-3.5 py-2 min-h-[44px] bg-red-955 hover:bg-red-900 text-red-300 hover:text-white font-bold text-[9px] rounded-xl border border-red-800 uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1.5 shrink-0 touch-manipulation"
                                     >
                                         <Trash2 className="w-3.5 h-3.5" />
                                         <span>Delete Account</span>
@@ -1431,13 +1513,13 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 </div>
 
                 {/* Footer Controls */}
-                <div className="flex items-center justify-end px-5 py-3 border-t border-stone-850 bg-stone-950 shrink-0">
+                <div className="flex items-center justify-end px-3.5 sm:px-5 py-2 sm:py-3 border-t border-stone-850 bg-stone-950 shrink-0">
                     <button
                         onClick={() => {
                             audioManager.playSound('click');
                             onClose();
                         }}
-                        className="px-4 py-1.5 bg-stone-900 hover:bg-stone-850 text-stone-300 hover:text-white font-bold text-[9px] rounded-xl border border-stone-800 uppercase tracking-wider transition-all cursor-pointer"
+                        className="px-4 py-2 min-h-[44px] bg-stone-900 hover:bg-stone-850 text-stone-300 hover:text-white font-bold text-[9px] rounded-xl border border-stone-800 uppercase tracking-wider transition-all cursor-pointer touch-manipulation"
                     >
                         Close
                     </button>
@@ -1447,15 +1529,18 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             {/* VERY DETAILED MATCH DETAILS POPUP MODAL */}
             {selectedMatchDetail && (
                 <div 
-                    className="fixed inset-0 z-[300] flex items-center justify-center p-3 sm:p-5 bg-black/90 backdrop-blur-md animate-in fade-in duration-150 font-mono"
+                    className="fixed inset-0 z-[300] flex items-center justify-center p-2 sm:p-5 bg-black/95 md:bg-black/90 md:backdrop-blur-md animate-in fade-in duration-150 font-mono"
                     style={{
                         paddingTop: 'max(env(safe-area-inset-top, 0px), 12px)',
                         paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 12px)',
                         paddingLeft: 'max(env(safe-area-inset-left, 0px), 12px)',
                         paddingRight: 'max(env(safe-area-inset-right, 0px), 12px)'
                     }}
+                    onClick={(e) => {
+                        if (e.target === e.currentTarget) setSelectedMatchDetail(null);
+                    }}
                 >
-                    <div className="relative w-full max-w-lg bg-stone-950 border border-stone-750 rounded-2xl shadow-[0_30px_90px_rgba(0,0,0,0.98)] p-5 space-y-4 max-h-[90vh] overflow-y-auto custom-scrollbar text-stone-300">
+                    <div className="relative w-full max-w-lg bg-stone-950 border border-stone-750 rounded-2xl shadow-[0_30px_90px_rgba(0,0,0,0.98)] p-4 sm:p-5 space-y-4 max-h-[95dvh] md:max-h-[90dvh] overflow-y-auto overscroll-contain custom-scrollbar text-stone-300">
                         {/* Header */}
                         <div className="flex items-center justify-between pb-3 border-b border-stone-850">
                             <div className="flex items-center gap-2.5">
@@ -1484,7 +1569,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                             </div>
                             <button
                                 onClick={() => setSelectedMatchDetail(null)}
-                                className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl text-stone-400 hover:text-white hover:bg-stone-850 border border-stone-800 cursor-pointer transition-all"
+                                className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl text-stone-400 hover:text-white hover:bg-stone-850 border border-stone-800 cursor-pointer transition-all touch-manipulation"
                             >
                                 <X size={18} />
                             </button>
@@ -1604,7 +1689,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 
                         <button
                             onClick={() => setSelectedMatchDetail(null)}
-                            className="w-full py-2.5 min-h-[44px] bg-stone-900 hover:bg-stone-850 border border-stone-800 text-stone-300 hover:text-white font-bold text-[10px] rounded-xl uppercase tracking-wider cursor-pointer transition-all flex items-center justify-center"
+                            className="w-full py-2.5 min-h-[44px] bg-stone-900 hover:bg-stone-850 border border-stone-800 text-stone-300 hover:text-white font-bold text-[10px] rounded-xl uppercase tracking-wider cursor-pointer transition-all flex items-center justify-center touch-manipulation"
                         >
                             Dismiss Battle Report
                         </button>
@@ -1615,15 +1700,15 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             {/* RE-AUTHENTICATION CONFIRMATION MODAL */}
             {showReauthModal && (
                 <div 
-                    className="fixed inset-0 z-[320] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-150 font-mono"
+                    className="fixed inset-0 z-[320] flex items-center justify-center p-3 sm:p-4 bg-black/95 md:bg-black/90 md:backdrop-blur-md animate-in fade-in duration-150 font-mono"
                     style={{
-                        paddingTop: 'max(env(safe-area-inset-top, 0px), 16px)',
-                        paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 16px)',
-                        paddingLeft: 'max(env(safe-area-inset-left, 0px), 16px)',
-                        paddingRight: 'max(env(safe-area-inset-right, 0px), 16px)'
+                        paddingTop: 'max(env(safe-area-inset-top, 0px), 12px)',
+                        paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 12px)',
+                        paddingLeft: 'max(env(safe-area-inset-left, 0px), 12px)',
+                        paddingRight: 'max(env(safe-area-inset-right, 0px), 12px)'
                     }}
                 >
-                    <div className="max-w-md w-full bg-stone-950 border border-stone-750 rounded-2xl p-6 shadow-2xl space-y-4 text-stone-300">
+                    <div className="max-w-md w-full max-h-[95dvh] overflow-y-auto overscroll-contain custom-scrollbar bg-stone-950 border border-stone-750 rounded-2xl p-4 sm:p-6 shadow-2xl space-y-4 text-stone-300">
                         <div className="flex items-center gap-3 pb-3 border-b border-stone-850">
                             <div className="w-10 h-10 rounded-xl bg-red-955 border border-red-700 flex items-center justify-center text-red-400 shrink-0">
                                 <Lock className="w-5 h-5" />
@@ -1655,7 +1740,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                                         setReauthError('');
                                     }}
                                     placeholder="Enter current password..."
-                                    className="w-full bg-stone-900 border border-stone-750 focus:border-red-500 rounded-xl px-3.5 py-2.5 text-xs text-stone-100 outline-none"
+                                    className="w-full min-h-[44px] bg-stone-900 border border-stone-750 focus:border-red-500 rounded-xl px-3.5 py-2.5 text-xs text-stone-100 outline-none"
                                     autoFocus
                                 />
                             </div>
@@ -1675,14 +1760,14 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                                         setReauthPasswordInput('');
                                         setReauthError('');
                                     }}
-                                    className="px-4 py-2 min-h-[44px] bg-stone-900 hover:bg-stone-850 text-stone-400 hover:text-white font-bold text-[9px] rounded-xl border border-stone-800 uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center"
+                                    className="px-4 py-2 min-h-[44px] bg-stone-900 hover:bg-stone-850 text-stone-400 hover:text-white font-bold text-[9px] rounded-xl border border-stone-800 uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center touch-manipulation"
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     type="submit"
                                     disabled={isUpdatingEmail || !reauthPasswordInput}
-                                    className="px-5 py-2 min-h-[44px] bg-red-650 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-[9px] rounded-xl uppercase tracking-wider transition-all cursor-pointer shadow-md flex items-center justify-center gap-1.5"
+                                    className="px-5 py-2 min-h-[44px] bg-red-650 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-[9px] rounded-xl uppercase tracking-wider transition-all cursor-pointer shadow-md flex items-center justify-center gap-1.5 touch-manipulation"
                                 >
                                     {isUpdatingEmail ? 'Authorizing...' : 'Authorize & Update'}
                                 </button>
@@ -1695,15 +1780,15 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             {/* EMAIL VERIFICATION NOTICE MODAL */}
             {showEmailVerificationModal && (
                 <div 
-                    className="fixed inset-0 z-[325] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-150 font-mono"
+                    className="fixed inset-0 z-[325] flex items-center justify-center p-3 sm:p-4 bg-black/95 md:bg-black/90 md:backdrop-blur-md animate-in fade-in duration-150 font-mono"
                     style={{
-                        paddingTop: 'max(env(safe-area-inset-top, 0px), 16px)',
-                        paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 16px)',
-                        paddingLeft: 'max(env(safe-area-inset-left, 0px), 16px)',
-                        paddingRight: 'max(env(safe-area-inset-right, 0px), 16px)'
+                        paddingTop: 'max(env(safe-area-inset-top, 0px), 12px)',
+                        paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 12px)',
+                        paddingLeft: 'max(env(safe-area-inset-left, 0px), 12px)',
+                        paddingRight: 'max(env(safe-area-inset-right, 0px), 12px)'
                     }}
                 >
-                    <div className="max-w-md w-full bg-stone-950 border border-emerald-800/80 rounded-2xl p-6 shadow-2xl text-center space-y-4 text-stone-300">
+                    <div className="max-w-md w-full max-h-[95dvh] overflow-y-auto overscroll-contain custom-scrollbar bg-stone-950 border border-emerald-800/80 rounded-2xl p-4 sm:p-6 shadow-2xl text-center space-y-4 text-stone-300">
                         <div className="w-12 h-12 rounded-full bg-emerald-955 border border-emerald-600 flex items-center justify-center mx-auto text-emerald-400">
                             <Mail className="w-6 h-6" />
                         </div>
@@ -1724,7 +1809,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                         </div>
                         <button
                             onClick={() => setShowEmailVerificationModal(false)}
-                            className="w-full py-2.5 min-h-[44px] bg-emerald-950 hover:bg-emerald-900 border border-emerald-700 text-emerald-200 hover:text-white font-bold text-[10px] rounded-xl uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center"
+                            className="w-full py-2.5 min-h-[44px] bg-emerald-950 hover:bg-emerald-900 border border-emerald-700 text-emerald-200 hover:text-white font-bold text-[10px] rounded-xl uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center touch-manipulation"
                         >
                             Understood, Got It
                         </button>
@@ -1735,15 +1820,15 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             {/* SPAM FOLDER NOTIFICATION MODAL */}
             {showSpamNoticeModal && (
                 <div 
-                    className="fixed inset-0 z-[320] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-150"
+                    className="fixed inset-0 z-[320] flex items-center justify-center p-3 sm:p-4 bg-black/95 md:bg-black/90 md:backdrop-blur-md animate-in fade-in duration-150"
                     style={{
-                        paddingTop: 'max(env(safe-area-inset-top, 0px), 16px)',
-                        paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 16px)',
-                        paddingLeft: 'max(env(safe-area-inset-left, 0px), 16px)',
-                        paddingRight: 'max(env(safe-area-inset-right, 0px), 16px)'
+                        paddingTop: 'max(env(safe-area-inset-top, 0px), 12px)',
+                        paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 12px)',
+                        paddingLeft: 'max(env(safe-area-inset-left, 0px), 12px)',
+                        paddingRight: 'max(env(safe-area-inset-right, 0px), 12px)'
                     }}
                 >
-                    <div className="max-w-md w-full bg-stone-950 border border-stone-800 rounded-2xl p-6 shadow-2xl font-mono text-center space-y-4">
+                    <div className="max-w-md w-full max-h-[95dvh] overflow-y-auto overscroll-contain custom-scrollbar bg-stone-950 border border-stone-800 rounded-2xl p-4 sm:p-6 shadow-2xl font-mono text-center space-y-4">
                         <div className="w-12 h-12 rounded-full bg-amber-955 border border-amber-600 flex items-center justify-center mx-auto text-amber-400">
                             <Mail className="w-6 h-6" />
                         </div>
@@ -1764,7 +1849,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                         </div>
                         <button
                             onClick={() => setShowSpamNoticeModal(false)}
-                            className="w-full py-2.5 min-h-[44px] bg-stone-800 hover:bg-stone-700 text-white font-bold text-[10px] rounded-xl uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center"
+                            className="w-full py-2.5 min-h-[44px] bg-stone-800 hover:bg-stone-700 text-white font-bold text-[10px] rounded-xl uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center touch-manipulation"
                         >
                             Understood, Got It
                         </button>
@@ -1775,15 +1860,15 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             {/* DELETE ACCOUNT STEP 1 */}
             {deleteStep === 1 && (
                 <div 
-                    className="fixed inset-0 z-[320] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-150"
+                    className="fixed inset-0 z-[320] flex items-center justify-center p-3 sm:p-4 bg-black/95 md:bg-black/90 md:backdrop-blur-md animate-in fade-in duration-150"
                     style={{
-                        paddingTop: 'max(env(safe-area-inset-top, 0px), 16px)',
-                        paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 16px)',
-                        paddingLeft: 'max(env(safe-area-inset-left, 0px), 16px)',
-                        paddingRight: 'max(env(safe-area-inset-right, 0px), 16px)'
+                        paddingTop: 'max(env(safe-area-inset-top, 0px), 12px)',
+                        paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 12px)',
+                        paddingLeft: 'max(env(safe-area-inset-left, 0px), 12px)',
+                        paddingRight: 'max(env(safe-area-inset-right, 0px), 12px)'
                     }}
                 >
-                    <div className="max-w-md w-full bg-stone-950 border border-red-800 rounded-2xl p-6 shadow-2xl font-mono text-center space-y-4">
+                    <div className="max-w-md w-full max-h-[95dvh] overflow-y-auto overscroll-contain custom-scrollbar bg-stone-950 border border-red-800 rounded-2xl p-4 sm:p-6 shadow-2xl font-mono text-center space-y-4">
                         <div className="w-12 h-12 rounded-full bg-red-955 border border-red-700 flex items-center justify-center mx-auto text-red-400">
                             <AlertTriangle className="w-6 h-6" />
                         </div>
@@ -1796,7 +1881,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                         <div className="flex gap-3 justify-center pt-2">
                             <button
                                 onClick={() => setDeleteStep(0)}
-                                className="px-4 py-2 min-h-[44px] bg-stone-900 hover:bg-stone-850 text-stone-300 font-bold text-[10px] rounded-xl uppercase tracking-wider cursor-pointer flex items-center justify-center"
+                                className="px-4 py-2 min-h-[44px] bg-stone-900 hover:bg-stone-850 text-stone-300 font-bold text-[10px] rounded-xl uppercase tracking-wider cursor-pointer flex items-center justify-center touch-manipulation"
                             >
                                 Cancel
                             </button>
@@ -1805,7 +1890,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                                     audioManager.playSound('click');
                                     setDeleteStep(2);
                                 }}
-                                className="px-5 py-2 min-h-[44px] bg-red-700 hover:bg-red-600 text-white font-bold text-[10px] rounded-xl uppercase tracking-wider cursor-pointer shadow-md flex items-center justify-center"
+                                className="px-5 py-2 min-h-[44px] bg-red-700 hover:bg-red-600 text-white font-bold text-[10px] rounded-xl uppercase tracking-wider cursor-pointer shadow-md flex items-center justify-center touch-manipulation"
                             >
                                 Proceed →
                             </button>
@@ -1817,15 +1902,15 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             {/* DELETE ACCOUNT STEP 2 (Prompt with highlighted text) */}
             {deleteStep === 2 && (
                 <div 
-                    className="fixed inset-0 z-[330] flex items-center justify-center p-4 bg-black/95 backdrop-blur-md animate-in fade-in duration-150"
+                    className="fixed inset-0 z-[330] flex items-center justify-center p-3 sm:p-4 bg-black/95 md:backdrop-blur-md animate-in fade-in duration-150"
                     style={{
-                        paddingTop: 'max(env(safe-area-inset-top, 0px), 16px)',
-                        paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 16px)',
-                        paddingLeft: 'max(env(safe-area-inset-left, 0px), 16px)',
-                        paddingRight: 'max(env(safe-area-inset-right, 0px), 16px)'
+                        paddingTop: 'max(env(safe-area-inset-top, 0px), 12px)',
+                        paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 12px)',
+                        paddingLeft: 'max(env(safe-area-inset-left, 0px), 12px)',
+                        paddingRight: 'max(env(safe-area-inset-right, 0px), 12px)'
                     }}
                 >
-                    <div className="max-w-md w-full bg-stone-950 border-2 border-red-700 rounded-2xl p-6 shadow-2xl font-mono text-center space-y-4">
+                    <div className="max-w-md w-full max-h-[95dvh] overflow-y-auto overscroll-contain custom-scrollbar bg-stone-950 border-2 border-red-700 rounded-2xl p-4 sm:p-6 shadow-2xl font-mono text-center space-y-4">
                         <div className="w-12 h-12 rounded-full bg-red-955 border border-red-600 flex items-center justify-center mx-auto text-red-400">
                             <Skull className="w-6 h-6" />
                         </div>
@@ -1863,14 +1948,14 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                                     setDeleteInputText('');
                                     setDeleteError('');
                                 }}
-                                className="px-4 py-2 min-h-[44px] bg-stone-900 hover:bg-stone-850 text-stone-300 font-bold text-[10px] rounded-xl uppercase tracking-wider cursor-pointer flex items-center justify-center"
+                                className="px-4 py-2 min-h-[44px] bg-stone-900 hover:bg-stone-850 text-stone-300 font-bold text-[10px] rounded-xl uppercase tracking-wider cursor-pointer flex items-center justify-center touch-manipulation"
                             >
                                 Cancel
                             </button>
                             <button
                                 onClick={handleConfirmDelete}
                                 disabled={isDeleting || deleteInputText.trim().toUpperCase() !== 'DELETE'}
-                                className="px-5 py-2 min-h-[44px] bg-red-700 hover:bg-red-600 disabled:opacity-30 disabled:cursor-not-allowed text-white font-bold text-[10px] rounded-xl uppercase tracking-wider cursor-pointer shadow-md flex items-center justify-center"
+                                className="px-5 py-2 min-h-[44px] bg-red-700 hover:bg-red-600 disabled:opacity-30 disabled:cursor-not-allowed text-white font-bold text-[10px] rounded-xl uppercase tracking-wider cursor-pointer shadow-md flex items-center justify-center touch-manipulation"
                             >
                                 {isDeleting ? 'Deleting...' : 'Confirm Deletion'}
                             </button>

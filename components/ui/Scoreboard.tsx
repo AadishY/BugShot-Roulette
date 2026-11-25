@@ -178,10 +178,18 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ onClose, stats: initialS
 
     if (isLoading) {
         return (
-            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md pointer-events-auto p-4 animate-in fade-in duration-300">
-                <div className="bg-stone-950/90 border border-white/10 rounded-3xl p-8 text-center text-stone-100 shadow-[0_20px_60px_rgba(0,0,0,0.65)]">
-                    <div className="mb-4 text-lg font-black uppercase tracking-[0.35em]">SYNCING STATS</div>
-                    <div className="text-sm text-stone-400">Fetching latest stats from BugshotServer...</div>
+            <div
+                className="fixed inset-0 h-[100dvh] z-[100] flex items-center justify-center bg-black/85 md:bg-black/60 md:backdrop-blur-md pointer-events-auto p-4 overscroll-contain animate-in fade-in duration-300"
+                style={{
+                    paddingTop: 'max(env(safe-area-inset-top, 0px), 16px)',
+                    paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 16px)',
+                    paddingLeft: 'max(env(safe-area-inset-left, 0px), 16px)',
+                    paddingRight: 'max(env(safe-area-inset-right, 0px), 16px)'
+                }}
+            >
+                <div className="bg-stone-950/95 border border-white/10 rounded-3xl p-6 sm:p-8 text-center text-stone-100 shadow-[0_20px_60px_rgba(0,0,0,0.65)] max-w-sm w-full">
+                    <div className="mb-3 text-base sm:text-lg font-black uppercase tracking-[0.3em]">SYNCING STATS</div>
+                    <div className="text-xs sm:text-sm text-stone-400">Fetching latest stats from BugshotServer...</div>
                 </div>
             </div>
         );
@@ -189,52 +197,62 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ onClose, stats: initialS
 
     if (!stats) {
         return (
-            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md pointer-events-auto p-4 animate-in fade-in duration-300">
-                <div className="bg-stone-950/90 border border-white/10 rounded-3xl p-8 text-center text-stone-100 shadow-[0_20px_60px_rgba(0,0,0,0.65)] max-w-sm">
-                    <div className="mb-4 text-lg font-black uppercase tracking-[0.35em]">REMOTE STATS ERROR</div>
-                    <div className="text-sm text-stone-400 mb-6">{loadError || 'Unable to load Cloud stats.'}</div>
-                    <button
-                        onClick={() => {
-                            audioManager.playSound('click');
-                            void (async () => {
-                                setIsLoading(true);
-                                setLoadError(null);
-                                const loggedInUser = localStorage.getItem('aadish_roulette_logged_in_user');
-                                if (!loggedInUser) {
-                                    setStats(initialStats || getStoredStats());
-                                    setIsLoading(false);
-                                    return;
-                                }
-                                try {
-                                    const userObj = JSON.parse(loggedInUser);
-                                    const remoteStats = await getUserStatsFromFirebase(userObj.username);
-                                    if (!remoteStats) {
-                                        setLoadError('Unable to load latest remote stats.');
-                                        setStats(null);
-                                    } else {
-                                        setStats(remoteStats);
-                                        setUserActiveStats(userObj.username, remoteStats);
+            <div
+                className="fixed inset-0 h-[100dvh] z-[100] flex items-center justify-center bg-black/85 md:bg-black/60 md:backdrop-blur-md pointer-events-auto p-4 overscroll-contain animate-in fade-in duration-300"
+                style={{
+                    paddingTop: 'max(env(safe-area-inset-top, 0px), 16px)',
+                    paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 16px)',
+                    paddingLeft: 'max(env(safe-area-inset-left, 0px), 16px)',
+                    paddingRight: 'max(env(safe-area-inset-right, 0px), 16px)'
+                }}
+            >
+                <div className="bg-stone-950/95 border border-white/10 rounded-3xl p-6 sm:p-8 text-center text-stone-100 shadow-[0_20px_60px_rgba(0,0,0,0.65)] max-w-sm w-full">
+                    <div className="mb-3 text-base sm:text-lg font-black uppercase tracking-[0.3em]">REMOTE STATS ERROR</div>
+                    <div className="text-xs sm:text-sm text-stone-400 mb-6">{loadError || 'Unable to load Cloud stats.'}</div>
+                    <div className="flex flex-wrap items-center justify-center gap-2.5">
+                        <button
+                            onClick={() => {
+                                audioManager.playSound('click');
+                                void (async () => {
+                                    setIsLoading(true);
+                                    setLoadError(null);
+                                    const loggedInUser = localStorage.getItem('aadish_roulette_logged_in_user');
+                                    if (!loggedInUser) {
+                                        setStats(initialStats || getStoredStats());
+                                        setIsLoading(false);
+                                        return;
                                     }
-                                } catch (err) {
-                                    setLoadError('Unable to load latest remote stats.');
-                                } finally {
-                                    setIsLoading(false);
-                                }
-                            })();
-                        }}
-                        className="px-4 py-2 bg-yellow-500 text-stone-950 font-bold rounded-xl hover:bg-yellow-400 transition-colors"
-                    >
-                        Retry
-                    </button>
-                    <button
-                        onClick={() => {
-                            audioManager.playSound('click');
-                            onClose();
-                        }}
-                        className="mt-3 px-4 py-2 bg-stone-900 text-stone-200 font-bold rounded-xl hover:bg-stone-800 transition-colors"
-                    >
-                        Close
-                    </button>
+                                    try {
+                                        const userObj = JSON.parse(loggedInUser);
+                                        const remoteStats = await getUserStatsFromFirebase(userObj.username);
+                                        if (!remoteStats) {
+                                            setLoadError('Unable to load latest remote stats.');
+                                            setStats(null);
+                                        } else {
+                                            setStats(remoteStats);
+                                            setUserActiveStats(userObj.username, remoteStats);
+                                        }
+                                    } catch (err) {
+                                        setLoadError('Unable to load latest remote stats.');
+                                    } finally {
+                                        setIsLoading(false);
+                                    }
+                                })();
+                            }}
+                            className="min-h-[44px] px-5 py-2.5 bg-yellow-500 text-stone-950 font-bold rounded-xl hover:bg-yellow-400 transition-colors cursor-pointer touch-manipulation"
+                        >
+                            Retry
+                        </button>
+                        <button
+                            onClick={() => {
+                                audioManager.playSound('click');
+                                onClose();
+                            }}
+                            className="min-h-[44px] px-5 py-2.5 bg-stone-900 text-stone-200 font-bold rounded-xl hover:bg-stone-800 transition-colors cursor-pointer touch-manipulation"
+                        >
+                            Close
+                        </button>
+                    </div>
                 </div>
             </div>
         );
@@ -242,7 +260,7 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ onClose, stats: initialS
 
     return (
         <div
-            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 pointer-events-auto p-1.5 sm:p-3"
+            className="fixed inset-0 h-[100dvh] z-[100] flex items-center justify-center bg-black/85 md:bg-black/80 pointer-events-auto p-1.5 sm:p-3 overflow-hidden overscroll-contain"
             role="dialog"
             aria-modal="true"
             aria-label="Agent Service Record"
@@ -259,11 +277,11 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ onClose, stats: initialS
                 }
             }}
         >
-            <div className="w-full max-w-[min(96vw,calc(100vw-16px))] lg:max-w-5xl h-[92dvh] max-h-[92dvh] bg-stone-950 border-2 border-stone-700/80 shadow-[0_30px_90px_rgba(0,0,0,0.92)] flex flex-col relative overflow-hidden rounded-2xl ring-1 ring-white/10">
+            <div className="w-full max-w-[min(96vw,calc(100vw-16px))] lg:max-w-5xl h-[94dvh] max-h-[94dvh] sm:h-[92dvh] sm:max-h-[92dvh] bg-stone-950 border-2 border-stone-700/80 shadow-[0_30px_90px_rgba(0,0,0,0.92)] flex flex-col relative overflow-hidden rounded-2xl ring-1 ring-white/10">
                 <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-amber-500/30 to-transparent pointer-events-none" />
 
                 {/* Header with Player Profile & Avatar */}
-                <div className="p-2.5 sm:p-4 border-b border-stone-800/80 flex flex-row justify-between items-center gap-2 bg-stone-950 shrink-0">
+                <div className="p-2 sm:p-3.5 border-b border-stone-800/80 flex flex-row justify-between items-center gap-2 bg-stone-950 shrink-0">
                     <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
                         <div className="relative shrink-0">
                             <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl overflow-hidden bg-stone-900 border border-stone-750 p-0.5 shadow-lg">
@@ -301,7 +319,7 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ onClose, stats: initialS
                                         setCopiedId(true);
                                         setTimeout(() => setCopiedId(false), 2000);
                                     }}
-                                    className="small-btn inline-flex items-center gap-1 bg-stone-900/90 hover:bg-stone-800 border border-stone-800 hover:border-stone-700 px-2 py-1 rounded-md text-stone-300 font-bold transition-all cursor-pointer"
+                                    className="small-btn inline-flex items-center gap-1 bg-stone-900/90 hover:bg-stone-800 border border-stone-800 hover:border-stone-700 px-2 py-1 min-h-[44px] sm:min-h-[32px] rounded-md text-stone-300 font-bold transition-all cursor-pointer touch-manipulation"
                                     title="Click to copy Player ID"
                                 >
                                     <span className="truncate max-w-[110px] sm:max-w-none">{playerIdentifier}</span>
@@ -324,7 +342,7 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ onClose, stats: initialS
                             audioManager.playSound('click');
                             onClose();
                         }}
-                        className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center text-stone-400 hover:text-white bg-stone-900/80 hover:bg-stone-800 border border-stone-800 rounded-xl transition-all cursor-pointer shadow-md shrink-0"
+                        className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center text-stone-400 hover:text-white bg-stone-900/80 hover:bg-stone-800 border border-stone-800 rounded-xl transition-all cursor-pointer shadow-md shrink-0 touch-manipulation"
                         title="Close"
                         aria-label="Close"
                     >
@@ -332,7 +350,7 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ onClose, stats: initialS
                     </button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-2.5 sm:p-4 space-y-3 sm:space-y-4 scrollbar-hide custom-scrollbar">
+                <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-2.5 sm:p-4 space-y-3 sm:space-y-4 scrollbar-hide custom-scrollbar">
 
                     {/* Top Headline Career Record */}
                     <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 sm:gap-2.5 font-mono tabular-nums">
@@ -419,8 +437,8 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ onClose, stats: initialS
 
                         {/* Mode Breakdown Strip */}
                         <div className="grid grid-cols-3 gap-2">
-                            <div className="p-2.5 rounded-xl bg-stone-900/35 border border-stone-850 flex items-center justify-between gap-2">
-                                <div className="flex items-center gap-1.5 min-w-0">
+                            <div className="p-2 sm:p-2.5 rounded-xl bg-stone-900/35 border border-stone-850 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1 sm:gap-2 min-w-0">
+                                <div className="flex items-center gap-1.5 min-w-0 w-full sm:w-auto">
                                     <Shield size={13} className="text-stone-400 shrink-0" />
                                     <span className="text-[8.5px] font-black text-stone-400 uppercase truncate">STANDARD</span>
                                 </div>
@@ -428,8 +446,8 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ onClose, stats: initialS
                                     {detailed.soloWins}W / {detailed.soloMatches}M
                                 </span>
                             </div>
-                            <div className="p-2.5 rounded-xl bg-red-950/20 border border-red-900/40 flex items-center justify-between gap-2">
-                                <div className="flex items-center gap-1.5 min-w-0">
+                            <div className="p-2 sm:p-2.5 rounded-xl bg-red-950/20 border border-red-900/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1 sm:gap-2 min-w-0">
+                                <div className="flex items-center gap-1.5 min-w-0 w-full sm:w-auto">
                                     <Flame size={13} className="text-red-400 shrink-0" />
                                     <span className="text-[8.5px] font-black text-red-400 uppercase truncate">HARD MODE</span>
                                 </div>
@@ -437,8 +455,8 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ onClose, stats: initialS
                                     {detailed.hardModeWins}W / {Math.max(detailed.hardModeMatches, detailed.hardModeWins)}M
                                 </span>
                             </div>
-                            <div className="p-2.5 rounded-xl bg-cyan-950/20 border border-cyan-900/40 flex items-center justify-between gap-2">
-                                <div className="flex items-center gap-1.5 min-w-0">
+                            <div className="p-2 sm:p-2.5 rounded-xl bg-cyan-950/20 border border-cyan-900/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1 sm:gap-2 min-w-0">
+                                <div className="flex items-center gap-1.5 min-w-0 w-full sm:w-auto">
                                     <Swords size={13} className="text-cyan-400 shrink-0" />
                                     <span className="text-[8.5px] font-black text-cyan-400 uppercase truncate">MULTIPLAYER</span>
                                 </div>
@@ -464,7 +482,7 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ onClose, stats: initialS
                                             audioManager.playSound('click');
                                             setSelectedMatch(match);
                                         }}
-                                        className="bg-stone-900/20 hover:bg-stone-900/40 p-2 sm:p-2.5 sm:px-3.5 border border-white/5 hover:border-cyan-500/40 rounded-xl flex justify-between items-center gap-2 transition-all cursor-pointer group"
+                                        className="bg-stone-900/20 hover:bg-stone-900/40 p-2 sm:p-2.5 sm:px-3.5 min-h-[44px] border border-white/5 hover:border-cyan-500/40 rounded-xl flex justify-between items-center gap-2 transition-all cursor-pointer touch-manipulation group"
                                     >
                                         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
                                             <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-black text-[11px] border shrink-0 ${match.result === 'WIN' ? 'bg-green-500/10 text-green-500 border-green-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20'}`}>
@@ -525,13 +543,13 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ onClose, stats: initialS
                 </div>
 
                 {/* Footer */}
-                <div className="p-2.5 sm:p-3 border-t border-stone-800/50 bg-stone-950/40 backdrop-blur-xl flex justify-center shrink-0">
+                <div className="p-2 sm:p-3 border-t border-stone-800/50 bg-stone-950/92 md:bg-stone-950/40 md:backdrop-blur-xl flex justify-center shrink-0">
                     <button
                         onClick={() => {
                             audioManager.playSound('click');
                             onClose();
                         }}
-                        className="w-full py-2.5 min-h-[44px] bg-white text-black font-black text-[10px] tracking-[0.35em] active:scale-[0.98] transition-all shadow-xl hover:bg-stone-200 uppercase rounded-xl"
+                        className="w-full py-2.5 min-h-[44px] bg-white text-black font-black text-[10px] tracking-[0.35em] active:scale-[0.98] transition-all shadow-xl hover:bg-stone-200 uppercase rounded-xl cursor-pointer touch-manipulation"
                     >
                         Return to Hub
                     </button>
@@ -540,21 +558,21 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ onClose, stats: initialS
                 {/* Universal Combat Report Modal */}
                 {selectedMatch && (
                     <>
-                        <div className="fixed inset-0 bg-black/85 z-[120] cursor-default backdrop-blur-sm" onClick={() => setSelectedMatch(null)} />
-                        <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[95vw] sm:w-[90vw] max-w-4xl max-h-[88dvh] overflow-y-auto bg-stone-950 border border-stone-800 p-3 sm:p-6 rounded-2xl shadow-[0_0_60px_rgba(0,0,0,0.85)] z-[130] font-mono text-stone-300 custom-scrollbar">
+                        <div className="fixed inset-0 bg-black/92 md:bg-black/85 z-[120] cursor-default md:backdrop-blur-sm" onClick={() => setSelectedMatch(null)} />
+                        <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[95vw] sm:w-[90vw] max-w-4xl max-h-[calc(100dvh-20px-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px))] overflow-y-auto overscroll-contain bg-stone-950 border border-stone-800 p-3 sm:p-6 rounded-2xl shadow-[0_0_60px_rgba(0,0,0,0.85)] z-[130] font-mono text-stone-300 custom-scrollbar">
                             {/* Header */}
-                            <div className="flex justify-between items-center border-b border-stone-800 pb-3 mb-4">
-                                <div className="flex items-center gap-2.5 flex-wrap">
-                                    <Swords className="text-cyan-400" size={16} />
-                                    <span className="font-black text-xs sm:text-sm tracking-wider uppercase text-white">
+                            <div className="flex justify-between items-center gap-2 border-b border-stone-800 pb-3 mb-4">
+                                <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap min-w-0">
+                                    <Swords className="text-cyan-400 shrink-0" size={16} />
+                                    <span className="font-black text-xs sm:text-sm tracking-wider uppercase text-white truncate">
                                         OPERATIONAL COMBAT REPORT
                                     </span>
-                                    <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${
+                                    <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest shrink-0 ${
                                         selectedMatch.result === 'WIN' ? 'bg-emerald-955 border border-emerald-700 text-emerald-300' : 'bg-red-955 border border-red-700 text-red-300'
                                     }`}>
                                         {selectedMatch.result === 'WIN' ? 'VICTORY' : 'ELIMINATED'}
                                     </span>
-                                    <span className="text-[8px] px-1.5 py-0.5 rounded bg-stone-900 border border-stone-800 text-stone-400 uppercase font-black">
+                                    <span className="text-[8px] px-1.5 py-0.5 rounded bg-stone-900 border border-stone-800 text-stone-400 uppercase font-black shrink-0">
                                         {selectedMatch.isMultiplayer ? 'MULTIPLAYER' : selectedMatch.isHardMode ? 'HARD PROTOCOL' : 'CAMPAIGN DUEL'}
                                     </span>
                                 </div>
@@ -563,7 +581,7 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ onClose, stats: initialS
                                         audioManager.playSound('click');
                                         setSelectedMatch(null);
                                     }} 
-                                    className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center text-stone-500 hover:text-white rounded-full hover:bg-white/5 transition-colors cursor-pointer"
+                                    className="w-11 h-11 min-w-[44px] min-h-[44px] shrink-0 flex items-center justify-center text-stone-500 hover:text-white rounded-full hover:bg-white/5 transition-colors cursor-pointer touch-manipulation"
                                     aria-label="Close match details"
                                 >
                                     <X size={20} />
@@ -604,17 +622,17 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ onClose, stats: initialS
                                                                 <img src={avatarUrl} alt={pName} className="w-full h-full object-cover" />
                                                             </div>
                                                             <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
-                                                                <span className="font-bold text-stone-200 truncate">{pName}</span>
-                                                                <span className={`text-[7.5px] font-mono tracking-wider bg-stone-950 px-1.5 py-0.5 rounded border ${isAnonymous ? 'text-stone-500 border-stone-800/80' : 'text-stone-400 border-stone-800'}`}>{pId}</span>
+                                                                <span className="font-bold text-stone-200 truncate max-w-[140px] sm:max-w-[240px]">{pName}</span>
+                                                                <span className={`text-[7.5px] font-mono tracking-wider bg-stone-950 px-1.5 py-0.5 rounded border shrink-0 ${isAnonymous ? 'text-stone-500 border-stone-800/80' : 'text-stone-400 border-stone-800'}`}>{pId}</span>
                                                                 {player.isHost && (
-                                                                    <span className="text-[6.5px] bg-red-955 border border-red-800 text-red-400 px-1 py-0.2 rounded font-bold">HOST</span>
+                                                                    <span className="text-[6.5px] bg-red-955 border border-red-800 text-red-400 px-1 py-0.2 rounded font-bold shrink-0">HOST</span>
                                                                 )}
                                                                 {player.isMe && (
-                                                                    <span className="text-[6.5px] bg-cyan-950 border border-cyan-800 text-cyan-400 px-1 py-0.2 rounded font-bold">YOU</span>
+                                                                    <span className="text-[6.5px] bg-cyan-950 border border-cyan-800 text-cyan-400 px-1 py-0.2 rounded font-bold shrink-0">YOU</span>
                                                                 )}
                                                             </div>
                                                         </div>
-                                                        <span className={`font-black tracking-widest uppercase text-[9px] ${
+                                                        <span className={`font-black tracking-widest uppercase text-[9px] shrink-0 ${
                                                             player.result === 'WIN' ? 'text-green-400' :
                                                             player.result === 'LOSS' ? 'text-red-450' : 'text-stone-500'
                                                         }`}>
@@ -762,7 +780,7 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ onClose, stats: initialS
                                     audioManager.playSound('click');
                                     setSelectedMatch(null);
                                 }} 
-                                className="w-full mt-4 py-3 min-h-[44px] bg-stone-900 hover:bg-stone-850 border border-stone-700 text-stone-200 hover:text-white font-black text-[9px] sm:text-[10px] tracking-wider uppercase rounded-xl transition-all cursor-pointer flex items-center justify-center"
+                                className="w-full mt-4 py-3 min-h-[44px] bg-stone-900 hover:bg-stone-850 border border-stone-700 text-stone-200 hover:text-white font-black text-[9px] sm:text-[10px] tracking-wider uppercase rounded-xl transition-all cursor-pointer touch-manipulation flex items-center justify-center"
                             >
                                 DISMISS REPORT
                             </button>

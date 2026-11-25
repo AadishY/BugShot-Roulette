@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { 
     Terminal, Users, Swords, Send, RefreshCw, X, ShieldAlert, 
     Radio, Activity, Heart, Eye, MessageSquare, Clock, CheckCircle2, 
@@ -61,33 +61,68 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
     // Strict developer check from profile (zero env dependency)
     const isDeveloper = Boolean(isDevProp || currentUsername.toLowerCase() === 'aadish');
 
+    const isMountedRef = useRef(true);
+    const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const isLoadingOverviewRef = useRef(false);
+
+    useEffect(() => {
+        isMountedRef.current = true;
+        return () => {
+            isMountedRef.current = false;
+            if (toastTimeoutRef.current) {
+                clearTimeout(toastTimeoutRef.current);
+                toastTimeoutRef.current = null;
+            }
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!isOpen) {
+            if (toastTimeoutRef.current) {
+                clearTimeout(toastTimeoutRef.current);
+                toastTimeoutRef.current = null;
+            }
+            setStatusToast(null);
+            setInspectingPlayer(null);
+        }
+    }, [isOpen]);
+
     // Load server real-time telemetry
-    const loadOverview = async () => {
+    const loadOverview = useCallback(async () => {
+        if (isLoadingOverviewRef.current) return;
+        isLoadingOverviewRef.current = true;
         setIsLoadingOverview(true);
         try {
             const data = await adminAPI.fetchOverview();
-            if (data) {
+            if (data && isMountedRef.current) {
                 setOverviewData(data);
             }
         } catch (e) {
             console.error('Failed to load admin overview:', e);
         } finally {
-            setIsLoadingOverview(false);
+            isLoadingOverviewRef.current = false;
+            if (isMountedRef.current) {
+                setIsLoadingOverview(false);
+            }
         }
-    };
+    }, [adminAPI]);
 
     // Load all registered users from Firestore
-    const loadAllUsers = async () => {
+    const loadAllUsers = useCallback(async () => {
         setIsLoadingUsers(true);
         try {
             const users = await getAllUsers();
-            setAllUsers(users);
+            if (isMountedRef.current) {
+                setAllUsers(users);
+            }
         } catch (e) {
             console.error('Failed to load registered users:', e);
         } finally {
-            setIsLoadingUsers(false);
+            if (isMountedRef.current) {
+                setIsLoadingUsers(false);
+            }
         }
-    };
+    }, []);
 
     useEffect(() => {
         if (isOpen && isDeveloper) {
@@ -96,7 +131,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
             const interval = setInterval(loadOverview, 4000); // 4s real-time telemetry refresh
             return () => clearInterval(interval);
         }
-    }, [isOpen, isDeveloper]);
+    }, [isOpen, isDeveloper, loadOverview, loadAllUsers]);
 
     // Keyboard support: Escape closes inspecting dossier or modal
     useEffect(() => {
@@ -115,10 +150,18 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [isOpen, isDeveloper, inspectingPlayer, onClose]);
 
-    const showToast = (type: 'success' | 'error', message: string) => {
+    const showToast = useCallback((type: 'success' | 'error', message: string) => {
+        if (toastTimeoutRef.current) {
+            clearTimeout(toastTimeoutRef.current);
+        }
         setStatusToast({ type, message });
-        setTimeout(() => setStatusToast(null), 4000);
-    };
+        toastTimeoutRef.current = setTimeout(() => {
+            toastTimeoutRef.current = null;
+            if (isMountedRef.current) {
+                setStatusToast(null);
+            }
+        }, 4000);
+    }, []);
 
     // Global broadcast from BUGSHOT system
     const handleSendBroadcast = async () => {
@@ -329,7 +372,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
 
     return (
         <div 
-            className="fixed inset-0 z-[250] flex items-center justify-center bg-black/90 backdrop-blur-xl p-2 sm:p-4 select-none animate-in fade-in duration-200"
+            className="fixed inset-0 z-[250] flex items-center justify-center bg-black/95 md:bg-black/90 md:backdrop-blur-xl p-1.5 sm:p-4 select-none animate-in fade-in duration-200"
             role="dialog"
             aria-modal="true"
             aria-label="BugShot System Control"
@@ -347,7 +390,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
             }}
         >
             {/* Modal Container */}
-            <div className="w-full max-w-5xl h-[92vh] max-h-[920px] bg-stone-950 border border-stone-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden font-mono text-stone-300 relative">
+            <div className="w-full max-w-5xl h-[95dvh] md:h-[92dvh] max-h-[95dvh] md:max-h-[920px] bg-stone-950 border border-stone-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden font-mono text-stone-300 relative">
                 
                 {/* Header */}
                 <div className="p-3 sm:p-4 bg-stone-900/90 border-b border-stone-800 flex items-center justify-between shrink-0">
@@ -396,7 +439,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                                 loadOverview();
                                 loadAllUsers();
                             }}
-                            className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center bg-stone-900 hover:bg-stone-850 border border-stone-750 text-stone-300 hover:text-white rounded-xl transition-all cursor-pointer"
+                            className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center bg-stone-900 hover:bg-stone-850 border border-stone-750 text-stone-300 hover:text-white rounded-xl transition-all cursor-pointer touch-manipulation"
                             title="Refresh Data"
                         >
                             <RefreshCw size={16} className={(isLoadingOverview || isLoadingUsers) ? 'animate-spin text-cyan-400' : ''} />
@@ -407,7 +450,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                                 audioManager.playSound('click');
                                 onClose();
                             }}
-                            className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center bg-stone-900 hover:bg-stone-800 border border-stone-750 text-stone-400 hover:text-white rounded-xl transition-all cursor-pointer"
+                            className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center bg-stone-900 hover:bg-stone-800 border border-stone-750 text-stone-400 hover:text-white rounded-xl transition-all cursor-pointer touch-manipulation"
                             title="Close Terminal"
                         >
                             <X size={18} />
@@ -416,13 +459,13 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                 </div>
 
                 {/* Tabs Row */}
-                <div className="flex border-b border-stone-800 bg-stone-950/80 shrink-0 px-3 sm:px-4 gap-2 pt-2 overflow-x-auto custom-scrollbar">
+                <div className="flex border-b border-stone-800 bg-stone-950/80 shrink-0 px-3 sm:px-4 gap-2 pt-2 overflow-x-auto overscroll-x-contain custom-scrollbar">
                     <button
                         onClick={() => {
                             audioManager.playSound('click');
                             setActiveTab('overview');
                         }}
-                        className={`flex items-center gap-2 px-4 py-2 min-h-[44px] text-xs font-black uppercase tracking-wider rounded-t-xl transition-all cursor-pointer border-t-2 shrink-0 ${
+                        className={`flex items-center gap-2 px-4 py-2 min-h-[44px] text-xs font-black uppercase tracking-wider rounded-t-xl transition-all cursor-pointer border-t-2 shrink-0 touch-manipulation ${
                             activeTab === 'overview'
                                 ? 'bg-stone-900 text-amber-400 border-amber-500'
                                 : 'text-stone-500 border-transparent hover:text-stone-300 hover:bg-stone-900/40'
@@ -437,7 +480,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                             audioManager.playSound('click');
                             setActiveTab('players');
                         }}
-                        className={`flex items-center gap-2 px-4 py-2 min-h-[44px] text-xs font-black uppercase tracking-wider rounded-t-xl transition-all cursor-pointer border-t-2 shrink-0 ${
+                        className={`flex items-center gap-2 px-4 py-2 min-h-[44px] text-xs font-black uppercase tracking-wider rounded-t-xl transition-all cursor-pointer border-t-2 shrink-0 touch-manipulation ${
                             activeTab === 'players'
                                 ? 'bg-stone-900 text-cyan-400 border-cyan-400'
                                 : 'text-stone-500 border-transparent hover:text-stone-300 hover:bg-stone-900/40'
@@ -455,7 +498,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                             audioManager.playSound('click');
                             setActiveTab('rooms');
                         }}
-                        className={`flex items-center gap-2 px-4 py-2 min-h-[44px] text-xs font-black uppercase tracking-wider rounded-t-xl transition-all cursor-pointer border-t-2 shrink-0 ${
+                        className={`flex items-center gap-2 px-4 py-2 min-h-[44px] text-xs font-black uppercase tracking-wider rounded-t-xl transition-all cursor-pointer border-t-2 shrink-0 touch-manipulation ${
                             activeTab === 'rooms'
                                 ? 'bg-stone-900 text-yellow-400 border-yellow-400'
                                 : 'text-stone-500 border-transparent hover:text-stone-300 hover:bg-stone-900/40'
@@ -473,7 +516,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                             audioManager.playSound('click');
                             setActiveTab('comms');
                         }}
-                        className={`flex items-center gap-2 px-4 py-2 min-h-[44px] text-xs font-black uppercase tracking-wider rounded-t-xl transition-all cursor-pointer border-t-2 shrink-0 ${
+                        className={`flex items-center gap-2 px-4 py-2 min-h-[44px] text-xs font-black uppercase tracking-wider rounded-t-xl transition-all cursor-pointer border-t-2 shrink-0 touch-manipulation ${
                             activeTab === 'comms'
                                 ? 'bg-stone-900 text-red-400 border-red-500'
                                 : 'text-stone-500 border-transparent hover:text-stone-300 hover:bg-stone-900/40'
@@ -497,7 +540,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                 )}
 
                 {/* Tab Contents Area */}
-                <div className="flex-1 overflow-y-auto p-3 sm:p-5 custom-scrollbar">
+                <div className="flex-1 overflow-y-auto overscroll-contain p-3 sm:p-5 custom-scrollbar">
                     
                     {/* TAB 1: COMMON INFOS & SYSTEM OVERVIEW */}
                     {activeTab === 'overview' && (
@@ -597,7 +640,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                                             <div 
                                                 key={dev.username}
                                                 onClick={() => setInspectingPlayer(dev)}
-                                                className="p-3 bg-stone-900/60 hover:bg-stone-850/80 border border-stone-800 hover:border-red-600/70 rounded-xl flex items-center justify-between gap-3 transition-all cursor-pointer group"
+                                                className="p-3 bg-stone-900/60 hover:bg-stone-850/80 border border-stone-800 hover:border-red-600/70 rounded-xl flex items-center justify-between gap-3 transition-all cursor-pointer group touch-manipulation"
                                                 title="Click to view full developer dossier"
                                             >
                                                 <div className="flex items-center gap-2.5 min-w-0">
@@ -629,7 +672,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                                                         e.stopPropagation();
                                                         setInspectingPlayer(dev);
                                                     }}
-                                                    className="px-2.5 py-1 bg-stone-950 hover:bg-red-955 border border-stone-800 hover:border-red-700 text-stone-400 hover:text-white text-[8px] font-bold rounded-lg transition-all shrink-0"
+                                                    className="px-3 py-2 min-h-[44px] bg-stone-950 hover:bg-red-955 border border-stone-800 hover:border-red-700 text-stone-400 hover:text-white text-[8.5px] font-bold rounded-lg transition-all shrink-0 cursor-pointer touch-manipulation"
                                                 >
                                                     Dossier
                                                 </button>
@@ -641,25 +684,25 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
 
                             {/* Quick Broadcast Command Box */}
                             <div className="p-4 bg-stone-900/30 border border-stone-800 rounded-2xl space-y-3">
-                                <div className="flex items-center justify-between text-xs font-bold text-stone-300 uppercase">
+                                <div className="flex items-center justify-between text-xs font-bold text-stone-300 uppercase gap-2 flex-wrap">
                                     <div className="flex items-center gap-2 text-cyan-400 font-black">
                                         <Radio size={15} />
                                         <span>QUICK SYSTEM BROADCAST (DISPATCHED AS BUGSHOT)</span>
                                     </div>
                                     <span className="text-[8px] text-stone-500">Transmitted to All Connected Devices</span>
                                 </div>
-                                <div className="flex gap-2">
+                                <div className="flex flex-col sm:flex-row gap-2">
                                     <input 
                                         type="text"
                                         value={broadcastText}
                                         onChange={(e) => setBroadcastText(e.target.value)}
                                         placeholder="Type quick global announcement to all active players..."
-                                        className="flex-1 bg-stone-950 border border-stone-800 focus:border-red-500 px-3 py-2 text-xs text-white rounded-xl outline-none font-mono"
+                                        className="flex-1 min-w-0 min-h-[44px] bg-stone-950 border border-stone-800 focus:border-red-500 px-3 py-2 text-xs text-white rounded-xl outline-none font-mono"
                                     />
                                     <button
                                         onClick={handleSendBroadcast}
                                         disabled={isSending || !broadcastText.trim()}
-                                        className="px-4 py-2 bg-red-955 hover:bg-red-900 border border-red-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer uppercase transition-all shrink-0"
+                                        className="px-4 py-2 min-h-[44px] bg-red-955 hover:bg-red-900 border border-red-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 cursor-pointer uppercase transition-all shrink-0 touch-manipulation"
                                     >
                                         <Send size={12} />
                                         <span>Transmit</span>
@@ -682,13 +725,13 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                                             value={searchQuery}
                                             onChange={(e) => setSearchQuery(e.target.value)}
                                             placeholder="Search players by codename, display name, or @player#id..."
-                                            className="w-full bg-stone-950 border border-stone-800 focus:border-cyan-500 pl-9 pr-3 py-2 text-xs text-white rounded-xl outline-none font-mono placeholder:text-stone-600"
+                                            className="w-full min-h-[44px] bg-stone-950 border border-stone-800 focus:border-cyan-500 pl-9 pr-3 py-2 text-xs text-white rounded-xl outline-none font-mono placeholder:text-stone-600"
                                         />
                                     </div>
-                                    <div className="flex gap-1.5 overflow-x-auto custom-scrollbar">
+                                    <div className="flex gap-1.5 overflow-x-auto overscroll-x-contain custom-scrollbar">
                                         <button
                                             onClick={() => setPlayerFilter('all')}
-                                            className={`px-3 py-1.5 text-[9px] font-bold rounded-xl transition-all cursor-pointer uppercase shrink-0 ${
+                                            className={`px-3 py-2 min-h-[44px] text-[9px] font-bold rounded-xl transition-all cursor-pointer uppercase shrink-0 touch-manipulation ${
                                                 playerFilter === 'all'
                                                     ? 'bg-stone-800 text-white border border-stone-700'
                                                     : 'bg-stone-950 text-stone-500 border border-stone-850 hover:text-stone-300'
@@ -698,7 +741,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                                         </button>
                                         <button
                                             onClick={() => setPlayerFilter('online')}
-                                            className={`px-3 py-1.5 text-[9px] font-bold rounded-xl transition-all cursor-pointer uppercase shrink-0 flex items-center gap-1 ${
+                                            className={`px-3 py-2 min-h-[44px] text-[9px] font-bold rounded-xl transition-all cursor-pointer uppercase shrink-0 flex items-center gap-1 touch-manipulation ${
                                                 playerFilter === 'online'
                                                     ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-700'
                                                     : 'bg-stone-950 text-stone-500 border border-stone-850 hover:text-stone-300'
@@ -709,7 +752,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                                         </button>
                                         <button
                                             onClick={() => setPlayerFilter('match')}
-                                            className={`px-3 py-1.5 text-[9px] font-bold rounded-xl transition-all cursor-pointer uppercase shrink-0 flex items-center gap-1 ${
+                                            className={`px-3 py-2 min-h-[44px] text-[9px] font-bold rounded-xl transition-all cursor-pointer uppercase shrink-0 flex items-center gap-1 touch-manipulation ${
                                                 playerFilter === 'match'
                                                     ? 'bg-red-955/80 text-red-300 border border-red-700'
                                                     : 'bg-stone-950 text-stone-500 border border-stone-850 hover:text-stone-300'
@@ -720,7 +763,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                                         </button>
                                         <button
                                             onClick={() => setPlayerFilter('offline')}
-                                            className={`px-3 py-1.5 text-[9px] font-bold rounded-xl transition-all cursor-pointer uppercase shrink-0 ${
+                                            className={`px-3 py-2 min-h-[44px] text-[9px] font-bold rounded-xl transition-all cursor-pointer uppercase shrink-0 touch-manipulation ${
                                                 playerFilter === 'offline'
                                                     ? 'bg-stone-800 text-stone-200 border border-stone-650'
                                                     : 'bg-stone-950 text-stone-500 border border-stone-850 hover:text-stone-300'
@@ -730,7 +773,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                                         </button>
                                         <button
                                             onClick={() => setPlayerFilter('devs')}
-                                            className={`px-3 py-1.5 text-[9px] font-bold rounded-xl transition-all cursor-pointer uppercase shrink-0 text-red-400 ${
+                                            className={`px-3 py-2 min-h-[44px] text-[9px] font-bold rounded-xl transition-all cursor-pointer uppercase shrink-0 text-red-400 touch-manipulation ${
                                                 playerFilter === 'devs'
                                                     ? 'bg-red-955/80 text-white border border-red-700'
                                                     : 'bg-stone-950 text-red-400/70 border border-stone-850 hover:text-red-300'
@@ -762,7 +805,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                                             <div 
                                                 key={player.username}
                                                 onClick={() => setInspectingPlayer(player)}
-                                                className="p-3 bg-stone-900/50 hover:bg-stone-900/80 border border-stone-800 hover:border-cyan-800/60 rounded-xl flex flex-col justify-between gap-3 transition-all cursor-pointer group"
+                                                className="p-3 bg-stone-900/50 hover:bg-stone-900/80 border border-stone-800 hover:border-cyan-800/60 rounded-xl flex flex-col justify-between gap-3 transition-all cursor-pointer group touch-manipulation"
                                             >
                                                 <div className="flex items-start justify-between gap-2">
                                                     <div className="flex items-center gap-3 min-w-0">
@@ -863,7 +906,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                                                                 audioManager.playSound('click');
                                                                 setInspectingPlayer(player);
                                                             }}
-                                                            className="px-2.5 py-1 bg-stone-900 hover:bg-stone-800 border border-stone-750 text-stone-300 hover:text-white font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1"
+                                                            className="px-3 py-2 min-h-[44px] bg-stone-900 hover:bg-stone-800 border border-stone-750 text-stone-300 hover:text-white font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1 touch-manipulation"
                                                         >
                                                             <Eye size={10} />
                                                             <span>Dossier</span>
@@ -876,7 +919,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                                                                 setDmTarget(player.username);
                                                                 setActiveTab('comms');
                                                             }}
-                                                            className="px-2.5 py-1 bg-cyan-955/60 hover:bg-cyan-900/80 border border-cyan-800 text-cyan-300 hover:text-white font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1"
+                                                            className="px-3 py-2 min-h-[44px] bg-cyan-955/60 hover:bg-cyan-900/80 border border-cyan-800 text-cyan-300 hover:text-white font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1 touch-manipulation"
                                                             title="Direct message from BUGSHOT"
                                                         >
                                                             <MessageSquare size={10} />
@@ -995,7 +1038,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                                                                             e.stopPropagation();
                                                                             handleKickPlayer(room.id, p.id, p.name);
                                                                         }}
-                                                                        className="px-2 py-0.5 bg-red-955/80 hover:bg-red-900 border border-red-800 text-red-200 text-[8px] font-bold rounded uppercase cursor-pointer transition-colors"
+                                                                        className="px-3 py-2 min-h-[44px] bg-red-955/80 hover:bg-red-900 border border-red-800 text-red-200 text-[8.5px] font-bold rounded uppercase cursor-pointer transition-colors touch-manipulation"
                                                                         title="Eject operative from room"
                                                                     >
                                                                         Kick
@@ -1057,11 +1100,11 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                                     </div>
                                 </div>
 
-                                <div className="flex gap-2">
+                                <div className="flex flex-col sm:flex-row gap-2">
                                     <button
                                         onClick={handleSendBroadcast}
                                         disabled={isSending || !broadcastText.trim()}
-                                        className="flex-1 py-3 bg-red-955 hover:bg-red-900 border border-red-700 disabled:opacity-50 text-white font-black text-xs uppercase tracking-[0.2em] rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm"
+                                        className="flex-1 py-3 min-h-[44px] bg-red-955 hover:bg-red-900 border border-red-700 disabled:opacity-50 text-white font-black text-xs uppercase tracking-[0.2em] rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm touch-manipulation"
                                     >
                                         <Send size={13} />
                                         <span>TRANSMIT AS BUGSHOT</span>
@@ -1071,7 +1114,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                                             type="button"
                                             onClick={handleClearBroadcast}
                                             disabled={isSending}
-                                            className="px-4 py-3 bg-stone-900 hover:bg-stone-850 border border-stone-750 text-stone-300 hover:text-white font-bold text-xs uppercase rounded-xl transition-all cursor-pointer shrink-0"
+                                            className="px-4 py-3 min-h-[44px] bg-stone-900 hover:bg-stone-850 border border-stone-750 text-stone-300 hover:text-white font-bold text-xs uppercase rounded-xl transition-all cursor-pointer shrink-0 touch-manipulation"
                                             title="Clear active broadcast across all devices"
                                         >
                                             Clear Active
@@ -1097,19 +1140,19 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                                             <label className="text-[8.5px] text-stone-500 uppercase font-black block mb-1">
                                                 Recipient Agent Username
                                             </label>
-                                            <div className="flex gap-2">
+                                            <div className="flex flex-col sm:flex-row gap-2">
                                                 <input
                                                     type="text"
                                                     value={dmTarget}
                                                     onChange={(e) => setDmTarget(e.target.value)}
-                                                    className="flex-1 bg-stone-950 border border-stone-800 focus:border-cyan-500 px-3 py-2 text-xs text-white rounded-xl outline-none font-mono"
+                                                    className="flex-1 min-w-0 min-h-[44px] bg-stone-950 border border-stone-800 focus:border-cyan-500 px-3 py-2 text-xs text-white rounded-xl outline-none font-mono"
                                                     placeholder="Target username..."
                                                 />
                                                 {allUsers.length > 0 && (
                                                     <select
                                                         onChange={(e) => setDmTarget(e.target.value)}
                                                         value={dmTarget}
-                                                        className="bg-stone-950 border border-stone-800 text-stone-300 text-xs px-2 rounded-xl outline-none max-w-[150px]"
+                                                        className="w-full sm:w-auto sm:max-w-[160px] min-h-[44px] bg-stone-950 border border-stone-800 text-stone-300 text-xs px-2 rounded-xl outline-none"
                                                     >
                                                         <option value="">Select Player</option>
                                                         {allUsers.map(u => (
@@ -1140,7 +1183,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                                 <button
                                     onClick={handleSendDM}
                                     disabled={isSending || !dmTarget.trim() || !dmText.trim()}
-                                    className="w-full py-3 bg-cyan-955 hover:bg-cyan-900 border border-cyan-700 disabled:opacity-50 text-white font-black text-xs uppercase tracking-[0.2em] rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm"
+                                    className="w-full py-3 min-h-[44px] bg-cyan-955 hover:bg-cyan-900 border border-cyan-700 disabled:opacity-50 text-white font-black text-xs uppercase tracking-[0.2em] rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm touch-manipulation"
                                 >
                                     <Send size={13} />
                                     <span>DISPATCH AS BUGSHOT</span>
@@ -1151,7 +1194,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                 </div>
 
                 {/* Footer status bar */}
-                <div className="p-2 sm:p-2.5 bg-stone-950 border-t border-stone-850 flex items-center justify-between text-[8px] text-stone-600 px-4">
+                <div className="p-2 sm:p-2.5 bg-stone-950 border-t border-stone-850 flex items-center justify-between text-[8px] text-stone-600 px-4 shrink-0">
                     <span>SECURITY: FIREBASE AUTHENTICATED // SYSTEM PRIVILEGES</span>
                     <span>DEVELOPER CONSOLE</span>
                 </div>
@@ -1160,17 +1203,20 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
             {/* DETAILED PLAYER DOSSIER MODAL */}
             {inspectingPlayer && (
                 <div 
-                    className="fixed inset-0 z-[280] flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-md animate-in fade-in duration-150"
+                    className="fixed inset-0 z-[280] flex items-center justify-center p-2 sm:p-6 bg-black/92 md:bg-black/85 md:backdrop-blur-md animate-in fade-in duration-150"
                     style={{
                         paddingTop: 'max(env(safe-area-inset-top, 0px), 12px)',
                         paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 12px)',
                         paddingLeft: 'max(env(safe-area-inset-left, 0px), 12px)',
                         paddingRight: 'max(env(safe-area-inset-right, 0px), 12px)'
                     }}
+                    onClick={(e) => {
+                        if (e.target === e.currentTarget) setInspectingPlayer(null);
+                    }}
                 >
-                    <div className="w-full max-w-2xl max-h-[88vh] bg-stone-950 border border-stone-700 rounded-2xl shadow-2xl flex flex-col overflow-hidden font-mono text-stone-300">
+                    <div className="w-full max-w-2xl max-h-[95dvh] md:max-h-[88dvh] bg-stone-950 border border-stone-700 rounded-2xl shadow-2xl flex flex-col overflow-hidden font-mono text-stone-300">
                         {/* Header */}
-                        <div className="p-4 bg-stone-900 border-b border-stone-800 flex items-center justify-between">
+                        <div className="p-3 sm:p-4 bg-stone-900 border-b border-stone-800 flex items-center justify-between shrink-0">
                             <div className="flex items-center gap-3">
                                 <div className="w-12 h-12 rounded-full overflow-hidden bg-stone-950 border border-stone-700 shrink-0">
                                     <img 
@@ -1199,14 +1245,14 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
 
                             <button 
                                 onClick={() => setInspectingPlayer(null)}
-                                className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center text-stone-500 hover:text-white rounded-xl transition-colors cursor-pointer"
+                                className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center text-stone-500 hover:text-white rounded-xl transition-colors cursor-pointer touch-manipulation"
                             >
                                 <X size={18} />
                             </button>
                         </div>
 
                         {/* Dossier Content */}
-                        <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 custom-scrollbar">
+                        <div className="flex-1 overflow-y-auto overscroll-contain p-3.5 sm:p-5 space-y-4 custom-scrollbar">
                             
                             {/* Live Status Banner */}
                             {(() => {
@@ -1299,7 +1345,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                                         No recent match operational logs on record.
                                     </div>
                                 ) : (
-                                    <div className="space-y-1.5 max-h-56 overflow-y-auto custom-scrollbar pr-1">
+                                    <div className="space-y-1.5 max-h-56 overflow-y-auto overscroll-contain custom-scrollbar pr-1">
                                         {inspectingPlayer.stats.matchHistory.slice(-10).reverse().map((m: any, idx: number) => (
                                             <div 
                                                 key={idx}
@@ -1331,7 +1377,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                         </div>
 
                         {/* Footer Controls */}
-                        <div className="p-3 bg-stone-900 border-t border-stone-800 flex flex-wrap items-center justify-between gap-2">
+                        <div className="p-3 bg-stone-900 border-t border-stone-800 flex flex-wrap items-center justify-between gap-2 shrink-0">
                             <div className="flex items-center gap-2 flex-wrap">
                                 <button
                                     onClick={() => {
@@ -1339,7 +1385,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                                         setInspectingPlayer(null);
                                         setActiveTab('comms');
                                     }}
-                                    className="px-3.5 py-2 bg-cyan-955 hover:bg-cyan-900 border border-cyan-700 text-cyan-300 font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer uppercase transition-all"
+                                    className="px-3.5 py-2 min-h-[44px] bg-cyan-955 hover:bg-cyan-900 border border-cyan-700 text-cyan-300 font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer uppercase transition-all touch-manipulation"
                                 >
                                     <MessageSquare size={13} />
                                     <span>Send DM</span>
@@ -1350,7 +1396,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                                     return (
                                         <button
                                             onClick={() => handleToggleMute(inspectingPlayer.username, isMuted)}
-                                            className={`px-3.5 py-2 font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer uppercase transition-all border ${
+                                            className={`px-3.5 py-2 min-h-[44px] font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer uppercase transition-all border touch-manipulation ${
                                                 isMuted
                                                     ? 'bg-amber-955 hover:bg-amber-900 border-amber-700 text-amber-200'
                                                     : 'bg-stone-900 hover:bg-stone-850 border-stone-750 text-stone-300 hover:text-amber-400'
@@ -1368,7 +1414,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                                         return (
                                             <button
                                                 onClick={() => handleKickPlayer(live.roomId!, live.socketId || undefined, inspectingPlayer.username)}
-                                                className="px-3.5 py-2 bg-red-955 hover:bg-red-900 border border-red-700 text-red-200 font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer uppercase transition-all"
+                                                className="px-3.5 py-2 min-h-[44px] bg-red-955 hover:bg-red-900 border border-red-700 text-red-200 font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer uppercase transition-all touch-manipulation"
                                             >
                                                 <X size={13} />
                                                 <span>Kick From Room</span>
@@ -1381,7 +1427,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
 
                             <button
                                 onClick={() => setInspectingPlayer(null)}
-                                className="px-4 py-2 bg-stone-800 hover:bg-stone-700 text-white font-bold text-xs rounded-xl uppercase transition-all cursor-pointer"
+                                className="px-4 py-2 min-h-[44px] bg-stone-800 hover:bg-stone-700 text-white font-bold text-xs rounded-xl uppercase transition-all cursor-pointer touch-manipulation"
                             >
                                 Close Dossier
                             </button>

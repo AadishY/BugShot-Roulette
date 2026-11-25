@@ -91,6 +91,40 @@ const CRITICAL_ASSETS = [
     '/sticker/sticker26.webp'
 ];
 
+const RUNTIME_CACHE_MAX_ENTRIES = 65;
+const IMMUTABLE_PRECACHE_PREFIXES = ['/head/', '/draco/', '/sound/', '/sticker/', '/image/'];
+
+function isReusablePrecacheAsset(url) {
+    return IMMUTABLE_PRECACHE_PREFIXES.some((prefix) => url.startsWith(prefix));
+}
+
+// Keep RUNTIME_CACHE bounded with LRU-style eviction (oldest entries removed first)
+async function pruneRuntimeCache(maxEntries = RUNTIME_CACHE_MAX_ENTRIES) {
+    try {
+        const cache = await caches.open(RUNTIME_CACHE);
+        const keys = await cache.keys();
+        if (keys.length <= maxEntries) return;
+        const excessCount = keys.length - maxEntries;
+        await Promise.all(
+            keys.slice(0, excessCount).map((request) => cache.delete(request))
+        );
+    } catch {
+        // Ignore runtime cache pruning errors
+    }
+}
+
+async function putInRuntimeCache(request, response) {
+    try {
+        const cache = await caches.open(RUNTIME_CACHE);
+        // Delete before put so re-cached entries move to the tail of the cache order
+        await cache.delete(request).catch(() => {});
+        await cache.put(request, response);
+        await pruneRuntimeCache();
+    } catch {
+        // Ignore runtime cache write/prune errors
+    }
+}
+
 // Batch pre-cache fetches to avoid saturating mobile network connections during install
 async function precacheInBatches(cache, urls, batchSize = 6) {
     let successCount = 0;
@@ -98,6 +132,18 @@ async function precacheInBatches(cache, urls, batchSize = 6) {
         const batch = urls.slice(i, i + batchSize);
         const results = await Promise.allSettled(
             batch.map(async (url) => {
+                if (isReusablePrecacheAsset(url)) {
+                    try {
+                        const existingResponse = await caches.match(url, { ignoreSearch: true });
+                        if (existingResponse && (existingResponse.status === 200 || existingResponse.type === 'opaque')) {
+                            await cache.put(url, existingResponse.clone());
+                            return true;
+                        }
+                    } catch {
+                        // Fall through to network fetch if cross-cache lookup/copy fails
+                    }
+                }
+
                 const response = await fetch(url, { cache: 'reload' });
                 if (response && (response.status === 200 || response.type === 'opaque')) {
                     await cache.put(url, response);
@@ -180,12 +226,20 @@ async function purgeStaleCaches() {
     );
 }
 
-// Activate event - Claim open clients and purge obsolete cache stores
+// Activate event - Claim open clients, enable navigation preload, and purge obsolete cache stores
 self.addEventListener('activate', (event) => {
     console.log('[Service Worker] Activating version:', CACHE_NAME);
     event.waitUntil(
         (async () => {
             await purgeStaleCaches();
+            if (self.registration.navigationPreload) {
+                try {
+                    await self.registration.navigationPreload.enable();
+                } catch {
+                    // Ignore if navigationPreload is unsupported or disallowed
+                }
+            }
+            await pruneRuntimeCache();
             await self.clients.claim();
             console.log('[Service Worker] Clients claimed for version:', CACHE_NAME);
         })()
@@ -265,7 +319,14 @@ self.addEventListener('fetch', (event) => {
                 const timeoutId = setTimeout(() => controller.abort(), 1500);
 
                 try {
-                    const networkResponse = await fetch(event.request, {
+                    const abortPromise = new Promise((_, reject) => {
+                        controller.signal.addEventListener('abort', () => reject(new Error('Navigation timeout')), { once: true });
+                    });
+                    const preloadResponse = await Promise.race([
+                        Promise.resolve(event.preloadResponse).catch(() => null),
+                        abortPromise
+                    ]);
+                    const networkResponse = preloadResponse || await fetch(event.request, {
                         cache: 'no-cache',
                         signal: controller.signal
                     });
@@ -301,7 +362,7 @@ self.addEventListener('fetch', (event) => {
 
     // 2. Immutable Vite content-hashed build chunks (/assets/name-HASH.js|css|wasm|woff2) - Pure Cache-First
     const isHashedAsset = url.pathname.startsWith('/assets/') &&
-        /[-.][A-Za-z0-9_-]{6,}\.(js|css|wasm|woff2?|png|webp|svg)$/i.test(url.pathname);
+        /[-.][A-Za-z0-9_-]{6,}\.(js|css|wasm|woff2?|png|webp|svg|jpg|jpeg|gif|ico)$/i.test(url.pathname);
 
     if (isHashedAsset) {
         event.respondWith(
@@ -310,7 +371,7 @@ self.addEventListener('fetch', (event) => {
                 return fetch(event.request).then((netRes) => {
                     if (netRes && netRes.status === 200) {
                         const clone = netRes.clone();
-                        caches.open(RUNTIME_CACHE).then((cache) => cache.put(event.request, clone).catch(() => {}));
+                        putInRuntimeCache(event.request, clone);
                     }
                     return netRes;
                 });
@@ -375,8 +436,11 @@ self.addEventListener('fetch', (event) => {
                     .then((networkResponse) => {
                         if (networkResponse && (networkResponse.status === 200 || networkResponse.type === 'opaque')) {
                             const clone = networkResponse.clone();
-                            const targetCache = url.origin === self.location.origin ? CACHE_NAME : RUNTIME_CACHE;
-                            caches.open(targetCache).then((cache) => cache.put(event.request, clone).catch(() => {}));
+                            if (url.origin === self.location.origin) {
+                                caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone).catch(() => {}));
+                            } else {
+                                putInRuntimeCache(event.request, clone);
+                            }
                         }
                         return networkResponse;
                     })

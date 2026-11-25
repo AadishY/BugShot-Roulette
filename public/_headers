@@ -15,6 +15,15 @@
 /image/*
   Cache-Control: public, max-age=86400, stale-while-revalidate=604800
 
+/favicon.ico
+  Cache-Control: public, max-age=604800, stale-while-revalidate=2592000
+
+/image/favicon/*.ico
+  Cache-Control: public, max-age=604800, stale-while-revalidate=2592000
+
+/image/favicon/*.png
+  Cache-Control: public, max-age=604800, stale-while-revalidate=2592000
+
 /sound/*
   Cache-Control: public, max-age=604800, stale-while-revalidate=2592000
 

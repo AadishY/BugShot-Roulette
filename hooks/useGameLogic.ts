@@ -139,12 +139,15 @@ export const useGameLogic = () => {
   const prevTurnOwnerRef = useRef<TurnOwner>(gameState.turnOwner);
 
   // Timers
-  const resetTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const overlayHideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const startGameTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const muzzleFlashTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const processingSafetyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const resetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const overlayHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const errorOverlayTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const startGameTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const muzzleFlashTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const processingSafetyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const roundGenRef = useRef<number>(0);
+  const gameGenRef = useRef<number>(0);
+  const isMountedRef = useRef<boolean>(true);
 
   // Synchronous ref mirroring: zero latency for asynchronous handler callbacks
   gameStateRef.current = gameState;
@@ -171,17 +174,44 @@ export const useGameLogic = () => {
     duration: 0
   });
 
+  const clearAllTimers = useCallback(() => {
+    if (resetTimeoutRef.current) {
+      clearTimeout(resetTimeoutRef.current);
+      resetTimeoutRef.current = null;
+    }
+    if (overlayHideTimeoutRef.current) {
+      clearTimeout(overlayHideTimeoutRef.current);
+      overlayHideTimeoutRef.current = null;
+    }
+    if (errorOverlayTimeoutRef.current) {
+      clearTimeout(errorOverlayTimeoutRef.current);
+      errorOverlayTimeoutRef.current = null;
+    }
+    if (startGameTimeoutRef.current) {
+      clearTimeout(startGameTimeoutRef.current);
+      startGameTimeoutRef.current = null;
+    }
+    if (muzzleFlashTimeoutRef.current) {
+      clearTimeout(muzzleFlashTimeoutRef.current);
+      muzzleFlashTimeoutRef.current = null;
+    }
+    if (processingSafetyTimeoutRef.current) {
+      clearTimeout(processingSafetyTimeoutRef.current);
+      processingSafetyTimeoutRef.current = null;
+    }
+  }, []);
+
   // Cleanup all timers and audio resources on hook unmount
   useEffect(() => {
+    isMountedRef.current = true;
     return () => {
-      if (resetTimeoutRef.current) clearTimeout(resetTimeoutRef.current);
-      if (overlayHideTimeoutRef.current) clearTimeout(overlayHideTimeoutRef.current);
-      if (startGameTimeoutRef.current) clearTimeout(startGameTimeoutRef.current);
-      if (muzzleFlashTimeoutRef.current) clearTimeout(muzzleFlashTimeoutRef.current);
-      if (processingSafetyTimeoutRef.current) clearTimeout(processingSafetyTimeoutRef.current);
+      isMountedRef.current = false;
+      gameGenRef.current++;
+      roundGenRef.current++;
+      clearAllTimers();
       audioManager.stopAllSFX();
     };
-  }, []);
+  }, [clearAllTimers]);
 
   // Safety watchdog: ensure isProcessing never permanently locks the game UI
   useEffect(() => {
@@ -272,6 +302,10 @@ export const useGameLogic = () => {
     if (overlayHideTimeoutRef.current) {
       clearTimeout(overlayHideTimeoutRef.current);
       overlayHideTimeoutRef.current = null;
+    }
+    if (errorOverlayTimeoutRef.current) {
+      clearTimeout(errorOverlayTimeoutRef.current);
+      errorOverlayTimeoutRef.current = null;
     }
     setOverlayTextUpdatedAt(Date.now());
     setOverlayTextState(nextValue);
@@ -428,6 +462,8 @@ export const useGameLogic = () => {
     p4ItemsOverride?: ItemType[]
   ) => {
     const currentGen = ++roundGenRef.current;
+    const currentGameGen = gameGenRef.current;
+    const isRoundCancelled = () => !isMountedRef.current || currentGen !== roundGenRef.current || currentGameGen !== gameGenRef.current;
     setIsProcessing(true);
 
     try {
@@ -595,7 +631,7 @@ export const useGameLogic = () => {
       setOverlayColor(isHM ? 'red' : 'none');
       audioManager.playSound('rack');
       await wait(gameStateRef.current.isLocalSplit ? 1800 : 3000);
-      if (currentGen !== roundGenRef.current) return;
+      if (isRoundCancelled()) return;
       setOverlayText(null);
       setOverlayColor('none');
 
@@ -605,7 +641,7 @@ export const useGameLogic = () => {
       setOverlayText(`${lives} LIVE  |  ${blanks} BLANK`);
       audioManager.playSound('insert');
       await wait(4100);
-      if (currentGen !== roundGenRef.current) return;
+      if (isRoundCancelled()) return;
       setOverlayText(null);
 
       // Construct effective state for distribution
@@ -643,7 +679,7 @@ export const useGameLogic = () => {
         setOpponentReceivedItems
       );
 
-      if (currentGen !== roundGenRef.current) return;
+      if (isRoundCancelled()) return;
 
       const nextTurn: TurnOwner = turnOwnerOverride
         || (gameStateRef.current.isLocalSplit
@@ -662,7 +698,7 @@ export const useGameLogic = () => {
         addLog(resetItems ? `${activeName}'S TURN — GOES FIRST!` : `${activeName}'S TURN.`, 'info');
         setOverlayText(resetItems ? `${activeName}'S TURN\nGOES FIRST` : `${activeName}'S TURN`);
         await wait(resetItems ? 1650 : 1200);
-        if (currentGen === roundGenRef.current) setOverlayText(null);
+        if (!isRoundCancelled()) setOverlayText(null);
       } else if (nextTurn === 'PLAYER') {
         setCameraView('PLAYER');
         addLog('YOUR MOVE.');
@@ -673,7 +709,7 @@ export const useGameLogic = () => {
     } catch (err) {
       console.error("Error in startRound:", err);
     } finally {
-      if (currentGen === roundGenRef.current) {
+      if (!isRoundCancelled()) {
         setIsProcessing(false);
       }
     }
@@ -681,6 +717,7 @@ export const useGameLogic = () => {
 
   /* Fixed Hard Mode logic */
   const handleHardModeRoundEnd = useCallback(async (winner: TurnOwner) => {
+    const myGameGen = gameGenRef.current;
     setIsProcessing(true);
     try {
       const currentState = gameStateRef.current.hardModeState || { round: 1, playerWins: 0, dealerWins: 0 };
@@ -711,6 +748,7 @@ export const useGameLogic = () => {
 
       // Wait for reading
       await wait(3000);
+      if (!isMountedRef.current || myGameGen !== gameGenRef.current) return;
 
       // Check Match Over
       if (nextState.playerWins >= 2 || nextState.dealerWins >= 2) {
@@ -732,6 +770,7 @@ export const useGameLogic = () => {
 
       // Wait for "Round X" text
       await wait(2000);
+      if (!isMountedRef.current || myGameGen !== gameGenRef.current) return;
 
       setOverlayText(null);
 
@@ -741,11 +780,14 @@ export const useGameLogic = () => {
     } catch (err) {
       console.error("Error in handleHardModeRoundEnd:", err);
     } finally {
-      setIsProcessing(false);
+      if (isMountedRef.current && myGameGen === gameGenRef.current) {
+        setIsProcessing(false);
+      }
     }
   }, [addLog, getOpponentName, setOverlayColor, setOverlayText, startRound]);
 
   const handleNormalModeRoundEnd = useCallback(async (winner: TurnOwner) => {
+    const myGameGen = gameGenRef.current;
     setIsProcessing(true);
     try {
       const currentState = gameStateRef.current.normalModeState || { round: 1, playerWins: 0, dealerWins: 0 };
@@ -769,6 +811,7 @@ export const useGameLogic = () => {
         setOverlayText(winMsg);
         audioManager.playSound('rack');
         await wait(3000);
+        if (!isMountedRef.current || myGameGen !== gameGenRef.current) return;
         setGameState(prev => ({ ...prev, winner: 'DEALER', phase: 'GAME_OVER', normalModeState: nextState }));
         matchStatsRef.current.result = 'LOSS';
         setOverlayColor('none');
@@ -783,12 +826,14 @@ export const useGameLogic = () => {
         setOverlayText(winMsg);
         audioManager.playSound('insert');
         await wait(3000);
+        if (!isMountedRef.current || myGameGen !== gameGenRef.current) return;
 
         // Transition to Round 2
         setOverlayColor('none');
         setOverlayText("LET'S MAKE THIS A LITTLE MORE INTERESTING");
         addLog("DEALER: LET'S MAKE THIS A LITTLE MORE INTERESTING", 'dealer');
         await wait(3000);
+        if (!isMountedRef.current || myGameGen !== gameGenRef.current) return;
         setOverlayText(null);
 
         nextState.round = 2;
@@ -803,6 +848,7 @@ export const useGameLogic = () => {
         setOverlayText(winMsg);
         audioManager.playSound('insert');
         await wait(3000);
+        if (!isMountedRef.current || myGameGen !== gameGenRef.current) return;
 
         setGameState(prev => ({ ...prev, winner: 'PLAYER', phase: 'GAME_OVER', normalModeState: nextState }));
         matchStatsRef.current.result = 'WIN';
@@ -812,11 +858,14 @@ export const useGameLogic = () => {
     } catch (err) {
       console.error("Error in handleNormalModeRoundEnd:", err);
     } finally {
-      setIsProcessing(false);
+      if (isMountedRef.current && myGameGen === gameGenRef.current) {
+        setIsProcessing(false);
+      }
     }
   }, [addLog, getOpponentName, setOverlayColor, setOverlayText, startRound]);
 
   const handleMPRoundEnd = useCallback(async (winner: TurnOwner) => {
+    const myGameGen = gameGenRef.current;
     setIsProcessing(true);
     try {
       const mSettings = gameStateRef.current.roomSettings || { rounds: 1, hp: 4 };
@@ -844,6 +893,7 @@ export const useGameLogic = () => {
       setOverlayColor(color);
       setOverlayText(winMsg);
       await wait(3000);
+      if (!isMountedRef.current || myGameGen !== gameGenRef.current) return;
 
       if (pWin >= winsNeeded || oWin >= winsNeeded) {
         setOverlayColor('none');
@@ -863,6 +913,7 @@ export const useGameLogic = () => {
       setOverlayColor('none');
       setOverlayText(gameStateRef.current.isLocalSplit ? `MATCH ${nextRoundNum}` : `ROUND ${nextRoundNum}`);
       await wait(1600);
+      if (!isMountedRef.current || myGameGen !== gameGenRef.current) return;
       setOverlayText(null);
 
       // Reset HP for next match
@@ -881,28 +932,22 @@ export const useGameLogic = () => {
     } catch (err) {
       console.error("Error in handleMPRoundEnd:", err);
     } finally {
-      setIsProcessing(false);
+      if (isMountedRef.current && myGameGen === gameGenRef.current) {
+        setIsProcessing(false);
+      }
     }
   }, [getOpponentName, setOverlayColor, setOverlayText, startRound]);
 
   const resetGame = useCallback((toMenu: boolean = false, startRoundAfterReset: boolean = true) => {
+    const nextGameGen = ++gameGenRef.current;
     roundGenRef.current++;
-    if (processingSafetyTimeoutRef.current) {
-      clearTimeout(processingSafetyTimeoutRef.current);
-      processingSafetyTimeoutRef.current = null;
-    }
-    if (resetTimeoutRef.current) {
-      clearTimeout(resetTimeoutRef.current);
-      resetTimeoutRef.current = null;
-    }
-    if (startGameTimeoutRef.current) {
-      clearTimeout(startGameTimeoutRef.current);
-      startGameTimeoutRef.current = null;
-    }
+    clearAllTimers();
 
     setReceivedItems([]);
     setShowLootOverlay(false);
     setOverlayText(null);
+    setOverlayColor('none');
+    setAimTarget('IDLE');
     resetStats();
     setDealerModel('DEFAULT');
 
@@ -948,6 +993,8 @@ export const useGameLogic = () => {
     });
     setCameraView('PLAYER');
     setShowBlood(false);
+    setShowFlash(false);
+    setShowFlashbang(false);
     setShowLootOverlay(false);
     setReceivedItems([]);
     setOpponentReceivedItems([]);
@@ -955,11 +1002,12 @@ export const useGameLogic = () => {
 
     if (!toMenu && startRoundAfterReset) {
       resetTimeoutRef.current = setTimeout(() => {
-        startRound(true);
         resetTimeoutRef.current = null;
+        if (!isMountedRef.current || nextGameGen !== gameGenRef.current) return;
+        startRound(true);
       }, 200);
     }
-  }, [resetStats, setAnim, setOverlayText, startRound]);
+  }, [clearAllTimers, resetStats, setAnim, setOverlayText, startRound]);
 
   const startGame = useCallback((
     name: string,
@@ -976,20 +1024,19 @@ export const useGameLogic = () => {
     p4ItemsOverride?: ItemType[]
   ) => {
     resumeAudioContext().catch(() => {});
+    const nextGameGen = ++gameGenRef.current;
     roundGenRef.current++;
-    if (processingSafetyTimeoutRef.current) {
-      clearTimeout(processingSafetyTimeoutRef.current);
-      processingSafetyTimeoutRef.current = null;
-    }
-    if (resetTimeoutRef.current) {
-      clearTimeout(resetTimeoutRef.current);
-      resetTimeoutRef.current = null;
-    }
-    if (startGameTimeoutRef.current) {
-      clearTimeout(startGameTimeoutRef.current);
-      startGameTimeoutRef.current = null;
-    }
+    clearAllTimers();
 
+    setOverlayText(null);
+    setOverlayColor('none');
+    setAimTarget('IDLE');
+    setShowBlood(false);
+    setShowFlash(false);
+    setShowFlashbang(false);
+    setIsProcessing(false);
+
+    matchStartTimeRef.current = Date.now();
     matchStatsRef.current = {
       result: 'LOSS',
       roundsSurvived: 0,
@@ -1030,27 +1077,18 @@ export const useGameLogic = () => {
     matchStatsRef.current.isHardMode = hardMode;
 
     startGameTimeoutRef.current = setTimeout(() => {
-      startRound(true, hardMode, initialHardModeState, chamberOverride, pItemsOverride, dItemsOverride, turnOwner, hpOverride, undefined, p3ItemsOverride, p4ItemsOverride);
       startGameTimeoutRef.current = null;
+      if (!isMountedRef.current || nextGameGen !== gameGenRef.current) return;
+      startRound(true, hardMode, initialHardModeState, chamberOverride, pItemsOverride, dItemsOverride, turnOwner, hpOverride, undefined, p3ItemsOverride, p4ItemsOverride);
     }, 100);
-  }, [startRound]);
+  }, [clearAllTimers, setOverlayText, startRound]);
 
   const startLocalSplitGame = useCallback((rawConfig: LocalSplitConfig) => {
     const config = sanitizeSplitConfig(rawConfig);
     resumeAudioContext().catch(() => {});
+    const nextGameGen = ++gameGenRef.current;
     roundGenRef.current++;
-    if (processingSafetyTimeoutRef.current) {
-      clearTimeout(processingSafetyTimeoutRef.current);
-      processingSafetyTimeoutRef.current = null;
-    }
-    if (resetTimeoutRef.current) {
-      clearTimeout(resetTimeoutRef.current);
-      resetTimeoutRef.current = null;
-    }
-    if (startGameTimeoutRef.current) {
-      clearTimeout(startGameTimeoutRef.current);
-      startGameTimeoutRef.current = null;
-    }
+    clearAllTimers();
 
     matchStartTimeRef.current = Date.now();
     matchStatsRef.current = {
@@ -1077,9 +1115,14 @@ export const useGameLogic = () => {
     setKnownShell(null);
     setOverlayText(null);
     setOverlayColor('none');
+    setAimTarget('IDLE');
+    setShowBlood(false);
+    setShowFlash(false);
+    setShowFlashbang(false);
     setShowLootOverlay(false);
     setReceivedItems([]);
     setOpponentReceivedItems([]);
+    setIsProcessing(false);
 
     const freshSplitPlayer: PlayerState = {
       hp: config.startingHp,
@@ -1125,10 +1168,11 @@ export const useGameLogic = () => {
     });
 
     startGameTimeoutRef.current = setTimeout(() => {
-      startRound(true, false, undefined, undefined, undefined, undefined, firstTurn, config.startingHp);
       startGameTimeoutRef.current = null;
+      if (!isMountedRef.current || nextGameGen !== gameGenRef.current) return;
+      startRound(true, false, undefined, undefined, undefined, undefined, firstTurn, config.startingHp);
     }, 100);
-  }, [startRound]);
+  }, [clearAllTimers, setOverlayText, startRound]);
 
   const pickupGun = useCallback((picker: TurnOwner = 'PLAYER') => {
     const isMP = gameStateRef.current.isMultiplayer;
@@ -1223,6 +1267,7 @@ export const useGameLogic = () => {
       setCameraView('GUN');
     }
 
+    const myGameGen = gameGenRef.current;
     setIsProcessing(true);
 
     try {
@@ -1241,6 +1286,7 @@ export const useGameLogic = () => {
 
       setAimTarget(intendedAim);
       await wait(500);
+      if (!isMountedRef.current || myGameGen !== gameGenRef.current) return;
 
       const isSawed = getPlayerState(shooter).isSawedActive;
       const isChoked = getPlayerState(shooter).isChokeActive;
@@ -1291,8 +1337,9 @@ export const useGameLogic = () => {
         clearTimeout(muzzleFlashTimeoutRef.current);
       }
       muzzleFlashTimeoutRef.current = setTimeout(() => {
-        setAnim(p => ({ ...p, muzzleFlashIntensity: 0 }));
         muzzleFlashTimeoutRef.current = null;
+        if (!isMountedRef.current || myGameGen !== gameGenRef.current) return;
+        setAnim(p => ({ ...p, muzzleFlashIntensity: 0 }));
       }, 150);
 
       const resolvedTargetOwner = target;
@@ -1415,13 +1462,16 @@ export const useGameLogic = () => {
         setOverlayText(`${winnerName.toUpperCase()} WON THE ROUND!`);
         audioManager.playSound('insert');
         await wait(3000);
+        if (!isMountedRef.current || myGameGen !== gameGenRef.current) return;
         setOverlayColor('none');
         setOverlayText(null);
 
         if (onMPRoundEndRef.current) {
           await onMPRoundEndRef.current(roundWinner);
         }
-        setIsProcessing(false);
+        if (isMountedRef.current && myGameGen === gameGenRef.current) {
+          setIsProcessing(false);
+        }
         return;
       }
 
@@ -1520,6 +1570,7 @@ export const useGameLogic = () => {
 
     setAimTarget(intendedAim);
     await wait(500);
+    if (!isMountedRef.current || myGameGen !== gameGenRef.current) return;
 
     matchStatsRef.current.shotsFired++;
     if (target === shooter) matchStatsRef.current.selfShots++;
@@ -1538,7 +1589,9 @@ export const useGameLogic = () => {
       });
     } catch (err) {
       console.error("Error in fireShot:", err);
-      setIsProcessing(false);
+      if (isMountedRef.current && myGameGen === gameGenRef.current) {
+        setIsProcessing(false);
+      }
     }
   }, [addLog, getOpponentName, getPlayerNameByOwner, getPlayerSetter, getPlayerState, handleHardModeRoundEnd, handleMPRoundEnd, handleNormalModeRoundEnd, resolveTargetOwner, setAnim, setOverlayColor, setOverlayText, startRound]);
 
@@ -2516,7 +2569,14 @@ export const useGameLogic = () => {
         addLog(check.reason, 'info');
         const errMsg = `❌ ${check.reason}`;
         setOverlayText(errMsg);
-        setTimeout(() => setOverlayText?.(prev => (prev === errMsg ? null : prev)), 2000);
+        if (errorOverlayTimeoutRef.current) {
+          clearTimeout(errorOverlayTimeoutRef.current);
+        }
+        errorOverlayTimeoutRef.current = setTimeout(() => {
+          errorOverlayTimeoutRef.current = null;
+          if (!isMountedRef.current) return;
+          setOverlayText(prev => (prev === errMsg ? null : prev));
+        }, 2000);
       }
       return false;
     }
@@ -2537,6 +2597,7 @@ export const useGameLogic = () => {
       }
     }
 
+    const myGameGen = gameGenRef.current;
     setIsProcessing(true);
 
     try {
@@ -2550,13 +2611,15 @@ export const useGameLogic = () => {
 
       const roundEnded = await processItemEffect(activeActor, item, deckCardsOverride, jackpotOutcomeOverride, crushIndexOverride, contractLootOverride, phoneFutureIndexOverride, targetPlayerId);
 
-      if (!roundEnded) {
+      if (!roundEnded && isMountedRef.current && myGameGen === gameGenRef.current) {
         setIsProcessing(false);
       }
       return true;
     } catch (err) {
       console.error("Error in usePlayerItem:", err);
-      setIsProcessing(false);
+      if (isMountedRef.current && myGameGen === gameGenRef.current) {
+        setIsProcessing(false);
+      }
       return false;
     }
   }, [addLog, canUsePlayerItem, processItemEffect, resolveTargetOwner, setOverlayText]);
@@ -2665,6 +2728,7 @@ export const useGameLogic = () => {
     const itemToSteal = target.items[index];
     if (!itemToSteal) return;
 
+    const myGameGen = gameGenRef.current;
     setIsProcessing(true);
 
     try {
@@ -2676,12 +2740,14 @@ export const useGameLogic = () => {
       addLog(`${stealerName.toUpperCase()} STOLE ${itemToSteal}`, 'info');
       setOverlayText(`🎯 ${stealerName.toUpperCase()} STOLE ${itemToSteal}!`);
       await wait(800);
+      if (!isMountedRef.current || myGameGen !== gameGenRef.current) return;
       setOverlayText(null);
 
       const stealerPhase = stealer === 'PLAYER' ? 'PLAYER_TURN' : (stealer === 'PLAYER3' ? 'PLAYER3_TURN' : (stealer === 'PLAYER4' ? 'PLAYER4_TURN' : 'DEALER_TURN'));
       setGameState(p => ({ ...p, phase: stealerPhase, adrenalineTargetOwner: undefined }));
 
       await wait(100);
+      if (!isMountedRef.current || myGameGen !== gameGenRef.current) return;
       const roundEnded = await processItemEffect(
         stealer,
         itemToSteal,
@@ -2695,17 +2761,22 @@ export const useGameLogic = () => {
 
       if (!roundEnded) {
         await wait(300);
-        setIsProcessing(false);
+        if (isMountedRef.current && myGameGen === gameGenRef.current) {
+          setIsProcessing(false);
+        }
       }
     } catch (err) {
       console.error("Error in stealItem:", err);
-      setIsProcessing(false);
+      if (isMountedRef.current && myGameGen === gameGenRef.current) {
+        setIsProcessing(false);
+      }
     }
   }, [addLog, canStealItem, getPlayerSetter, getPlayerState, processItemEffect, setDealer, setOverlayText, setPlayer]);
 
   const selectTarotCard = useCallback(async (index: number, cardRandomsOverride?: any) => {
     if (gameStateRef.current.selectedCardIndex !== null && gameStateRef.current.selectedCardIndex !== undefined) return;
     
+    const myGameGen = gameGenRef.current;
     setIsProcessing(true);
     
     try {
@@ -2735,8 +2806,10 @@ export const useGameLogic = () => {
       setOverlayText(`🃏 ${userName.toUpperCase()} REVEALED: ${cardName.toUpperCase()}...`);
 
       await wait(1800);
+      if (!isMountedRef.current || myGameGen !== gameGenRef.current) return;
       setCameraView(gameStateRef.current.isLocalSplit && turnOwner === 'DEALER' ? 'DEALER' : 'PLAYER');
       await wait(1700);
+      if (!isMountedRef.current || myGameGen !== gameGenRef.current) return;
 
       let deathTriggered = false;
       let savedByTotem = false;
@@ -3119,6 +3192,7 @@ export const useGameLogic = () => {
 
       if (!deathTriggered) {
         await wait(3000);
+        if (!isMountedRef.current || myGameGen !== gameGenRef.current) return;
         setOverlayText(null);
       }
 
@@ -3143,10 +3217,14 @@ export const useGameLogic = () => {
       }
       
       setCameraView('PLAYER');
-      setIsProcessing(false);
+      if (isMountedRef.current && myGameGen === gameGenRef.current) {
+        setIsProcessing(false);
+      }
     } catch (err) {
       console.error("Error in selectTarotCard:", err);
-      setIsProcessing(false);
+      if (isMountedRef.current && myGameGen === gameGenRef.current) {
+        setIsProcessing(false);
+      }
     }
   }, [addLog, getPlayerNameByOwner, getPlayerSetter, getPlayerState, handleHardModeRoundEnd, handleMPRoundEnd, handleNormalModeRoundEnd, resolveTargetOwner, setAnim, setOverlayText]);
 

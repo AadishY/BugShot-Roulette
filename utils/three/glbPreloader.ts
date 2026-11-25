@@ -24,6 +24,12 @@ const getDracoLoader = (): DRACOLoader => {
     if (!_dracoLoader) {
         _dracoLoader = new DRACOLoader();
         _dracoLoader.setDecoderPath(`${import.meta.env.BASE_URL}draco/`);
+        const dracoAny = _dracoLoader as unknown as { setWorkerLimit?: (limit: number) => void; workerLimit?: number };
+        if (typeof dracoAny.setWorkerLimit === 'function') {
+            dracoAny.setWorkerLimit(isMobileUA ? 1 : 2);
+        } else if ('workerLimit' in dracoAny) {
+            dracoAny.workerLimit = isMobileUA ? 1 : 2;
+        }
         _dracoLoader.preload(); // Warm WASM decoder so first GLB decode doesn't stall
     }
     return _dracoLoader;
@@ -37,45 +43,76 @@ const getGLTFLoader = (): GLTFLoader => {
     return _gltfLoader;
 };
 
+// Bounded concurrency queue to avoid memory/CPU spikes on mobile during parallel GLB + Draco decoding
+const isMobileUA = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+const MAX_CONCURRENT_LOADS = isMobileUA ? 2 : 3;
+
 // Warm Draco decoder eagerly on browser startup
 if (typeof window !== 'undefined') {
     getDracoLoader();
 }
 
+interface InflightLoadRecord {
+    promise: Promise<GLTF>;
+    epoch: number;
+    cancelled: boolean;
+}
+
+interface QueuedLoadTask {
+    run: () => void;
+    cancel: () => void;
+}
+
 // Cache-first resolved assets & deduplicated in-flight promises
 const resolvedCache = new Map<string, GLTF>();
-const inflightLoads = new Map<string, Promise<GLTF>>();
+const inflightLoads = new Map<string, InflightLoadRecord>();
 const gltfProgress = new Map<string, number>();
 
-// Bounded concurrency queue to avoid memory/CPU spikes on mobile during parallel GLB + Draco decoding
-const isMobileUA = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
-const MAX_CONCURRENT_LOADS = isMobileUA ? 2 : 3;
+let cacheEpoch = 0;
 let activeLoads = 0;
-const loadQueue: Array<() => void> = [];
+const loadQueue: QueuedLoadTask[] = [];
 
 const pumpQueue = () => {
     while (activeLoads < MAX_CONCURRENT_LOADS && loadQueue.length > 0) {
         const next = loadQueue.shift();
-        if (next) next();
+        if (next) next.run();
     }
 };
 
 const enqueueLoad = <T>(task: () => Promise<T>): Promise<T> => {
     return new Promise<T>((resolve, reject) => {
-        const run = () => {
-            activeLoads++;
-            task()
-                .then(resolve, reject)
-                .finally(() => {
-                    activeLoads = Math.max(0, activeLoads - 1);
-                    pumpQueue();
-                });
+        let settled = false;
+        const entry: QueuedLoadTask = {
+            run: () => {
+                if (settled) return;
+                activeLoads++;
+                task()
+                    .then(
+                        (val) => {
+                            settled = true;
+                            resolve(val);
+                        },
+                        (err) => {
+                            settled = true;
+                            reject(err);
+                        }
+                    )
+                    .finally(() => {
+                        activeLoads = Math.max(0, activeLoads - 1);
+                        pumpQueue();
+                    });
+            },
+            cancel: () => {
+                if (settled) return;
+                settled = true;
+                reject(new Error('GLB load cancelled'));
+            }
         };
 
         if (activeLoads < MAX_CONCURRENT_LOADS) {
-            run();
+            entry.run();
         } else {
-            loadQueue.push(run);
+            loadQueue.push(entry);
         }
     });
 };
@@ -113,6 +150,10 @@ const releaseGLTFParserBuffers = (gltf: GLTF) => {
         parser.json = null;
         parser.fileLoader = null;
         parser.textureLoader = null;
+        if ('buffers' in parser) parser.buffers = null;
+        if ('bufferViews' in parser) parser.bufferViews = null;
+        if ('images' in parser) parser.images = null;
+        if ('input' in parser) parser.input = null;
     } catch {}
 
     (gltf as any).parser = null;
@@ -127,7 +168,15 @@ const disposeGLTFSceneResources = (gltf: GLTF) => {
     gltf.scene.traverse((obj) => {
         if (obj.userData) delete obj.userData.isCachedAsset;
 
-        if (obj instanceof THREE.Mesh) {
+        if ((obj as THREE.SkinnedMesh).isSkinnedMesh) {
+            try { (obj as THREE.SkinnedMesh).skeleton?.dispose?.(); } catch {}
+        }
+
+        if (obj instanceof THREE.InstancedMesh) {
+            try { obj.dispose(); } catch {}
+        }
+
+        if (obj instanceof THREE.Mesh || obj instanceof THREE.Line || obj instanceof THREE.Points) {
             if (obj.geometry && !disposedGeos.has(obj.geometry)) {
                 disposedGeos.add(obj.geometry);
                 if (obj.geometry.userData) delete obj.geometry.userData.isCachedAsset;
@@ -170,24 +219,68 @@ export const resolveAssetPath = (assetPath: string) => {
     return `${import.meta.env.BASE_URL}${normalized}`;
 };
 
+const MAX_CACHED_GLBS = Math.max(PRELOAD_MODEL_PATHS.length + 3, isMobileUA ? 8 : 16);
+
+const getPreloadedUrlSet = () => {
+    const urls = new Set<string>();
+    for (const p of PRELOAD_MODEL_PATHS) {
+        urls.add(resolveAssetPath(p));
+    }
+    return urls;
+};
+
+const enforceCacheBounds = (protectedUrl?: string) => {
+    if (resolvedCache.size <= MAX_CACHED_GLBS) return;
+    const preloadedUrls = getPreloadedUrlSet();
+
+    // First evict oldest non-preloaded entries
+    for (const key of Array.from(resolvedCache.keys())) {
+        if (resolvedCache.size <= MAX_CACHED_GLBS) return;
+        if (key === protectedUrl || preloadedUrls.has(key)) continue;
+        releaseGLBCacheEntry(key);
+    }
+
+    // Fallback if cache still exceeds cap (e.g. only preloaded entries exist)
+    for (const key of Array.from(resolvedCache.keys())) {
+        if (resolvedCache.size <= MAX_CACHED_GLBS) return;
+        if (key === protectedUrl) continue;
+        releaseGLBCacheEntry(key);
+    }
+};
+
 export const getPreloadedGLB = (url: string): Promise<GLTF> => {
     const cached = resolvedCache.get(url);
     if (cached) {
+        // Refresh LRU recency
+        resolvedCache.delete(url);
+        resolvedCache.set(url, cached);
         gltfProgress.set(url, 100);
         return Promise.resolve(cached);
     }
 
     const inflight = inflightLoads.get(url);
-    if (inflight) {
-        return inflight;
+    if (inflight && !inflight.cancelled) {
+        return inflight.promise;
     }
 
     gltfProgress.set(url, 0);
+    const loadEpoch = cacheEpoch;
+    const record: InflightLoadRecord = {
+        promise: null as unknown as Promise<GLTF>,
+        epoch: loadEpoch,
+        cancelled: false
+    };
 
     const promise = enqueueLoad<GLTF>(() => {
+        if (record.cancelled || record.epoch !== cacheEpoch) {
+            return Promise.reject(new Error(`GLB load cancelled: ${url}`));
+        }
+
         // Re-check resolved cache in case another caller resolved while queued
         const alreadyResolved = resolvedCache.get(url);
         if (alreadyResolved) {
+            resolvedCache.delete(url);
+            resolvedCache.set(url, alreadyResolved);
             gltfProgress.set(url, 100);
             return Promise.resolve(alreadyResolved);
         }
@@ -197,6 +290,16 @@ export const getPreloadedGLB = (url: string): Promise<GLTF> => {
             loader.load(
                 url,
                 (gltf) => {
+                    if (record.cancelled || record.epoch !== cacheEpoch) {
+                        releaseGLTFParserBuffers(gltf);
+                        disposeGLTFSceneResources(gltf);
+                        if (inflightLoads.get(url) === record) {
+                            inflightLoads.delete(url);
+                        }
+                        reject(new Error(`GLB load cancelled: ${url}`));
+                        return;
+                    }
+
                     // Tag all meshes, materials, geometries, and textures as cached assets
                     // to prevent scene cleanup logic (cleanScene) from disposing them.
                     gltf.scene.traverse((obj) => {
@@ -239,27 +342,36 @@ export const getPreloadedGLB = (url: string): Promise<GLTF> => {
                     releaseGLTFParserBuffers(gltf);
 
                     resolvedCache.set(url, gltf);
-                    inflightLoads.delete(url);
+                    enforceCacheBounds(url);
+                    if (inflightLoads.get(url) === record) {
+                        inflightLoads.delete(url);
+                    }
                     gltfProgress.set(url, 100);
                     resolve(gltf);
                 },
                 (xhr) => {
+                    if (record.cancelled || record.epoch !== cacheEpoch) return;
                     if (xhr.total > 0) {
                         const percent = (xhr.loaded / xhr.total) * 100;
                         gltfProgress.set(url, Math.min(percent, 99));
                     }
                 },
                 (err) => {
-                    console.warn(`Failed to load GLB: ${url}`, err);
-                    inflightLoads.delete(url);
-                    gltfProgress.set(url, 100); // Do not block loader progress on network or parser errors
+                    if (inflightLoads.get(url) === record) {
+                        inflightLoads.delete(url);
+                    }
+                    if (!record.cancelled && record.epoch === cacheEpoch) {
+                        console.warn(`Failed to load GLB: ${url}`, err);
+                        gltfProgress.set(url, 100); // Do not block loader progress on network or parser errors
+                    }
                     reject(err);
                 }
             );
         });
     });
 
-    inflightLoads.set(url, promise);
+    record.promise = promise;
+    inflightLoads.set(url, record);
     return promise;
 };
 
@@ -284,7 +396,11 @@ export const releaseGLBCacheEntry = (url: string) => {
         disposeGLTFSceneResources(cached);
         resolvedCache.delete(url);
     }
-    inflightLoads.delete(url);
+    const inflight = inflightLoads.get(url);
+    if (inflight) {
+        inflight.cancelled = true;
+        inflightLoads.delete(url);
+    }
     gltfProgress.delete(url);
 };
 
@@ -311,13 +427,20 @@ export const disposeDracoLoader = () => {
 };
 
 export const clearGLBCache = () => {
+    cacheEpoch++;
     resolvedCache.forEach((gltf) => {
         disposeGLTFSceneResources(gltf);
     });
     resolvedCache.clear();
+    inflightLoads.forEach((record) => {
+        record.cancelled = true;
+    });
     inflightLoads.clear();
     gltfProgress.clear();
-    loadQueue.length = 0;
+    const pendingTasks = loadQueue.splice(0, loadQueue.length);
+    for (const task of pendingTasks) {
+        task.cancel();
+    }
 };
 
 /**
